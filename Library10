@@ -644,7 +644,7 @@ function ElegantModMenu:addToggle(name, defaultState, callback, icon)
     }
 end
 
--- Слайдер (РАБОЧИЙ!)
+-- Слайдер (ИСПРАВЛЕННЫЙ - полность рабочий!)
 function ElegantModMenu:addSlider(name, min, max, defaultValue, callback, icon)
     local value = defaultValue or min
     
@@ -727,7 +727,7 @@ function ElegantModMenu:addSlider(name, min, max, defaultValue, callback, icon)
     -- Обновление значения
     local function updateValue(newValue)
         value = math.clamp(newValue, min, max)
-        value = math.floor(value * 100) / 100  -- Два знака после запятой
+        value = math.floor(value * 100) / 100
         
         local percentage = (value - min) / (max - min)
         
@@ -740,46 +740,71 @@ function ElegantModMenu:addSlider(name, min, max, defaultValue, callback, icon)
         end
     end
     
-    -- Взаимодействие
+    -- Взаимодействие (ИСПРАВЛЕНО)
     local dragging = false
     local userInputService = game:GetService("UserInputService")
+    local runService = game:GetService("RunService")
     
-    local function updateFromInput(input)
-        local relativeX = (input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X
-        local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
-        updateValue(newValue)
+    -- Функция для обновления позиции при движении мыши
+    local function updateFromMouse()
+        if dragging then
+            local mouse = userInputService:GetMouseLocation()
+            local trackAbsolute = track.AbsolutePosition
+            local trackSize = track.AbsoluteSize
+            
+            local relativeX = (mouse.X - trackAbsolute.X) / trackSize.X
+            local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+            updateValue(newValue)
+        end
     end
     
+    -- Создаем кнопку для трека
     local trackButton = Instance.new("TextButton")
     trackButton.Size = UDim2.new(1, 0, 1, 0)
     trackButton.BackgroundTransparency = 1
     trackButton.Text = ""
     trackButton.Parent = track
     
+    -- Создаем кнопку для ползунка
     local thumbButton = Instance.new("TextButton")
     thumbButton.Size = UDim2.new(1, 0, 1, 0)
     thumbButton.BackgroundTransparency = 1
     thumbButton.Text = ""
     thumbButton.Parent = thumb
     
-    trackButton.MouseButton1Down:Connect(function(input)
+    -- Обработка начала перетаскивания
+    local function startDragging()
         dragging = true
-        updateFromInput(input)
+    end
+    
+    -- Обработка клика по треку
+    trackButton.MouseButton1Down:Connect(function()
+        dragging = true
+        local mouse = userInputService:GetMouseLocation()
+        local trackAbsolute = track.AbsolutePosition
+        local trackSize = track.AbsoluteSize
+        
+        local relativeX = (mouse.X - trackAbsolute.X) / trackSize.X
+        local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+        updateValue(newValue)
     end)
     
+    -- Обработка клика по ползунку
     thumbButton.MouseButton1Down:Connect(function()
         dragging = true
     end)
     
+    -- Обработка окончания перетаскивания
     userInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
         end
     end)
     
-    userInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            updateFromInput(input)
+    -- Обновление позиции при движении мыши
+    runService.RenderStepped:Connect(function()
+        if dragging then
+            updateFromMouse()
         end
     end)
     
@@ -798,7 +823,7 @@ function ElegantModMenu:addSlider(name, min, max, defaultValue, callback, icon)
     }
 end
 
--- Текстовое поле (ButtonBox) - новый стиль
+-- Текстовое поле (ButtonBox)
 function ElegantModMenu:addButtonBox(name, placeholder, defaultText, callback, icon)
     local text = defaultText or ""
     
@@ -927,7 +952,7 @@ function ElegantModMenu:addButtonBox(name, placeholder, defaultText, callback, i
     }
 end
 
--- ToggleBox (числовой ввод) - новый стиль
+-- ToggleBox (числовой ввод)
 function ElegantModMenu:addToggleBox(name, placeholder, defaultValue, callback, icon)
     local value = defaultValue or 0
     
@@ -1120,7 +1145,7 @@ function ElegantModMenu:addToggleBox(name, placeholder, defaultValue, callback, 
     }
 end
 
--- Выпадающий список (РАБОЧИЙ!)
+-- Выпадающий список (ИСПРАВЛЕННЫЙ - с ScrollingFrame и правильным ZIndex)
 function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
     local selectedIndex = defaultIndex or 1
     local isOpen = false
@@ -1132,6 +1157,7 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
     dropdownContainer.BackgroundTransparency = 0.8
     dropdownContainer.LayoutOrder = #self.elements + 1
     dropdownContainer.ClipsDescendants = false
+    dropdownContainer.ZIndex = 5
     dropdownContainer.Parent = self.scrollingFrame
     
     local dropdownStroke = Instance.new("UIStroke")
@@ -1143,6 +1169,7 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
     local button = createButton()
     button.Name = "DropdownButton"
     button.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    button.ZIndex = 6
     button.Parent = dropdownContainer
     
     -- Контент
@@ -1151,6 +1178,7 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
     content.Size = UDim2.new(1, -20, 1, 0)
     content.Position = UDim2.new(0, 10, 0, 0)
     content.BackgroundTransparency = 1
+    content.ZIndex = 7
     content.Parent = dropdownContainer
     
     if icon then
@@ -1158,12 +1186,14 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
         iconLabel.Size = UDim2.new(0, 24, 0, 24)
         iconLabel.Position = UDim2.new(0, 0, 0.5, -12)
         iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+        iconLabel.ZIndex = 8
     end
     
     local nameLabel = createTextLabel(name, 14, content)
     nameLabel.Size = UDim2.new(0.5, icon and -30 or -10, 1, 0)
     nameLabel.Position = icon and UDim2.new(0, 30, 0, 0) or UDim2.new(0, 0, 0, 0)
     nameLabel.Font = Enum.Font.GothamSemibold
+    nameLabel.ZIndex = 8
     
     local selectedLabel = createTextLabel(options[selectedIndex] or "Select...", 13, content)
     selectedLabel.Size = UDim2.new(0.3, -10, 1, 0)
@@ -1171,6 +1201,7 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
     selectedLabel.TextXAlignment = Enum.TextXAlignment.Right
     selectedLabel.TextColor3 = self.accentColor
     selectedLabel.Font = Enum.Font.GothamMedium
+    selectedLabel.ZIndex = 8
     
     local arrow = Instance.new("ImageLabel")
     arrow.Name = "Arrow"
@@ -1180,34 +1211,52 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
     arrow.Image = "rbxassetid://10884537837"
     arrow.ImageColor3 = COLORS.TEXT.SECONDARY
     arrow.Rotation = isOpen and 180 or 0
+    arrow.ZIndex = 8
     arrow.Parent = content
     
-    -- Список опций
-    local optionsContainer = Instance.new("Frame")
-    optionsContainer.Name = "OptionsContainer"
-    optionsContainer.Size = UDim2.new(1, 0, 0, 0)
-    optionsContainer.Position = UDim2.new(0, 0, 1, 5)
-    optionsContainer.BackgroundColor3 = COLORS.BACKGROUND.PRIMARY
-    optionsContainer.BackgroundTransparency = 0
-    optionsContainer.Visible = false
-    optionsContainer.ClipsDescendants = true
-    optionsContainer.ZIndex = 10
-    optionsContainer.Parent = dropdownContainer
+    -- Контейнер для опций (снаружи, чтобы был поверх всех элементов)
+    local optionsOuterContainer = Instance.new("Frame")
+    optionsOuterContainer.Name = "OptionsOuterContainer"
+    optionsOuterContainer.Size = UDim2.new(1, 0, 0, 0)
+    optionsOuterContainer.Position = UDim2.new(0, 0, 1, 5)
+    optionsOuterContainer.BackgroundTransparency = 1
+    optionsOuterContainer.Visible = false
+    optionsOuterContainer.ClipsDescendants = true
+    optionsOuterContainer.ZIndex = 50
+    optionsOuterContainer.Parent = dropdownContainer
+    
+    -- ScrollingFrame для опций
+    local optionsScrolling = Instance.new("ScrollingFrame")
+    optionsScrolling.Name = "OptionsScrolling"
+    optionsScrolling.Size = UDim2.new(1, 0, 0, 0)
+    optionsScrolling.Position = UDim2.new(0, 0, 0, 0)
+    optionsScrolling.BackgroundColor3 = COLORS.BACKGROUND.PRIMARY
+    optionsScrolling.BackgroundTransparency = 0
+    optionsScrolling.BorderSizePixel = 0
+    optionsScrolling.ScrollBarThickness = 4
+    optionsScrolling.ScrollBarImageColor3 = self.accentColor
+    optionsScrolling.ScrollBarImageTransparency = 0.7
+    optionsScrolling.ScrollingDirection = Enum.ScrollingDirection.Y
+    optionsScrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    optionsScrolling.CanvasSize = UDim2.new(0, 0, 0, 0)
+    optionsScrolling.ZIndex = 51
+    optionsScrolling.Parent = optionsOuterContainer
     
     local optionsCorner = Instance.new("UICorner")
     optionsCorner.CornerRadius = UDim.new(0, CONFIG.CORNER_RADIUS)
-    optionsCorner.Parent = optionsContainer
+    optionsCorner.Parent = optionsScrolling
     
     local optionsStroke = Instance.new("UIStroke")
     optionsStroke.Color = self.accentColor
     optionsStroke.Thickness = 1
     optionsStroke.Transparency = 0.5
-    optionsStroke.Parent = optionsContainer
+    optionsStroke.ZIndex = 51
+    optionsStroke.Parent = optionsScrolling
     
     local optionsList = Instance.new("UIListLayout")
     optionsList.Padding = UDim.new(0, 1)
     optionsList.SortOrder = Enum.SortOrder.LayoutOrder
-    optionsList.Parent = optionsContainer
+    optionsList.Parent = optionsScrolling
     
     -- Создание опций
     local optionButtons = {}
@@ -1219,8 +1268,8 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
         optionButton.BackgroundColor3 = i == selectedIndex and self.accentColor or COLORS.BACKGROUND.SECONDARY
         optionButton.BackgroundTransparency = i == selectedIndex and 0.8 or 0.9
         optionButton.LayoutOrder = i
-        optionButton.ZIndex = 11
-        optionButton.Parent = optionsContainer
+        optionButton.ZIndex = 52
+        optionButton.Parent = optionsScrolling
         
         local optionCorner = Instance.new("UICorner")
         optionCorner.CornerRadius = UDim.new(0, 6)
@@ -1230,7 +1279,7 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
         optionLabel.Size = UDim2.new(1, -10, 1, 0)
         optionLabel.Position = UDim2.new(0, 10, 0, 0)
         optionLabel.TextColor3 = i == selectedIndex and COLORS.TEXT.PRIMARY or COLORS.TEXT.SECONDARY
-        optionLabel.ZIndex = 12
+        optionLabel.ZIndex = 53
         
         table.insert(optionButtons, optionButton)
         
@@ -1239,21 +1288,20 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
             selectedLabel.Text = option
             isOpen = false
             
+            -- Обновляем стиль всех кнопок
             for btnIndex, btn in ipairs(optionButtons) do
-                tween(btn, {
-                    BackgroundColor3 = btnIndex == i and self.accentColor or COLORS.BACKGROUND.SECONDARY,
-                    BackgroundTransparency = btnIndex == i and 0.8 or 0.9
-                })
-                tween(btn:FindFirstChildOfClass("TextLabel"), {
-                    TextColor3 = btnIndex == i and COLORS.TEXT.PRIMARY or COLORS.TEXT.SECONDARY
-                })
+                btn.BackgroundColor3 = btnIndex == i and self.accentColor or COLORS.BACKGROUND.SECONDARY
+                btn.BackgroundTransparency = btnIndex == i and 0.8 or 0.9
+                btn:FindFirstChildOfClass("TextLabel").TextColor3 = btnIndex == i and COLORS.TEXT.PRIMARY or COLORS.TEXT.SECONDARY
             end
             
-            tween(optionsContainer, {Size = UDim2.new(1, 0, 0, 0)})
+            -- Анимация закрытия
+            tween(optionsOuterContainer, {Size = UDim2.new(1, 0, 0, 0)})
+            tween(optionsScrolling, {Size = UDim2.new(1, 0, 0, 0)})
             tween(arrow, {Rotation = 0})
             
             task.delay(0.2, function()
-                optionsContainer.Visible = false
+                optionsOuterContainer.Visible = false
             end)
             
             if callback then
@@ -1267,16 +1315,21 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
         isOpen = not isOpen
         
         if isOpen then
-            optionsContainer.Visible = true
-            local optionsHeight = math.min(#options * 31, 155)
-            tween(optionsContainer, {Size = UDim2.new(1, 0, 0, optionsHeight)})
+            optionsOuterContainer.Visible = true
+            local maxHeight = 150  -- Максимальная высота списка
+            local itemHeight = 31
+            local optionsHeight = math.min(#options * itemHeight, maxHeight)
+            
+            tween(optionsOuterContainer, {Size = UDim2.new(1, 0, 0, optionsHeight)})
+            tween(optionsScrolling, {Size = UDim2.new(1, 0, 0, optionsHeight)})
             tween(arrow, {Rotation = 180})
         else
-            tween(optionsContainer, {Size = UDim2.new(1, 0, 0, 0)})
+            tween(optionsOuterContainer, {Size = UDim2.new(1, 0, 0, 0)})
+            tween(optionsScrolling, {Size = UDim2.new(1, 0, 0, 0)})
             tween(arrow, {Rotation = 0})
             
             task.delay(0.2, function()
-                optionsContainer.Visible = false
+                optionsOuterContainer.Visible = false
             end)
         end
     end)
@@ -1290,13 +1343,9 @@ function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
                 selectedLabel.Text = options[index]
                 
                 for btnIndex, btn in ipairs(optionButtons) do
-                    tween(btn, {
-                        BackgroundColor3 = btnIndex == index and self.accentColor or COLORS.BACKGROUND.SECONDARY,
-                        BackgroundTransparency = btnIndex == index and 0.8 or 0.9
-                    })
-                    tween(btn:FindFirstChildOfClass("TextLabel"), {
-                        TextColor3 = btnIndex == index and COLORS.TEXT.PRIMARY or COLORS.TEXT.SECONDARY
-                    })
+                    btn.BackgroundColor3 = btnIndex == index and self.accentColor or COLORS.BACKGROUND.SECONDARY
+                    btn.BackgroundTransparency = btnIndex == index and 0.8 or 0.9
+                    btn:FindFirstChildOfClass("TextLabel").TextColor3 = btnIndex == index and COLORS.TEXT.PRIMARY or COLORS.TEXT.SECONDARY
                 end
                 
                 if callback then
