@@ -189,7 +189,7 @@ function ElegantModMenu:CreateMainInterface()
     end)
     
     -- Основное окно (фиксированная позиция по центру)
-    self.MainWindow = createRoundedFrame(nil, UDim2.new(0, 400, 0, 500), UDim2.new(0.5, -200, 0.5, -250), 16)
+    self.MainWindow = createRoundedFrame(nil, UDim2.new(0, 400, 0, 500), UDim2.new(0.5, -0, 0.5, -0), 16)
     self.MainWindow.BackgroundColor3 = COLORS.Primary.Dark
     self.MainWindow.ClipsDescendants = true
     self.MainWindow.Visible = false
@@ -275,6 +275,7 @@ function ElegantModMenu:CreateMainInterface()
     
     -- Собираем интерфейс
     self.ScrollingFrame.Parent = self.ContentFrame
+    self.UIListLayout.Parent = self.ScrollingFrame
     self.ContentFrame.Parent = self.MainWindow
     self.MainWindow.Parent = self.ScreenGui
     self.ModalBackground.Parent = self.ScreenGui
@@ -292,6 +293,7 @@ function ElegantModMenu:CreateFloatingButton()
     self.FloatingButton.TextSize = 20
     self.FloatingButton.Font = Enum.Font.GothamBold
     self.FloatingButton.Visible = true
+    self.FloatingButton.Draggabled = true
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(1, 0)
