@@ -29,30 +29,9 @@ local COLORS = {
     }
 }
 
--- Тени и эффекты
-local SHADOWS = {
-    Light = {
-        Color = Color3.fromRGB(0, 0, 0),
-        Transparency = 0.8,
-        Thickness = 1
-    },
-    Heavy = {
-        Color = Color3.fromRGB(0, 0, 0),
-        Transparency = 0.9,
-        Thickness = 3
-    }
-}
-
--- Анимации
-local TWEEN_INFO = {
-    Smooth = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-    Quick = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-    Bounce = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-}
-
 -- Вспомогательные функции
 local function generateUID()
-    return "Menu_" .. tostring(math.random(10000, 99999)) .. "_" .. os.time()
+    return "ElegantMenu_" .. tostring(math.random(10000, 99999)) .. "_" .. os.time()
 end
 
 local function createRoundedFrame(parent, size, position, radius)
@@ -82,7 +61,7 @@ local function createStroke(object, color, thickness)
     return stroke
 end
 
-local function createShadow(object, intensity)
+local function createShadow(object)
     local shadow = Instance.new("ImageLabel")
     shadow.Name = "Shadow"
     shadow.Size = UDim2.new(1, 20, 1, 20)
@@ -90,7 +69,7 @@ local function createShadow(object, intensity)
     shadow.BackgroundTransparency = 1
     shadow.Image = "rbxassetid://5554236805"
     shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-    shadow.ImageTransparency = intensity or 0.8
+    shadow.ImageTransparency = 0.8
     shadow.ScaleType = Enum.ScaleType.Slice
     shadow.SliceCenter = Rect.new(23, 23, 277, 277)
     shadow.Parent = object
@@ -129,19 +108,6 @@ local function makeDraggable(frame, handle)
             dragging = true
             dragStart = input.Position
             startPos = frame.Position
-            
-            game:GetService("TweenService"):Create(frame, TweenInfo.new(0.1), {
-                BackgroundTransparency = 0.05
-            }):Play()
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                    game:GetService("TweenService"):Create(frame, TweenInfo.new(0.1), {
-                        BackgroundTransparency = 0
-                    }):Play()
-                end
-            end)
         end
     end)
     
@@ -154,6 +120,12 @@ local function makeDraggable(frame, handle)
     game:GetService("UserInputService").InputChanged:Connect(function(input)
         if dragging and (input == dragInput) then
             update(input)
+        end
+    end)
+    
+    game:GetService("UserInputService").InputEnded:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) and dragging then
+            dragging = false
         end
     end)
 end
@@ -172,6 +144,7 @@ function ElegantModMenu.new(config)
     self.Elements = {}
     self.Sections = {}
     self.CurrentSection = nil
+    self.ElementCounter = 0
     
     -- Удаляем старое меню если есть
     self:CleanupOldMenus()
@@ -196,11 +169,9 @@ end
 
 -- Создание основного интерфейса
 function ElegantModMenu:CreateMainInterface()
-    local tweenService = game:GetService("TweenService")
-    
     -- Основной GUI (в CoreGui)
     self.ScreenGui = Instance.new("ScreenGui")
-    self.ScreenGui.Name = "ElegantMenu_" .. self.UniqueID
+    self.ScreenGui.Name = self.UniqueID
     self.ScreenGui.ResetOnSpawn = false
     self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     self.ScreenGui.IgnoreGuiInset = true
@@ -212,33 +183,35 @@ function ElegantModMenu:CreateMainInterface()
     self.ModalBackground.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     self.ModalBackground.BackgroundTransparency = 1
     self.ModalBackground.Visible = false
-
     
-    -- Основное окно
-    self.MainWindow = createRoundedFrame(nil, UDim2.new(0, 380, 0, 0), UDim2.new(0.5, -190, 0.5, -200), 20)
-    self.MainWindow.AnchorPoint = Vector2.new(0.5, 0.5)
+    self.ModalBackground.MouseButton1Click:Connect(function()
+        self:Hide()
+    end)
+    
+    -- Основное окно (фиксированная позиция по центру)
+    self.MainWindow = createRoundedFrame(nil, UDim2.new(0, 400, 0, 500), UDim2.new(0.5, -200, 0.5, -250), 16)
     self.MainWindow.BackgroundColor3 = COLORS.Primary.Dark
     self.MainWindow.ClipsDescendants = true
+    self.MainWindow.Visible = false
     
     -- Тень для окна
-    createShadow(self.MainWindow, 0.9)
+    createShadow(self.MainWindow)
     
     -- Заголовок
-    self.Header = createRoundedFrame(self.MainWindow, UDim2.new(1, 0, 0, 70), UDim2.new(0, 0, 0, 0), 20)
+    self.Header = createRoundedFrame(self.MainWindow, UDim2.new(1, 0, 0, 60), UDim2.new(0, 0, 0, 0), 16)
     self.Header.BackgroundColor3 = COLORS.Primary.Medium
-    self.Header.ZIndex = 2
     
     local headerCorner = Instance.new("UICorner")
-    headerCorner.CornerRadius = UDim.new(0, 20, 0, 0)
+    headerCorner.CornerRadius = UDim.new(0, 16, 0, 0)
     headerCorner.Parent = self.Header
     
     -- Иконка и название
     self.TitleIcon = createIcon(self.MenuIcon, self.Header)
-    self.TitleIcon.Position = UDim2.new(0, 25, 0.5, -12)
+    self.TitleIcon.Position = UDim2.new(0, 20, 0.5, -12)
     self.TitleIcon.TextSize = 20
     
     self.TitleLabel = Instance.new("TextLabel")
-    self.TitleLabel.Size = UDim2.new(1, -80, 0, 30)
+    self.TitleLabel.Size = UDim2.new(1, -100, 0, 30)
     self.TitleLabel.Position = UDim2.new(0, 60, 0.5, -15)
     self.TitleLabel.BackgroundTransparency = 1
     self.TitleLabel.Text = self.MenuName
@@ -248,28 +221,16 @@ function ElegantModMenu:CreateMainInterface()
     self.TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
     self.TitleLabel.Parent = self.Header
     
-    self.SubtitleLabel = Instance.new("TextLabel")
-    self.SubtitleLabel.Size = UDim2.new(1, -80, 0, 20)
-    self.SubtitleLabel.Position = UDim2.new(0, 60, 0.5, 10)
-    self.SubtitleLabel.BackgroundTransparency = 1
-    self.SubtitleLabel.Text = "Version 1.0 • Elegant Design"
-    self.SubtitleLabel.TextColor3 = COLORS.Text.Secondary
-    self.SubtitleLabel.TextSize = 12
-    self.SubtitleLabel.Font = Enum.Font.Gotham
-    self.SubtitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    self.SubtitleLabel.Parent = self.Header
-    
-    -- Кнопки управления
+    -- Кнопка закрытия
     self.CloseButton = Instance.new("TextButton")
     self.CloseButton.Size = UDim2.new(0, 30, 0, 30)
-    self.CloseButton.Position = UDim2.new(1, -35, 0.5, -15)
+    self.CloseButton.Position = UDim2.new(1, -40, 0.5, -15)
     self.CloseButton.BackgroundColor3 = COLORS.Accent.Red
     self.CloseButton.BackgroundTransparency = 0.8
     self.CloseButton.Text = "×"
     self.CloseButton.TextColor3 = COLORS.Text.Primary
     self.CloseButton.TextSize = 24
     self.CloseButton.Font = Enum.Font.GothamBold
-    self.CloseButton.ZIndex = 3
     
     local closeCorner = Instance.new("UICorner")
     closeCorner.CornerRadius = UDim.new(0, 15)
@@ -286,21 +247,28 @@ function ElegantModMenu:CreateMainInterface()
     
     -- Контент
     self.ContentFrame = Instance.new("Frame")
-    self.ContentFrame.Size = UDim2.new(1, -40, 1, -90)
-    self.ContentFrame.Position = UDim2.new(0, 20, 0, 80)
+    self.ContentFrame.Size = UDim2.new(1, -20, 1, -80)
+    self.ContentFrame.Position = UDim2.new(0, 10, 0, 70)
     self.ContentFrame.BackgroundTransparency = 1
     self.ContentFrame.ClipsDescendants = true
     
-    -- Scrolling Frame
+    -- Scrolling Frame с UIListLayout
     self.ScrollingFrame = Instance.new("ScrollingFrame")
     self.ScrollingFrame.Size = UDim2.new(1, 0, 1, 0)
     self.ScrollingFrame.BackgroundTransparency = 1
     self.ScrollingFrame.BorderSizePixel = 0
-    self.ScrollingFrame.ScrollBarThickness = 3
+    self.ScrollingFrame.ScrollBarThickness = 4
     self.ScrollingFrame.ScrollBarImageColor3 = COLORS.Accent.Blue
     self.ScrollingFrame.ScrollBarImageTransparency = 0.5
     self.ScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     self.ScrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    
+    -- UIListLayout - ИСПРАВЛЕНО: Добавлен правильный layout
+    self.UIListLayout = Instance.new("UIListLayout")
+    self.UIListLayout.Padding = UDim.new(0, 8)
+    self.UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    self.UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    self.UIListLayout.Parent = self.ScrollingFrame
     
     -- Плавающая кнопка
     self:CreateFloatingButton()
@@ -315,44 +283,21 @@ end
 
 -- Плавающая кнопка
 function ElegantModMenu:CreateFloatingButton()
-    self.FloatingButton = Instance.new("ImageButton")
+    self.FloatingButton = Instance.new("TextButton")
     self.FloatingButton.Size = UDim2.new(0, 56, 0, 56)
     self.FloatingButton.Position = UDim2.new(1, -70, 1, -70)
     self.FloatingButton.BackgroundColor3 = self.AccentColor
-    self.FloatingButton.AutoButtonColor = false
-    self.FloatingButton.Image = ""
+    self.FloatingButton.Text = self.MenuIcon
+    self.FloatingButton.TextColor3 = COLORS.Text.Primary
+    self.FloatingButton.TextSize = 20
+    self.FloatingButton.Font = Enum.Font.GothamBold
     self.FloatingButton.Visible = true
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(1, 0)
     corner.Parent = self.FloatingButton
     
-    createShadow(self.FloatingButton, 0.7)
-    
-    -- Иконка на кнопке
-    local icon = Instance.new("TextLabel")
-    icon.Size = UDim2.new(1, 0, 1, 0)
-    icon.BackgroundTransparency = 1
-    icon.Text = self.MenuIcon
-    icon.TextColor3 = COLORS.Text.Primary
-    icon.TextSize = 20
-    icon.Font = Enum.Font.GothamBold
-    icon.Parent = self.FloatingButton
-    
-    -- Анимация кнопки
-    self.FloatingButton.MouseEnter:Connect(function()
-        game:GetService("TweenService"):Create(self.FloatingButton, TWEEN_INFO.Smooth, {
-            Size = UDim2.new(0, 60, 0, 60),
-            BackgroundTransparency = 0
-        }):Play()
-    end)
-    
-    self.FloatingButton.MouseLeave:Connect(function()
-        game:GetService("TweenService"):Create(self.FloatingButton, TWEEN_INFO.Smooth, {
-            Size = UDim2.new(0, 56, 0, 56),
-            BackgroundTransparency = 0
-        }):Play()
-    end)
+    createShadow(self.FloatingButton)
     
     self.FloatingButton.MouseButton1Click:Connect(function()
         self:Show()
@@ -367,45 +312,37 @@ function ElegantModMenu:Show()
     
     -- Показываем модальный фон
     self.ModalBackground.Visible = true
-    tweenService:Create(self.ModalBackground, TWEEN_INFO.Smooth, {
+    tweenService:Create(self.ModalBackground, TweenInfo.new(0.3), {
         BackgroundTransparency = 0.5
     }):Play()
     
     -- Показываем окно с анимацией
     self.MainWindow.Visible = true
-    self.MainWindow.Size = UDim2.new(0, 380, 0, 0)
+    self.MainWindow.Position = UDim2.new(0.5, -200, 0.5, -250) -- Гарантируем позицию по центру
     
-    local targetHeight = math.min(500, self.ScrollingFrame.CanvasSize.Y.Offset + 100)
-    targetHeight = math.max(300, targetHeight)
-    
-    tweenService:Create(self.MainWindow, TWEEN_INFO.Bounce, {
-        Size = UDim2.new(0, 380, 0, targetHeight)
+    tweenService:Create(self.MainWindow, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 400, 0, 500)
     }):Play()
     
     -- Скрываем плавающую кнопку
     self.FloatingButton.Visible = false
-    
-    -- Фокус на окно
-    self.MainWindow.Active = true
 end
 
 function ElegantModMenu:Hide()
     local tweenService = game:GetService("TweenService")
     
-    -- Анимация скрытия
-    tweenService:Create(self.MainWindow, TWEEN_INFO.Smooth, {
-        Size = UDim2.new(0, 380, 0, 0),
+    tweenService:Create(self.ModalBackground, TweenInfo.new(0.3), {
         BackgroundTransparency = 1
     }):Play()
     
-    tweenService:Create(self.ModalBackground, TWEEN_INFO.Smooth, {
-        BackgroundTransparency = 1
+    tweenService:Create(self.MainWindow, TweenInfo.new(0.3), {
+        Size = UDim2.new(0, 400, 0, 0)
     }):Play()
     
-    -- Показываем плавающую кнопку через задержку
     task.delay(0.3, function()
-        self.FloatingButton.Visible = true
+        self.MainWindow.Visible = false
         self.ModalBackground.Visible = false
+        self.FloatingButton.Visible = true
     end)
 end
 
@@ -419,6 +356,8 @@ end
 
 -- Секции меню
 function ElegantModMenu:CreateSection(name, icon)
+    self.ElementCounter = self.ElementCounter + 1
+    
     local section = {
         Name = name,
         Elements = {}
@@ -429,17 +368,19 @@ function ElegantModMenu:CreateSection(name, icon)
     
     -- Визуальный разделитель
     local divider = Instance.new("Frame")
-    divider.Size = UDim2.new(1, 0, 0, 1)
+    divider.Size = UDim2.new(1, -20, 0, 1)
     divider.BackgroundColor3 = COLORS.Primary.Light
     divider.BackgroundTransparency = 0.8
     divider.BorderSizePixel = 0
-    divider.LayoutOrder = #self.Elements * 2
+    divider.LayoutOrder = self.ElementCounter
+    
+    self.ElementCounter = self.ElementCounter + 1
     
     -- Заголовок секции
     local sectionFrame = Instance.new("Frame")
-    sectionFrame.Size = UDim2.new(1, 0, 0, 30)
+    sectionFrame.Size = UDim2.new(1, -20, 0, 30)
     sectionFrame.BackgroundTransparency = 1
-    sectionFrame.LayoutOrder = #self.Elements * 2 + 1
+    sectionFrame.LayoutOrder = self.ElementCounter
     
     if icon then
         local sectionIcon = createIcon(icon, sectionFrame)
@@ -468,16 +409,16 @@ function ElegantModMenu:CreateSection(name, icon)
     return section
 end
 
--- ЭЛЕМЕНТЫ МЕНЮ (с улучшенным дизайном)
-
 -- Кнопка
 function ElegantModMenu:AddButton(name, callback, icon, color)
+    self.ElementCounter = self.ElementCounter + 1
+    
     local buttonColor = color or self.AccentColor
     
     local buttonFrame = Instance.new("Frame")
-    buttonFrame.Size = UDim2.new(1, 0, 0, 42)
+    buttonFrame.Size = UDim2.new(1, -20, 0, 42)
     buttonFrame.BackgroundTransparency = 1
-    buttonFrame.LayoutOrder = #self.Elements + 1
+    buttonFrame.LayoutOrder = self.ElementCounter
     
     local button = Instance.new("TextButton")
     button.Size = UDim2.new(1, 0, 1, 0)
@@ -524,27 +465,20 @@ function ElegantModMenu:AddButton(name, callback, icon, color)
     arrow.TextSize = 18
     arrow.Font = Enum.Font.GothamBold
     
-    -- Анимации
+    -- Эффекты
     button.MouseEnter:Connect(function()
-        game:GetService("TweenService"):Create(button, TWEEN_INFO.Quick, {
+        game:GetService("TweenService"):Create(button, TweenInfo.new(0.1), {
             BackgroundTransparency = 0.7
-        }):Play()
-        game:GetService("TweenService"):Create(arrow, TWEEN_INFO.Quick, {
-            TextColor3 = buttonColor
         }):Play()
     end)
     
     button.MouseLeave:Connect(function()
-        game:GetService("TweenService"):Create(button, TWEEN_INFO.Quick, {
+        game:GetService("TweenService"):Create(button, TweenInfo.new(0.1), {
             BackgroundTransparency = 0.9
-        }):Play()
-        game:GetService("TweenService"):Create(arrow, TWEEN_INFO.Quick, {
-            TextColor3 = COLORS.Text.Secondary
         }):Play()
     end)
     
     button.MouseButton1Click:Connect(function()
-        -- Эффект нажатия
         game:GetService("TweenService"):Create(button, TweenInfo.new(0.1), {
             BackgroundTransparency = 0.5
         }):Play()
@@ -573,12 +507,14 @@ end
 
 -- Переключатель (Toggle)
 function ElegantModMenu:AddToggle(name, defaultState, callback, icon)
+    self.ElementCounter = self.ElementCounter + 1
+    
     local toggleState = defaultState or false
     
     local toggleFrame = Instance.new("Frame")
-    toggleFrame.Size = UDim2.new(1, 0, 0, 42)
+    toggleFrame.Size = UDim2.new(1, -20, 0, 42)
     toggleFrame.BackgroundTransparency = 1
-    toggleFrame.LayoutOrder = #self.Elements + 1
+    toggleFrame.LayoutOrder = self.ElementCounter
     
     local toggleContainer = Instance.new("Frame")
     toggleContainer.Size = UDim2.new(1, 0, 1, 0)
@@ -640,11 +576,11 @@ function ElegantModMenu:AddToggle(name, defaultState, callback, icon)
     local function setState(state)
         toggleState = state
         
-        game:GetService("TweenService"):Create(toggleButton, TWEEN_INFO.Smooth, {
+        game:GetService("TweenService"):Create(toggleButton, TweenInfo.new(0.2), {
             BackgroundColor3 = toggleState and self.AccentColor or COLORS.Primary.Light
         }):Play()
         
-        game:GetService("TweenService"):Create(toggleCircle, TWEEN_INFO.Smooth, {
+        game:GetService("TweenService"):Create(toggleCircle, TweenInfo.new(0.2), {
             Position = toggleState and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
         }):Play()
         
@@ -655,19 +591,6 @@ function ElegantModMenu:AddToggle(name, defaultState, callback, icon)
     
     toggleButton.MouseButton1Click:Connect(function()
         setState(not toggleState)
-    end)
-    
-    -- Эффекты при наведении
-    toggleButton.MouseEnter:Connect(function()
-        game:GetService("TweenService"):Create(toggleContainer, TWEEN_INFO.Quick, {
-            BackgroundTransparency = 0.85
-        }):Play()
-    end)
-    
-    toggleButton.MouseLeave:Connect(function()
-        game:GetService("TweenService"):Create(toggleContainer, TWEEN_INFO.Quick, {
-            BackgroundTransparency = 0.9
-        }):Play()
     end)
     
     toggleCircle.Parent = toggleButton
@@ -694,18 +617,14 @@ end
 
 -- Слайдер
 function ElegantModMenu:AddSlider(name, minValue, maxValue, defaultValue, callback, icon)
-    local currentValue = defaultValue or minValue
-    local decimalPlaces = 0
+    self.ElementCounter = self.ElementCounter + 1
     
-    -- Определяем нужно ли использовать десятичные
-    if (maxValue - minValue) < 10 then
-        decimalPlaces = 1
-    end
+    local currentValue = defaultValue or minValue
     
     local sliderFrame = Instance.new("Frame")
-    sliderFrame.Size = UDim2.new(1, 0, 0, 60)
+    sliderFrame.Size = UDim2.new(1, -20, 0, 70)
     sliderFrame.BackgroundTransparency = 1
-    sliderFrame.LayoutOrder = #self.Elements + 1
+    sliderFrame.LayoutOrder = self.ElementCounter
     
     local sliderContainer = Instance.new("Frame")
     sliderContainer.Size = UDim2.new(1, 0, 1, 0)
@@ -782,17 +701,10 @@ function ElegantModMenu:AddSlider(name, minValue, maxValue, defaultValue, callba
     thumbCorner.CornerRadius = UDim.new(0.5, 0)
     thumbCorner.Parent = sliderThumb
     
-    createShadow(sliderThumb, 0.6)
-    
     -- Обновление значения
     local function updateValue(value)
         currentValue = math.clamp(value, minValue, maxValue)
-        
-        if decimalPlaces > 0 then
-            currentValue = math.floor(currentValue * (10 ^ decimalPlaces) + 0.5) / (10 ^ decimalPlaces)
-        else
-            currentValue = math.floor(currentValue + 0.5)
-        end
+        currentValue = math.floor(currentValue + 0.5)
         
         local percentage = (currentValue - minValue) / (maxValue - minValue)
         
@@ -817,39 +729,35 @@ function ElegantModMenu:AddSlider(name, minValue, maxValue, defaultValue, callba
         updateValue(value)
     end
     
-    sliderThumb.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            game:GetService("TweenService"):Create(sliderThumb, TWEEN_INFO.Quick, {
-                Size = UDim2.new(0, 24, 0, 24)
-            }):Play()
-        end
+    sliderThumb.MouseButton1Down:Connect(function()
+        dragging = true
     end)
     
     game:GetService("UserInputService").InputEnded:Connect(function(input)
-        if (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) and dragging then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
             dragging = false
-            game:GetService("TweenService"):Create(sliderThumb, TWEEN_INFO.Quick, {
-                Size = UDim2.new(0, 20, 0, 20)
-            }):Play()
         end
     end)
     
     game:GetService("UserInputService").InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             updateFromInput(input)
         end
     end)
     
-    sliderTrack.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            updateFromInput(input)
-            dragging = true
-            game:GetService("TweenService"):Create(sliderThumb, TWEEN_INFO.Quick, {
-                Size = UDim2.new(0, 24, 0, 24)
-            }):Play()
-        end
+    -- Исправление ошибки: Frame не имеет MouseButton1Click
+    local trackButton = Instance.new("TextButton")
+    trackButton.Size = UDim2.new(1, 0, 1, 0)
+    trackButton.BackgroundTransparency = 1
+    trackButton.Text = ""
+    trackButton.ZIndex = 3
+    
+    trackButton.MouseButton1Down:Connect(function(input)
+        updateFromInput(input)
+        dragging = true
     end)
+    
+    trackButton.Parent = sliderTrack
     
     sliderFill.Parent = sliderTrack
     sliderThumb.Parent = sliderTrack
@@ -874,19 +782,23 @@ end
 
 -- Выпадающий список (Dropdown)
 function ElegantModMenu:AddDropdown(name, options, defaultIndex, callback, icon)
+    self.ElementCounter = self.ElementCounter + 1
+    
     local selectedIndex = defaultIndex or 1
     local isOpen = false
     
     local dropdownFrame = Instance.new("Frame")
-    dropdownFrame.Size = UDim2.new(1, 0, 0, 42)
+    dropdownFrame.Size = UDim2.new(1, -20, 0, 42)
     dropdownFrame.BackgroundTransparency = 1
     dropdownFrame.ClipsDescendants = true
-    dropdownFrame.LayoutOrder = #self.Elements + 1
+    dropdownFrame.LayoutOrder = self.ElementCounter
     
-    local dropdownContainer = Instance.new("Frame")
-    dropdownContainer.Size = UDim2.new(1, 0, 0, 42)
+    local dropdownContainer = Instance.new("TextButton") -- ИСПРАВЛЕНО: TextButton вместо Frame
+    dropdownContainer.Size = UDim2.new(1, 0, 1, 0)
     dropdownContainer.BackgroundColor3 = COLORS.Background.Input
     dropdownContainer.BackgroundTransparency = 0.9
+    dropdownContainer.Text = ""
+    dropdownContainer.AutoButtonColor = false
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 10)
@@ -948,10 +860,9 @@ function ElegantModMenu:AddDropdown(name, options, defaultIndex, callback, icon)
     optionsCorner.CornerRadius = UDim.new(0, 8)
     optionsCorner.Parent = optionsFrame
     
-    createShadow(optionsFrame, 0.8)
-    
     local optionsList = Instance.new("UIListLayout")
     optionsList.Padding = UDim.new(0, 2)
+    optionsList.Parent = optionsFrame
     
     -- Создание опций
     local optionButtons = {}
@@ -977,7 +888,7 @@ function ElegantModMenu:AddDropdown(name, options, defaultIndex, callback, icon)
             selectedLabel.Text = option
             isOpen = false
             
-            game:GetService("TweenService"):Create(optionsFrame, TWEEN_INFO.Smooth, {
+            game:GetService("TweenService"):Create(optionsFrame, TweenInfo.new(0.3), {
                 Size = UDim2.new(1, 0, 0, 0)
             }):Play()
             
@@ -1003,20 +914,12 @@ function ElegantModMenu:AddDropdown(name, options, defaultIndex, callback, icon)
             local optionCount = #options
             local maxHeight = math.min(optionCount * 32 + 10, 150)
             
-            game:GetService("TweenService"):Create(optionsFrame, TWEEN_INFO.Smooth, {
+            game:GetService("TweenService"):Create(optionsFrame, TweenInfo.new(0.3), {
                 Size = UDim2.new(1, 0, 0, maxHeight)
             }):Play()
-            
-            game:GetService("TweenService"):Create(arrow, TWEEN_INFO.Smooth, {
-                Rotation = 180
-            }):Play()
         else
-            game:GetService("TweenService"):Create(optionsFrame, TWEEN_INFO.Smooth, {
+            game:GetService("TweenService"):Create(optionsFrame, TweenInfo.new(0.3), {
                 Size = UDim2.new(1, 0, 0, 0)
-            }):Play()
-            
-            game:GetService("TweenService"):Create(arrow, TWEEN_INFO.Smooth, {
-                Rotation = 0
             }):Play()
             
             task.delay(0.3, function()
@@ -1029,7 +932,6 @@ function ElegantModMenu:AddDropdown(name, options, defaultIndex, callback, icon)
     selectedLabel.Parent = contentFrame
     dropdownLabel.Parent = contentFrame
     contentFrame.Parent = dropdownContainer
-    optionsList.Parent = optionsFrame
     optionsFrame.Parent = dropdownContainer
     dropdownContainer.Parent = dropdownFrame
     dropdownFrame.Parent = self.ScrollingFrame
@@ -1052,19 +954,23 @@ function ElegantModMenu:AddDropdown(name, options, defaultIndex, callback, icon)
     }
 end
 
--- Выбор цвета
+-- Выбор цвета (ИСПРАВЛЕННАЯ версия)
 function ElegantModMenu:AddColorPicker(name, defaultColor, callback, icon)
+    self.ElementCounter = self.ElementCounter + 1
+    
     local currentColor = defaultColor or self.AccentColor
     
     local colorFrame = Instance.new("Frame")
-    colorFrame.Size = UDim2.new(1, 0, 0, 42)
+    colorFrame.Size = UDim2.new(1, -20, 0, 42)
     colorFrame.BackgroundTransparency = 1
-    colorFrame.LayoutOrder = #self.Elements + 1
+    colorFrame.LayoutOrder = self.ElementCounter
     
-    local colorContainer = Instance.new("Frame")
+    local colorContainer = Instance.new("TextButton") -- ИСПРАВЛЕНО: TextButton вместо Frame
     colorContainer.Size = UDim2.new(1, 0, 1, 0)
     colorContainer.BackgroundColor3 = COLORS.Background.Input
     colorContainer.BackgroundTransparency = 0.9
+    colorContainer.Text = ""
+    colorContainer.AutoButtonColor = false
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 10)
@@ -1119,7 +1025,7 @@ function ElegantModMenu:AddColorPicker(name, defaultColor, callback, icon)
     paletteCorner.CornerRadius = UDim.new(0, 12)
     paletteCorner.Parent = paletteFrame
     
-    createShadow(paletteFrame, 0.9)
+    createShadow(paletteFrame)
     
     -- Предустановленные цвета
     local presetColors = {
@@ -1154,7 +1060,7 @@ function ElegantModMenu:AddColorPicker(name, defaultColor, callback, icon)
             currentColor = color
             colorPreview.BackgroundColor3 = color
             
-            game:GetService("TweenService"):Create(paletteFrame, TWEEN_INFO.Smooth, {
+            game:GetService("TweenService"):Create(paletteFrame, TweenInfo.new(0.3), {
                 BackgroundTransparency = 1,
                 Size = UDim2.new(0, 0, 0, 0)
             }):Play()
@@ -1171,16 +1077,23 @@ function ElegantModMenu:AddColorPicker(name, defaultColor, callback, icon)
         colorButton.Parent = paletteFrame
     end
     
-    colorPreview.MouseButton1Click:Connect(function()
+    -- Исправление ошибки: colorPreview это Frame, у него нет MouseButton1Click
+    -- Вместо этого обрабатываем клик на colorContainer
+    colorContainer.MouseButton1Click:Connect(function()
         paletteFrame.Visible = not paletteFrame.Visible
         
         if paletteFrame.Visible then
             paletteFrame.BackgroundTransparency = 1
             paletteFrame.Size = UDim2.new(0, 0, 0, 0)
             
-            game:GetService("TweenService"):Create(paletteFrame, TWEEN_INFO.Bounce, {
+            game:GetService("TweenService"):Create(paletteFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
                 BackgroundTransparency = 0.1,
                 Size = UDim2.new(0, 160, 0, 100)
+            }):Play()
+        else
+            game:GetService("TweenService"):Create(paletteFrame, TweenInfo.new(0.3), {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 0, 0, 0)
             }):Play()
         end
     end)
@@ -1238,6 +1151,17 @@ function ElegantModMenu:Destroy()
         self.ScreenGui:Destroy()
     end
     setmetatable(self, nil)
+end
+
+-- Метод для проверки если меню уже создано
+function ElegantModMenu.IsMenuCreated()
+    local coreGui = game:GetService("CoreGui")
+    for _, child in ipairs(coreGui:GetChildren()) do
+        if child.Name:find("ElegantMenu_") then
+            return true
+        end
+    end
+    return false
 end
 
 return ElegantModMenu
