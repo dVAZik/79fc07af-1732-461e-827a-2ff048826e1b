@@ -289,7 +289,7 @@ function ElegantModMenu:CreateFloatingButton()
     self.FloatingButton.TextSize = 20
     self.FloatingButton.Font = Enum.Font.GothamBold
     self.FloatingButton.Visible = true
-    self.FloatingButton.Draggabled = true
+    self.FloatingButton.Draggable = true
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(1, 0)
