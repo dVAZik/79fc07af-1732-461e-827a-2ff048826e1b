@@ -752,10 +752,120 @@ function ElegantModMenu:addSlider(name, min, max, defaultValue, callback, icon)
             local trackAbsolute = track.AbsolutePosition
             local trackSize = track.AbsoluteSize
             
-            local relativeX = (mouse.X - trackAbsolute.X) / trackSize.X
-            local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
-            updateValue(newValue)
+-- Слайдер (ИСПРАВЛЕННЫЙ - правильное управление перетаскиванием)
+function ElegantModMenu:addSlider(name, min, max, defaultValue, callback, icon)
+    local value = defaultValue or min
+    
+    local sliderContainer = createRoundedFrame()
+    sliderContainer.Name = "SliderContainer"
+    sliderContainer.Size = UDim2.new(1, 0, 0, 65)
+    sliderContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    sliderContainer.BackgroundTransparency = 0.8
+    sliderContainer.LayoutOrder = #self.elements + 1
+    sliderContainer.Parent = self.scrollingFrame
+    
+    -- Заголовок
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.Size = UDim2.new(1, -20, 0, 22)
+    header.Position = UDim2.new(0, 10, 0, 5)
+    header.BackgroundTransparency = 1
+    header.Parent = sliderContainer
+    
+    if icon then
+        local iconLabel = createTextLabel(icon, 16, header)
+        iconLabel.Size = UDim2.new(0, 22, 1, 0)
+        iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+    end
+    
+    local nameLabel = createTextLabel(name, 14, header)
+    nameLabel.Size = UDim2.new(0.6, icon and -27 or -5, 1, 0)
+    nameLabel.Position = icon and UDim2.new(0, 27, 0, 0) or UDim2.new(0, 0, 0, 0)
+    nameLabel.Font = Enum.Font.GothamSemibold
+    
+    local valueLabel = createTextLabel(tostring(value), 14, header)
+    valueLabel.Size = UDim2.new(0.4, -5, 1, 0)
+    valueLabel.Position = UDim2.new(0.6, 5, 0, 0)
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valueLabel.TextColor3 = self.accentColor
+    valueLabel.Font = Enum.Font.GothamBold
+    
+    -- Трек слайдера
+    local track = Instance.new("Frame")
+    track.Name = "Track"
+    track.Size = UDim2.new(1, -20, 0, 8)
+    track.Position = UDim2.new(0, 10, 0, 40)
+    track.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    track.BorderSizePixel = 0
+    track.Parent = sliderContainer
+    
+    local trackCorner = Instance.new("UICorner")
+    trackCorner.CornerRadius = UDim.new(0, 4)
+    trackCorner.Parent = track
+    
+    local fill = Instance.new("Frame")
+    fill.Name = "Fill"
+    fill.Size = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = self.accentColor
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(0, 4)
+    fillCorner.Parent = fill
+    
+    local thumb = Instance.new("Frame")
+    thumb.Name = "Thumb"
+    thumb.Size = UDim2.new(0, 22, 0, 22)
+    thumb.Position = UDim2.new(0, -11, 0.5, -11)
+    thumb.BackgroundColor3 = COLORS.TEXT.PRIMARY
+    thumb.BorderSizePixel = 0
+    thumb.ZIndex = 2
+    thumb.Parent = track
+    
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(0.5, 0)
+    thumbCorner.Parent = thumb
+    
+    local thumbStroke = Instance.new("UIStroke")
+    thumbStroke.Color = self.accentColor
+    thumbStroke.Thickness = 2
+    thumbStroke.Parent = thumb
+    
+    -- Обновление значения
+    local function updateValue(newValue)
+        value = math.clamp(newValue, min, max)
+        value = math.floor(value * 100) / 100
+        
+        local percentage = (value - min) / (max - min)
+        
+        fill.Size = UDim2.new(percentage, 0, 1, 0)
+        thumb.Position = UDim2.new(percentage, -11, 0.5, -11)
+        valueLabel.Text = string.format("%.1f", value)
+        
+        if callback then
+            callback(value)
         end
+    end
+    
+    -- Взаимодействие (ИСПРАВЛЕНО - правильное управление перетаскиванием)
+    local dragging = false
+    local userInputService = game:GetService("UserInputService")
+    local runService = game:GetService("RunService")
+    local mouseMoveConnection
+    local mouseUpConnection
+    
+    -- Функция для обновления позиции при движении мыши
+    local function updateFromMouse()
+        if not dragging then return end
+        
+        local mouse = userInputService:GetMouseLocation()
+        local trackAbsolute = track.AbsolutePosition
+        local trackSize = track.AbsoluteSize
+        
+        local relativeX = (mouse.X - trackAbsolute.X) / trackSize.X
+        local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+        updateValue(newValue)
     end
     
     -- Создаем кнопку для трека
@@ -772,14 +882,33 @@ function ElegantModMenu:addSlider(name, min, max, defaultValue, callback, icon)
     thumbButton.Text = ""
     thumbButton.Parent = thumb
     
-    -- Обработка начала перетаскивания
-    local function startDragging()
-        dragging = true
-    end
-    
     -- Обработка клика по треку
     trackButton.MouseButton1Down:Connect(function()
         dragging = true
+        
+        -- Подписываемся на события мыши
+        mouseMoveConnection = userInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                updateFromMouse()
+            end
+        end)
+        
+        mouseUpConnection = userInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+                -- Отписываемся от событий
+                if mouseMoveConnection then
+                    mouseMoveConnection:Disconnect()
+                    mouseMoveConnection = nil
+                end
+                if mouseUpConnection then
+                    mouseUpConnection:Disconnect()
+                    mouseUpConnection = nil
+                end
+            end
+        end)
+        
+        -- Немедленно обновляем позицию
         local mouse = userInputService:GetMouseLocation()
         local trackAbsolute = track.AbsolutePosition
         local trackSize = track.AbsoluteSize
@@ -792,19 +921,57 @@ function ElegantModMenu:addSlider(name, min, max, defaultValue, callback, icon)
     -- Обработка клика по ползунку
     thumbButton.MouseButton1Down:Connect(function()
         dragging = true
+        
+        -- Подписываемся на события мыши
+        mouseMoveConnection = userInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                updateFromMouse()
+            end
+        end)
+        
+        mouseUpConnection = userInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+                -- Отписываемся от событий
+                if mouseMoveConnection then
+                    mouseMoveConnection:Disconnect()
+                    mouseMoveConnection = nil
+                end
+                if mouseUpConnection then
+                    mouseUpConnection:Disconnect()
+                    mouseUpConnection = nil
+                end
+            end
+        end)
     end)
     
-    -- Обработка окончания перетаскивания
-    userInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+    -- Также добавляем обработку отпускания мыши вне слайдера
+    local globalMouseUpConnection
+    globalMouseUpConnection = userInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
             dragging = false
+            -- Отписываемся от событий
+            if mouseMoveConnection then
+                mouseMoveConnection:Disconnect()
+                mouseMoveConnection = nil
+            end
+            if mouseUpConnection then
+                mouseUpConnection:Disconnect()
+                mouseUpConnection = nil
+            end
         end
     end)
     
-    -- Обновление позиции при движении мыши
-    runService.RenderStepped:Connect(function()
-        if dragging then
-            updateFromMouse()
+    -- Очищаем соединения при уничтожении слайдера
+    sliderContainer.Destroying:Connect(function()
+        if mouseMoveConnection then
+            mouseMoveConnection:Disconnect()
+        end
+        if mouseUpConnection then
+            mouseUpConnection:Disconnect()
+        end
+        if globalMouseUpConnection then
+            globalMouseUpConnection:Disconnect()
         end
     end)
     
