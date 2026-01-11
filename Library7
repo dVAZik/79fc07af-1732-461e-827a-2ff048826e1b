@@ -1,0 +1,993 @@
+-- ElegantModMenu.lua (ModuleScript)
+local ElegantModMenu = {}
+ElegantModMenu.__index = ElegantModMenu
+
+-- Конфигурация
+local CONFIG = {
+    WINDOW_WIDTH = 320,
+    WINDOW_HEIGHT = 400,
+    ELEMENT_HEIGHT = 40,
+    PADDING = 10,
+    CORNER_RADIUS = 8,
+    ANIMATION_DURATION = 0.2
+}
+
+-- Цветовая схема
+local COLORS = {
+    BACKGROUND = {
+        PRIMARY = Color3.fromRGB(25, 25, 35),
+        SECONDARY = Color3.fromRGB(35, 35, 45),
+        TERTIARY = Color3.fromRGB(45, 45, 55),
+        MODAL = Color3.fromRGB(0, 0, 0, 0.5)
+    },
+    ACCENT = {
+        PRIMARY = Color3.fromRGB(0, 120, 215),
+        SUCCESS = Color3.fromRGB(0, 180, 90),
+        WARNING = Color3.fromRGB(255, 140, 0),
+        ERROR = Color3.fromRGB(220, 60, 60)
+    },
+    TEXT = {
+        PRIMARY = Color3.fromRGB(240, 240, 240),
+        SECONDARY = Color3.fromRGB(180, 180, 180),
+        DISABLED = Color3.fromRGB(100, 100, 100)
+    },
+    STATES = {
+        HOVER = Color3.fromRGB(255, 255, 255, 0.1),
+        PRESSED = Color3.fromRGB(255, 255, 255, 0.2)
+    }
+}
+
+-- Вспомогательные функции
+local function tween(object, properties, duration)
+    local tweenService = game:GetService("TweenService")
+    local tweenInfo = TweenInfo.new(duration or CONFIG.ANIMATION_DURATION, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local tween = tweenService:Create(object, tweenInfo, properties)
+    tween:Play()
+    return tween
+end
+
+local function createRoundedFrame()
+    local frame = Instance.new("Frame")
+    frame.BackgroundTransparency = 1
+    frame.BorderSizePixel = 0
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, CONFIG.CORNER_RADIUS)
+    corner.Parent = frame
+    
+    return frame
+end
+
+local function createTextLabel(text, size, parent)
+    local label = Instance.new("TextLabel")
+    label.Text = text
+    label.TextColor3 = COLORS.TEXT.PRIMARY
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.Gotham
+    label.TextSize = size
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    
+    if parent then
+        label.Parent = parent
+    end
+    
+    return label
+end
+
+local function createButton()
+    local button = Instance.new("TextButton")
+    button.BackgroundTransparency = 1
+    button.AutoButtonColor = false
+    button.Text = ""
+    
+    local overlay = Instance.new("Frame")
+    overlay.Name = "Overlay"
+    overlay.Size = UDim2.new(1, 0, 1, 0)
+    overlay.BackgroundTransparency = 1
+    overlay.BackgroundColor3 = Color3.new(1, 1, 1)
+    overlay.BorderSizePixel = 0
+    overlay.Parent = button
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, CONFIG.CORNER_RADIUS)
+    corner.Parent = overlay
+    
+    return button
+end
+
+-- Конструктор
+function ElegantModMenu.new(options)
+    options = options or {}
+    
+    local self = setmetatable({}, ElegantModMenu)
+    
+    self.name = options.Name or "Mod Menu"
+    self.icon = options.Icon or "⚙️"
+    self.accentColor = options.AccentColor or COLORS.ACCENT.PRIMARY
+    
+    self.sections = {}
+    self.elements = {}
+    self.currentSection = nil
+    
+    self:cleanupOldMenus()
+    self:createMainWindow()
+    
+    return self
+end
+
+function ElegantModMenu:cleanupOldMenus()
+    local coreGui = game:GetService("CoreGui")
+    
+    for _, child in pairs(coreGui:GetChildren()) do
+        if child.Name == "ElegantModMenu" then
+            child:Destroy()
+        end
+    end
+end
+
+function ElegantModMenu:createMainWindow()
+    -- Основной GUI
+    self.screenGui = Instance.new("ScreenGui")
+    self.screenGui.Name = "ElegantModMenu"
+    self.screenGui.ResetOnSpawn = false
+    self.screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    self.screenGui.IgnoreGuiInset = true
+    self.screenGui.Parent = game:GetService("CoreGui")
+    
+    -- Модальный фон
+    self.modalBackground = Instance.new("Frame")
+    self.modalBackground.Name = "ModalBackground"
+    self.modalBackground.Size = UDim2.new(1, 0, 1, 0)
+    self.modalBackground.BackgroundColor3 = Color3.new(0, 0, 0)
+    self.modalBackground.BackgroundTransparency = 1
+    self.modalBackground.Visible = false
+    self.modalBackground.Parent = self.screenGui
+    
+    self.modalBackground.MouseButton1Click:Connect(function()
+        self:hide()
+    end)
+    
+    -- Основное окно
+    self.window = Instance.new("Frame")
+    self.window.Name = "Window"
+    self.window.Size = UDim2.new(0, CONFIG.WINDOW_WIDTH, 0, 0)
+    self.window.Position = UDim2.new(0.5, -CONFIG.WINDOW_WIDTH/2, 0.5, 0)
+    self.window.BackgroundColor3 = COLORS.BACKGROUND.PRIMARY
+    self.window.ClipsDescendants = true
+    self.window.Visible = false
+    self.window.Parent = self.screenGui
+    
+    local windowCorner = Instance.new("UICorner")
+    windowCorner.CornerRadius = UDim.new(0, 12)
+    windowCorner.Parent = self.window
+    
+    local windowStroke = Instance.new("UIStroke")
+    windowStroke.Color = Color3.fromRGB(60, 60, 70)
+    windowStroke.Thickness = 1
+    windowStroke.Parent = self.window
+    
+    -- Заголовок
+    self.header = Instance.new("Frame")
+    self.header.Name = "Header"
+    self.header.Size = UDim2.new(1, 0, 0, 50)
+    self.header.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    self.header.Parent = self.window
+    
+    local headerCorner = Instance.new("UICorner")
+    headerCorner.CornerRadius = UDim.new(0, 12, 0, 0)
+    headerCorner.Parent = self.header
+    
+    -- Иконка и название
+    self.titleIcon = createTextLabel(self.icon, 20, self.header)
+    self.titleIcon.Size = UDim2.new(0, 40, 1, 0)
+    self.titleIcon.Position = UDim2.new(0, 10, 0, 0)
+    self.titleIcon.TextXAlignment = Enum.TextXAlignment.Left
+    
+    self.titleLabel = createTextLabel(self.name, 18, self.header)
+    self.titleLabel.Size = UDim2.new(1, -100, 1, 0)
+    self.titleLabel.Position = UDim2.new(0, 50, 0, 0)
+    self.titleLabel.Font = Enum.Font.GothamBold
+    
+    -- Кнопка закрытия
+    self.closeButton = Instance.new("TextButton")
+    self.closeButton.Name = "CloseButton"
+    self.closeButton.Size = UDim2.new(0, 30, 0, 30)
+    self.closeButton.Position = UDim2.new(1, -40, 0.5, -15)
+    self.closeButton.BackgroundColor3 = COLORS.ACCENT.ERROR
+    self.closeButton.BackgroundTransparency = 0.8
+    self.closeButton.Text = "×"
+    self.closeButton.TextColor3 = COLORS.TEXT.PRIMARY
+    self.closeButton.TextSize = 20
+    self.closeButton.Font = Enum.Font.GothamBold
+    self.closeButton.AutoButtonColor = false
+    self.closeButton.Parent = self.header
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 15)
+    closeCorner.Parent = self.closeButton
+    
+    self.closeButton.MouseButton1Click:Connect(function()
+        self:hide()
+    end)
+    
+    -- Контент
+    self.content = Instance.new("Frame")
+    self.content.Name = "Content"
+    self.content.Size = UDim2.new(1, -CONFIG.PADDING*2, 1, -70)
+    self.content.Position = UDim2.new(0, CONFIG.PADDING, 0, 60)
+    self.content.BackgroundTransparency = 1
+    self.content.ClipsDescendants = true
+    self.content.Parent = self.window
+    
+    -- Scrolling frame
+    self.scrollingFrame = Instance.new("ScrollingFrame")
+    self.scrollingFrame.Name = "ScrollingFrame"
+    self.scrollingFrame.Size = UDim2.new(1, 0, 1, 0)
+    self.scrollingFrame.BackgroundTransparency = 1
+    self.scrollingFrame.BorderSizePixel = 0
+    self.scrollingFrame.ScrollBarThickness = 4
+    self.scrollingFrame.ScrollBarImageColor3 = self.accentColor
+    self.scrollingFrame.ScrollBarImageTransparency = 0.7
+    self.scrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    self.scrollingFrame.Parent = self.content
+    
+    -- UIListLayout
+    self.uiListLayout = Instance.new("UIListLayout")
+    self.uiListLayout.Padding = UDim.new(0, CONFIG.PADDING)
+    self.uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    self.uiListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    self.uiListLayout.Parent = self.scrollingFrame
+    
+    -- Фабричная кнопка
+    self:createFabButton()
+end
+
+function ElegantModMenu:createFabButton()
+    self.fabButton = Instance.new("TextButton")
+    self.fabButton.Name = "FabButton"
+    self.fabButton.Size = UDim2.new(0, 60, 0, 60)
+    self.fabButton.Position = UDim2.new(1, -70, 1, -70)
+    self.fabButton.BackgroundColor3 = self.accentColor
+    self.fabButton.Text = self.icon
+    self.fabButton.TextColor3 = COLORS.TEXT.PRIMARY
+    self.fabButton.TextSize = 24
+    self.fabButton.Font = Enum.Font.GothamBold
+    self.fabButton.AutoButtonColor = false
+    self.fabButton.Visible = true
+    self.fabButton.Parent = self.screenGui
+    
+    local fabCorner = Instance.new("UICorner")
+    fabCorner.CornerRadius = UDim.new(1, 0)
+    fabCorner.Parent = self.fabButton
+    
+    local fabStroke = Instance.new("UIStroke")
+    fabStroke.Color = Color3.fromRGB(0, 0, 0)
+    fabStroke.Thickness = 2
+    fabStroke.Transparency = 0.8
+    fabStroke.Parent = self.fabButton
+    
+    -- Анимации при наведении
+    self.fabButton.MouseEnter:Connect(function()
+        tween(self.fabButton, {Size = UDim2.new(0, 64, 0, 64)})
+    end)
+    
+    self.fabButton.MouseLeave:Connect(function()
+        tween(self.fabButton, {Size = UDim2.new(0, 60, 0, 60)})
+    end)
+    
+    self.fabButton.MouseButton1Click:Connect(function()
+        self:show()
+    end)
+end
+
+-- Основные методы
+function ElegantModMenu:show()
+    if self.window.Visible then return end
+    
+    -- Показываем модальный фон
+    self.modalBackground.Visible = true
+    tween(self.modalBackground, {BackgroundTransparency = 0.5})
+    
+    -- Показываем и анимируем окно
+    self.window.Visible = true
+    self.window.Position = UDim2.new(0.5, -CONFIG.WINDOW_WIDTH/2, 0.5, -CONFIG.WINDOW_HEIGHT/2)
+    
+    tween(self.window, {
+        Size = UDim2.new(0, CONFIG.WINDOW_WIDTH, 0, CONFIG.WINDOW_HEIGHT)
+    }, 0.3)
+    
+    -- Прячем FAB
+    self.fabButton.Visible = false
+end
+
+function ElegantModMenu:hide()
+    if not self.window.Visible then return end
+    
+    -- Анимация скрытия окна
+    tween(self.window, {
+        Size = UDim2.new(0, CONFIG.WINDOW_WIDTH, 0, 0)
+    }, 0.3)
+    
+    tween(self.modalBackground, {BackgroundTransparency = 1})
+    
+    task.delay(0.3, function()
+        self.window.Visible = false
+        self.modalBackground.Visible = false
+        self.fabButton.Visible = true
+    end)
+end
+
+function ElegantModMenu:toggle()
+    if self.window.Visible then
+        self:hide()
+    else
+        self:show()
+    end
+end
+
+-- Секции
+function ElegantModMenu:addSection(name)
+    local section = {
+        name = name,
+        elements = {}
+    }
+    
+    table.insert(self.sections, section)
+    self.currentSection = section
+    
+    -- Визуальный разделитель
+    local divider = Instance.new("Frame")
+    divider.Name = "Divider"
+    divider.Size = UDim2.new(1, 0, 0, 1)
+    divider.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    divider.BackgroundTransparency = 0.7
+    divider.BorderSizePixel = 0
+    divider.LayoutOrder = #self.elements * 2
+    divider.Parent = self.scrollingFrame
+    
+    -- Заголовок секции
+    local sectionHeader = Instance.new("Frame")
+    sectionHeader.Name = "SectionHeader"
+    sectionHeader.Size = UDim2.new(1, 0, 0, 30)
+    sectionHeader.BackgroundTransparency = 1
+    sectionHeader.LayoutOrder = #self.elements * 2 + 1
+    sectionHeader.Parent = self.scrollingFrame
+    
+    local sectionLabel = createTextLabel(name, 14, sectionHeader)
+    sectionLabel.Size = UDim2.new(1, 0, 1, 0)
+    sectionLabel.TextColor3 = COLORS.TEXT.SECONDARY
+    sectionLabel.Font = Enum.Font.GothamBold
+    
+    table.insert(self.elements, divider)
+    table.insert(self.elements, sectionHeader)
+    
+    return section
+end
+
+-- Кнопка
+function ElegantModMenu:addButton(name, callback, icon)
+    local buttonContainer = createRoundedFrame()
+    buttonContainer.Name = "ButtonContainer"
+    buttonContainer.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    buttonContainer.BackgroundColor3 = self.accentColor
+    buttonContainer.BackgroundTransparency = 0.9
+    buttonContainer.LayoutOrder = #self.elements + 1
+    buttonContainer.Parent = self.scrollingFrame
+    
+    local button = createButton()
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.Parent = buttonContainer
+    
+    -- Контент
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -20, 1, 0)
+    content.Position = UDim2.new(0, 10, 0, 0)
+    content.BackgroundTransparency = 1
+    content.Parent = buttonContainer
+    
+    if icon then
+        local iconLabel = createTextLabel(icon, 16, content)
+        iconLabel.Size = UDim2.new(0, 24, 0, 24)
+        iconLabel.Position = UDim2.new(0, 0, 0.5, -12)
+        iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+    end
+    
+    local textLabel = createTextLabel(name, 14, content)
+    textLabel.Size = UDim2.new(1, icon and -30 or -10, 1, 0)
+    textLabel.Position = icon and UDim2.new(0, 30, 0, 0) or UDim2.new(0, 0, 0, 0)
+    textLabel.Font = Enum.Font.GothamMedium
+    
+    local arrow = createTextLabel("›", 20, content)
+    arrow.Size = UDim2.new(0, 20, 0, 20)
+    arrow.Position = UDim2.new(1, -20, 0.5, -10)
+    arrow.TextXAlignment = Enum.TextXAlignment.Right
+    arrow.TextColor3 = COLORS.TEXT.SECONDARY
+    
+    -- Взаимодействие
+    local overlay = button:FindFirstChild("Overlay")
+    
+    button.MouseEnter:Connect(function()
+        tween(overlay, {BackgroundTransparency = 0.9})
+        tween(arrow, {TextColor3 = self.accentColor})
+    end)
+    
+    button.MouseLeave:Connect(function()
+        tween(overlay, {BackgroundTransparency = 1})
+        tween(arrow, {TextColor3 = COLORS.TEXT.SECONDARY})
+    end)
+    
+    button.MouseButton1Down:Connect(function()
+        tween(overlay, {BackgroundTransparency = 0.8})
+    end)
+    
+    button.MouseButton1Up:Connect(function()
+        tween(overlay, {BackgroundTransparency = 0.9})
+    end)
+    
+    button.MouseButton1Click:Connect(function()
+        if callback then
+            callback()
+        end
+    end)
+    
+    table.insert(self.elements, buttonContainer)
+    
+    return buttonContainer
+end
+
+-- Переключатель
+function ElegantModMenu:addToggle(name, defaultState, callback, icon)
+    local state = defaultState or false
+    
+    local toggleContainer = createRoundedFrame()
+    toggleContainer.Name = "ToggleContainer"
+    toggleContainer.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    toggleContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    toggleContainer.BackgroundTransparency = 0.9
+    toggleContainer.LayoutOrder = #self.elements + 1
+    toggleContainer.Parent = self.scrollingFrame
+    
+    local button = createButton()
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.Parent = toggleContainer
+    
+    -- Контент
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -20, 1, 0)
+    content.Position = UDim2.new(0, 10, 0, 0)
+    content.BackgroundTransparency = 1
+    content.Parent = toggleContainer
+    
+    if icon then
+        local iconLabel = createTextLabel(icon, 16, content)
+        iconLabel.Size = UDim2.new(0, 24, 0, 24)
+        iconLabel.Position = UDim2.new(0, 0, 0.5, -12)
+        iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+    end
+    
+    local textLabel = createTextLabel(name, 14, content)
+    textLabel.Size = UDim2.new(0.7, icon and -30 or -10, 1, 0)
+    textLabel.Position = icon and UDim2.new(0, 30, 0, 0) or UDim2.new(0, 0, 0, 0)
+    textLabel.Font = Enum.Font.GothamMedium
+    
+    -- Тоггл
+    local toggleBackground = Instance.new("Frame")
+    toggleBackground.Name = "ToggleBackground"
+    toggleBackground.Size = UDim2.new(0, 50, 0, 26)
+    toggleBackground.Position = UDim2.new(1, -60, 0.5, -13)
+    toggleBackground.BackgroundColor3 = state and self.accentColor or COLORS.BACKGROUND.TERTIARY
+    toggleBackground.BorderSizePixel = 0
+    toggleBackground.Parent = content
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 13)
+    toggleCorner.Parent = toggleBackground
+    
+    local toggleCircle = Instance.new("Frame")
+    toggleCircle.Name = "ToggleCircle"
+    toggleCircle.Size = UDim2.new(0, 20, 0, 20)
+    toggleCircle.Position = state and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+    toggleCircle.BackgroundColor3 = COLORS.TEXT.PRIMARY
+    toggleCircle.BorderSizePixel = 0
+    toggleCircle.Parent = toggleBackground
+    
+    local circleCorner = Instance.new("UICorner")
+    circleCorner.CornerRadius = UDim.new(0.5, 0)
+    circleCorner.Parent = toggleCircle
+    
+    -- Функция переключения
+    local function setState(newState)
+        state = newState
+        
+        tween(toggleBackground, {
+            BackgroundColor3 = state and self.accentColor or COLORS.BACKGROUND.TERTIARY
+        })
+        
+        tween(toggleCircle, {
+            Position = state and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+        })
+        
+        if callback then
+            callback(state)
+        end
+    end
+    
+    button.MouseButton1Click:Connect(function()
+        setState(not state)
+    end)
+    
+    table.insert(self.elements, toggleContainer)
+    
+    return {
+        setState = function(newState)
+            setState(newState)
+        end,
+        getState = function()
+            return state
+        end
+    }
+end
+
+-- Слайдер
+function ElegantModMenu:addSlider(name, min, max, defaultValue, callback, icon)
+    local value = defaultValue or min
+    
+    local sliderContainer = createRoundedFrame()
+    sliderContainer.Name = "SliderContainer"
+    sliderContainer.Size = UDim2.new(1, 0, 0, 60)
+    sliderContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    sliderContainer.BackgroundTransparency = 0.9
+    sliderContainer.LayoutOrder = #self.elements + 1
+    sliderContainer.Parent = self.scrollingFrame
+    
+    -- Заголовок
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.Size = UDim2.new(1, -20, 0, 20)
+    header.Position = UDim2.new(0, 10, 0, 5)
+    header.BackgroundTransparency = 1
+    header.Parent = sliderContainer
+    
+    if icon then
+        local iconLabel = createTextLabel(icon, 14, header)
+        iconLabel.Size = UDim2.new(0, 20, 1, 0)
+        iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+    end
+    
+    local nameLabel = createTextLabel(name, 14, header)
+    nameLabel.Size = UDim2.new(0.6, icon and -25 or -5, 1, 0)
+    nameLabel.Position = icon and UDim2.new(0, 25, 0, 0) or UDim2.new(0, 0, 0, 0)
+    nameLabel.Font = Enum.Font.GothamMedium
+    
+    local valueLabel = createTextLabel(tostring(value), 14, header)
+    valueLabel.Size = UDim2.new(0.4, -5, 1, 0)
+    valueLabel.Position = UDim2.new(0.6, 5, 0, 0)
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valueLabel.TextColor3 = self.accentColor
+    valueLabel.Font = Enum.Font.GothamBold
+    
+    -- Трек слайдера
+    local track = Instance.new("Frame")
+    track.Name = "Track"
+    track.Size = UDim2.new(1, -20, 0, 6)
+    track.Position = UDim2.new(0, 10, 0, 35)
+    track.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    track.BorderSizePixel = 0
+    track.Parent = sliderContainer
+    
+    local trackCorner = Instance.new("UICorner")
+    trackCorner.CornerRadius = UDim.new(0, 3)
+    trackCorner.Parent = track
+    
+    local fill = Instance.new("Frame")
+    fill.Name = "Fill"
+    fill.Size = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = self.accentColor
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(0, 3)
+    fillCorner.Parent = fill
+    
+    local thumb = createButton()
+    thumb.Name = "Thumb"
+    thumb.Size = UDim2.new(0, 20, 0, 20)
+    thumb.Position = UDim2.new(0, -10, 0.5, -10)
+    thumb.BackgroundColor3 = COLORS.TEXT.PRIMARY
+    thumb.Parent = track
+    
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(0.5, 0)
+    thumbCorner.Parent = thumb
+    
+    -- Обновление значения
+    local function updateValue(newValue)
+        value = math.clamp(newValue, min, max)
+        value = math.floor(value)
+        
+        local percentage = (value - min) / (max - min)
+        
+        fill.Size = UDim2.new(percentage, 0, 1, 0)
+        thumb.Position = UDim2.new(percentage, -10, 0.5, -10)
+        valueLabel.Text = tostring(value)
+        
+        if callback then
+            callback(value)
+        end
+    end
+    
+    -- Взаимодействие
+    local dragging = false
+    
+    local function updateFromInput(input)
+        local relativeX = (input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X
+        local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+        updateValue(newValue)
+    end
+    
+    thumb.MouseButton1Down:Connect(function()
+        dragging = true
+    end)
+    
+    game:GetService("UserInputService").InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
+            dragging = false
+        end
+    end)
+    
+    game:GetService("UserInputService").InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            updateFromInput(input)
+        end
+    end)
+    
+    -- Клик по треку
+    local trackButton = createButton()
+    trackButton.Size = UDim2.new(1, 0, 1, 0)
+    trackButton.Parent = track
+    
+    trackButton.MouseButton1Down:Connect(function(input)
+        updateFromInput(input)
+        dragging = true
+    end)
+    
+    -- Инициализация
+    updateValue(value)
+    
+    table.insert(self.elements, sliderContainer)
+    
+    return {
+        setValue = function(newValue)
+            updateValue(newValue)
+        end,
+        getValue = function()
+            return value
+        end
+    }
+end
+
+-- Выпадающий список
+function ElegantModMenu:addDropdown(name, options, defaultIndex, callback, icon)
+    local selectedIndex = defaultIndex or 1
+    local isOpen = false
+    
+    local dropdownContainer = createRoundedFrame()
+    dropdownContainer.Name = "DropdownContainer"
+    dropdownContainer.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    dropdownContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    dropdownContainer.BackgroundTransparency = 0.9
+    dropdownContainer.LayoutOrder = #self.elements + 1
+    dropdownContainer.ClipsDescendants = true
+    dropdownContainer.Parent = self.scrollingFrame
+    
+    local button = createButton()
+    button.Name = "DropdownButton"
+    button.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    button.Parent = dropdownContainer
+    
+    -- Контент
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -20, 1, 0)
+    content.Position = UDim2.new(0, 10, 0, 0)
+    content.BackgroundTransparency = 1
+    content.Parent = dropdownContainer
+    
+    if icon then
+        local iconLabel = createTextLabel(icon, 16, content)
+        iconLabel.Size = UDim2.new(0, 24, 0, 24)
+        iconLabel.Position = UDim2.new(0, 0, 0.5, -12)
+        iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+    end
+    
+    local nameLabel = createTextLabel(name, 14, content)
+    nameLabel.Size = UDim2.new(0.5, icon and -30 or -10, 1, 0)
+    nameLabel.Position = icon and UDim2.new(0, 30, 0, 0) or UDim2.new(0, 0, 0, 0)
+    nameLabel.Font = Enum.Font.GothamMedium
+    
+    local selectedLabel = createTextLabel(options[selectedIndex] or "Выбрать", 13, content)
+    selectedLabel.Size = UDim2.new(0.4, -10, 1, 0)
+    selectedLabel.Position = UDim2.new(0.5, 10, 0, 0)
+    selectedLabel.TextXAlignment = Enum.TextXAlignment.Right
+    selectedLabel.TextColor3 = self.accentColor
+    
+    local arrow = createTextLabel("▼", 12, content)
+    arrow.Size = UDim2.new(0, 20, 0, 20)
+    arrow.Position = UDim2.new(1, -20, 0.5, -10)
+    arrow.TextXAlignment = Enum.TextXAlignment.Right
+    
+    -- Список опций
+    local optionsContainer = createRoundedFrame()
+    optionsContainer.Name = "OptionsContainer"
+    optionsContainer.Size = UDim2.new(1, 0, 0, 0)
+    optionsContainer.Position = UDim2.new(0, 0, 1, 5)
+    optionsContainer.BackgroundColor3 = COLORS.BACKGROUND.PRIMARY
+    optionsContainer.BackgroundTransparency = 0.1
+    optionsContainer.Visible = false
+    optionsContainer.ClipsDescendants = true
+    optionsContainer.Parent = dropdownContainer
+    
+    local optionsList = Instance.new("UIListLayout")
+    optionsList.Padding = UDim.new(0, 2)
+    optionsList.SortOrder = Enum.SortOrder.LayoutOrder
+    optionsList.Parent = optionsContainer
+    
+    -- Создание опций
+    for i, option in ipairs(options) do
+        local optionButton = createButton()
+        optionButton.Name = "OptionButton"
+        optionButton.Size = UDim2.new(1, -10, 0, 28)
+        optionButton.Position = UDim2.new(0, 5, 0, (i-1)*30)
+        optionButton.BackgroundColor3 = i == selectedIndex and self.accentColor or COLORS.BACKGROUND.SECONDARY
+        optionButton.BackgroundTransparency = i == selectedIndex and 0.8 or 0.9
+        optionButton.Parent = optionsContainer
+        
+        local optionLabel = createTextLabel(option, 13, optionButton)
+        optionLabel.Size = UDim2.new(1, -10, 1, 0)
+        optionLabel.Position = UDim2.new(0, 5, 0, 0)
+        optionLabel.TextColor3 = i == selectedIndex and COLORS.TEXT.PRIMARY or COLORS.TEXT.SECONDARY
+        
+        optionButton.MouseButton1Click:Connect(function()
+            selectedIndex = i
+            selectedLabel.Text = option
+            isOpen = false
+            
+            tween(optionsContainer, {Size = UDim2.new(1, 0, 0, 0)})
+            
+            task.delay(0.2, function()
+                optionsContainer.Visible = false
+            end)
+            
+            if callback then
+                callback(option, i)
+            end
+        end)
+    end
+    
+    -- Переключение видимости
+    button.MouseButton1Click:Connect(function()
+        isOpen = not isOpen
+        
+        if isOpen then
+            optionsContainer.Visible = true
+            local optionsHeight = math.min(#options * 30 + 10, 120)
+            tween(optionsContainer, {Size = UDim2.new(1, 0, 0, optionsHeight)})
+            tween(dropdownContainer, {Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT + optionsHeight + 5)})
+        else
+            tween(optionsContainer, {Size = UDim2.new(1, 0, 0, 0)})
+            tween(dropdownContainer, {Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)})
+            
+            task.delay(0.2, function()
+                optionsContainer.Visible = false
+            end
+            )
+        end
+    end)
+    
+    table.insert(self.elements, dropdownContainer)
+    
+    return {
+        setSelected = function(index)
+            if options[index] then
+                selectedIndex = index
+                selectedLabel.Text = options[index]
+                if callback then
+                    callback(options[index], index)
+                end
+            end
+        end,
+        getSelected = function()
+            return selectedIndex, options[selectedIndex]
+        end
+    }
+end
+
+-- Выбор цвета
+function ElegantModMenu:addColorPicker(name, defaultColor, callback, icon)
+    local currentColor = defaultColor or self.accentColor
+    
+    local colorContainer = createRoundedFrame()
+    colorContainer.Name = "ColorPickerContainer"
+    colorContainer.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    colorContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    colorContainer.BackgroundTransparency = 0.9
+    colorContainer.LayoutOrder = #self.elements + 1
+    colorContainer.Parent = self.scrollingFrame
+    
+    local button = createButton()
+    button.Name = "ColorPickerButton"
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.Parent = colorContainer
+    
+    -- Контент
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -20, 1, 0)
+    content.Position = UDim2.new(0, 10, 0, 0)
+    content.BackgroundTransparency = 1
+    content.Parent = colorContainer
+    
+    if icon then
+        local iconLabel = createTextLabel(icon, 16, content)
+        iconLabel.Size = UDim2.new(0, 24, 0, 24)
+        iconLabel.Position = UDim2.new(0, 0, 0.5, -12)
+        iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+    end
+    
+    local nameLabel = createTextLabel(name, 14, content)
+    nameLabel.Size = UDim2.new(0.7, icon and -30 or -10, 1, 0)
+    nameLabel.Position = icon and UDim2.new(0, 30, 0, 0) or UDim2.new(0, 0, 0, 0)
+    nameLabel.Font = Enum.Font.GothamMedium
+    
+    local preview = Instance.new("Frame")
+    preview.Name = "ColorPreview"
+    preview.Size = UDim2.new(0, 30, 0, 30)
+    preview.Position = UDim2.new(1, -40, 0.5, -15)
+    preview.BackgroundColor3 = currentColor
+    preview.BorderSizePixel = 0
+    preview.Parent = content
+    
+    local previewCorner = Instance.new("UICorner")
+    previewCorner.CornerRadius = UDim.new(0, 6)
+    previewCorner.Parent = preview
+    
+    local previewStroke = Instance.new("UIStroke")
+    previewStroke.Color = COLORS.TEXT.PRIMARY
+    previewStroke.Thickness = 2
+    previewStroke.Parent = preview
+    
+    -- Палитра цветов
+    local palette = createRoundedFrame()
+    palette.Name = "ColorPalette"
+    palette.Size = UDim2.new(0, 150, 0, 0)
+    palette.Position = UDim2.new(1, 10, 0.5, 0)
+    palette.BackgroundColor3 = COLORS.BACKGROUND.PRIMARY
+    palette.BackgroundTransparency = 0.1
+    palette.Visible = false
+    palette.ZIndex = 10
+    palette.Parent = colorContainer
+    
+    -- Предустановленные цвета
+    local presetColors = {
+        Color3.fromRGB(255, 50, 50),   -- Красный
+        Color3.fromRGB(50, 255, 50),   -- Зеленый
+        Color3.fromRGB(50, 100, 255),  -- Синий
+        Color3.fromRGB(255, 255, 50),  -- Желтый
+        Color3.fromRGB(255, 50, 255),  -- Пурпурный
+        Color3.fromRGB(50, 255, 255),  -- Голубой
+        Color3.fromRGB(255, 255, 255), -- Белый
+        Color3.fromRGB(50, 50, 50)     -- Черный
+    }
+    
+    for i, color in ipairs(presetColors) do
+        local row = math.floor((i-1)/4)
+        local col = (i-1) % 4
+        
+        local colorButton = createButton()
+        colorButton.Name = "ColorButton"
+        colorButton.Size = UDim2.new(0, 30, 0, 30)
+        colorButton.Position = UDim2.new(0, 10 + col*35, 0, 10 + row*35)
+        colorButton.BackgroundColor3 = color
+        colorButton.Parent = palette
+        
+        local colorCorner = Instance.new("UICorner")
+        colorCorner.CornerRadius = UDim.new(0, 6)
+        colorCorner.Parent = colorButton
+        
+        local colorStroke = Instance.new("UIStroke")
+        colorStroke.Color = COLORS.TEXT.PRIMARY
+        colorStroke.Thickness = 2
+        colorStroke.Parent = colorButton
+        
+        colorButton.MouseButton1Click:Connect(function()
+            currentColor = color
+            preview.BackgroundColor3 = color
+            
+            tween(palette, {Size = UDim2.new(0, 150, 0, 0)})
+            
+            task.delay(0.2, function()
+                palette.Visible = false
+            end)
+            
+            if callback then
+                callback(color)
+            end
+        end)
+    end
+    
+    -- Открытие/закрытие палитры
+    button.MouseButton1Click:Connect(function()
+        if palette.Visible then
+            tween(palette, {Size = UDim2.new(0, 150, 0, 0)})
+            
+            task.delay(0.2, function()
+                palette.Visible = false
+            end)
+        else
+            palette.Visible = true
+            palette.Size = UDim2.new(0, 0, 0, 0)
+            
+            tween(palette, {Size = UDim2.new(0, 150, 0, 90)})
+        end
+    end)
+    
+    table.insert(self.elements, colorContainer)
+    
+    return {
+        setColor = function(color)
+            currentColor = color
+            preview.BackgroundColor3 = color
+            if callback then
+                callback(color)
+            end
+        end,
+        getColor = function()
+            return currentColor
+        end
+    }
+end
+
+-- Вспомогательные методы
+function ElegantModMenu:addPlayerSelector(name, callback, icon)
+    local players = {}
+    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+        if player ~= game.Players.LocalPlayer then
+            table.insert(players, player.Name)
+        end
+    end
+    
+    return self:addDropdown(name, players, 1, function(selected)
+        if callback then
+            callback(selected)
+        end
+    end, icon or "👤")
+end
+
+function ElegantModMenu:addItemSelector(name, items, callback, icon)
+    return self:addDropdown(name, items, 1, function(selected)
+        if callback then
+            callback(selected)
+        end
+    end, icon or "📦")
+end
+
+-- Публичные методы
+function ElegantModMenu:destroy()
+    if self.screenGui then
+        self.screenGui:Destroy()
+    end
+end
+
+function ElegantModMenu:setVisible(visible)
+    if visible then
+        self:show()
+    else
+        self:hide()
+    end
+end
+
+-- Экспорт
+return ElegantModMenu
