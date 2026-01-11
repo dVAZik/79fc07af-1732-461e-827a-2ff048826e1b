@@ -184,10 +184,6 @@ function ElegantModMenu:CreateMainInterface()
     self.ModalBackground.BackgroundTransparency = 1
     self.ModalBackground.Visible = false
     
-    self.ModalBackground.MouseButton1Click:Connect(function()
-        self:Hide()
-    end)
-    
     -- Основное окно (фиксированная позиция по центру)
     self.MainWindow = createRoundedFrame(nil, UDim2.new(0, 400, 0, 500), UDim2.new(0.5, -0, 0.5, -0), 16)
     self.MainWindow.BackgroundColor3 = COLORS.Primary.Dark
