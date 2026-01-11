@@ -185,7 +185,7 @@ function ElegantModMenu:CreateMainInterface()
     self.ModalBackground.Visible = false
     
     -- Основное окно (фиксированная позиция по центру)
-    self.MainWindow = createRoundedFrame(nil, UDim2.new(0, 400, 0, 500), UDim2.new(0.5, -0, 0.5, -0), 16)
+    self.MainWindow = createRoundedFrame(nil, UDim2.new(0, 350, 0, 350), UDim2.new(0.5, -170, 0.5, -170), 16)
     self.MainWindow.BackgroundColor3 = COLORS.Primary.Dark
     self.MainWindow.ClipsDescendants = true
     self.MainWindow.Visible = false
@@ -316,10 +316,10 @@ function ElegantModMenu:Show()
     
     -- Показываем окно с анимацией
     self.MainWindow.Visible = true
-    self.MainWindow.Position = UDim2.new(0.5, -0, 0.5, -0) -- Гарантируем позицию по центру
+    self.MainWindow.Position = UDim2.new(0.5, -170, 0.5, -170) -- Гарантируем позицию по центру
     
     tweenService:Create(self.MainWindow, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, 400, 0, 500)
+        Size = UDim2.new(0, 350, 0, 350)
     }):Play()
     
     -- Скрываем плавающую кнопку
@@ -334,7 +334,7 @@ function ElegantModMenu:Hide()
     }):Play()
     
     tweenService:Create(self.MainWindow, TweenInfo.new(0.3), {
-        Size = UDim2.new(0, 400, 0, 0)
+        Size = UDim2.new(0, 350, 0, 0)
     }):Play()
     
     task.delay(0.3, function()
