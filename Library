@@ -1,0 +1,3216 @@
+-- Fatima Mod Menu v3.0 (Roblox Exploit) - Мобильная версия
+local ElegantModMenu = {}
+ElegantModMenu.__index = ElegantModMenu
+
+-- Конфигурация
+local CONFIG = {
+    WINDOW_WIDTH = 380,
+    WINDOW_HEIGHT = 550,
+    ELEMENT_HEIGHT = 42,
+    PADDING = 14,
+    CORNER_RADIUS = 12,
+    ANIMATION_DURATION = 0.25,
+    MOBILE_THRESHOLD = 650 -- Ширина экрана для мобильных устройств
+}
+
+-- Цветовая схема
+local COLORS = {
+    THEME = {
+        PRIMARY = Color3.fromRGB(180, 70, 160),
+        SECONDARY = Color3.fromRGB(210, 100, 190),
+        TERTIARY = Color3.fromRGB(150, 50, 130),
+        LIGHT = Color3.fromRGB(230, 180, 220)
+    },
+    BACKGROUND = {
+        PRIMARY = Color3.fromRGB(25, 20, 30),
+        SECONDARY = Color3.fromRGB(35, 30, 40),
+        TERTIARY = Color3.fromRGB(45, 40, 55),
+        MODAL = Color3.fromRGB(0, 0, 0, 0.7)
+    },
+    ACCENT = {
+        PRIMARY = Color3.fromRGB(0, 180, 255),
+        SUCCESS = Color3.fromRGB(0, 220, 120),
+        WARNING = Color3.fromRGB(255, 180, 0),
+        ERROR = Color3.fromRGB(240, 80, 80)
+    },
+    TEXT = {
+        PRIMARY = Color3.fromRGB(250, 240, 250),
+        SECONDARY = Color3.fromRGB(200, 190, 210),
+        DISABLED = Color3.fromRGB(130, 120, 140)
+    },
+    STATES = {
+        HOVER = Color3.fromRGB(255, 255, 255, 0.1),
+        PRESSED = Color3.fromRGB(255, 255, 255, 0.2),
+        SELECTED = Color3.fromRGB(180, 70, 160, 0.3)
+    }
+}
+
+-- Вспомогательные функции
+local function isMobile()
+    local guiService = game:GetService("GuiService")
+    local viewportSize = workspace.CurrentCamera.ViewportSize
+    return viewportSize.X <= CONFIG.MOBILE_THRESHOLD or guiService:IsTenFootInterface()
+end
+
+local function tween(object, properties, duration)
+    local tweenService = game:GetService("TweenService")
+    local tweenInfo = TweenInfo.new(duration or CONFIG.ANIMATION_DURATION, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local tweenObj = tweenService:Create(object, tweenInfo, properties)
+    tweenObj:Play()
+    return tweenObj
+end
+
+local function createRoundedFrame()
+    local frame = Instance.new("Frame")
+    frame.BackgroundTransparency = 1
+    frame.BorderSizePixel = 0
+    frame.ClipsDescendants = true
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, CONFIG.CORNER_RADIUS)
+    corner.Parent = frame
+    
+    return frame
+end
+
+local function createTextLabel(text, size, parent)
+    local label = Instance.new("TextLabel")
+    label.Text = text
+    label.TextColor3 = COLORS.TEXT.PRIMARY
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = size
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextTransparency = 0
+    label.ClipsDescendants = true
+    
+    if parent then
+        label.Parent = parent
+    end
+    
+    return label
+end
+
+local function createIcon(type, value, parent, size)
+    local icon
+    if type == "emoji" then
+        icon = Instance.new("TextLabel")
+        icon.Text = value
+        icon.TextColor3 = Color3.new(1, 1, 1)
+        icon.Font = Enum.Font.GothamSemibold
+        icon.TextSize = size or 20
+    else
+        icon = Instance.new("ImageLabel")
+        icon.Image = value
+        icon.ScaleType = Enum.ScaleType.Fit
+    end
+    
+    icon.BackgroundTransparency = 1
+    icon.Size = UDim2.new(0, size or 24, 0, size or 24)
+    
+    if type == "emoji" then
+        icon.TextXAlignment = Enum.TextXAlignment.Center
+    end
+    
+    if parent then
+        icon.Parent = parent
+    end
+    
+    return icon
+end
+
+local function createButton()
+    local button = Instance.new("TextButton")
+    button.BackgroundTransparency = 1
+    button.AutoButtonColor = false
+    button.Text = ""
+    button.ZIndex = 10
+    button.Active = true
+    
+    local overlay = Instance.new("Frame")
+    overlay.Name = "Overlay"
+    overlay.Size = UDim2.new(1, 0, 1, 0)
+    overlay.BackgroundTransparency = 1
+    overlay.BackgroundColor3 = Color3.new(1, 1, 1)
+    overlay.BorderSizePixel = 0
+    overlay.ZIndex = 11
+    overlay.Parent = button
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, CONFIG.CORNER_RADIUS)
+    corner.Parent = overlay
+    
+    return button
+end
+
+local function createDropdown()
+    local dropdown = Instance.new("Frame")
+    dropdown.Name = "Dropdown"
+    dropdown.BackgroundTransparency = 1
+    dropdown.ClipsDescendants = true
+    
+    return dropdown
+end
+
+local function createColorPicker()
+    local picker = Instance.new("Frame")
+    picker.Name = "ColorPicker"
+    picker.BackgroundTransparency = 1
+    picker.ClipsDescendants = true
+    
+    return picker
+end
+
+-- Конструктор
+function ElegantModMenu.new(options)
+    local self = setmetatable({}, ElegantModMenu)
+    
+    options = options or {}
+    self.name = options.Name or "Fatima ♥️"
+    self.icon = options.Icon or "♥️"
+    self.accentColor = options.AccentColor or COLORS.THEME.PRIMARY
+    self.isMobile = isMobile()
+    
+    if self.isMobile then
+        CONFIG.WINDOW_WIDTH = 340
+        CONFIG.ELEMENT_HEIGHT = 46
+    end
+    
+    self.sections = {}
+    self.elements = {}
+    self.currentSection = nil
+    self.watermarkTweens = {}
+    
+    -- Настройки меню
+    self.settings = {
+        menuOpacity = 0.95,
+        animationSpeed = 0.3,
+        showWatermark = true,
+        themeColor = self.accentColor,
+        watermarkSpeed = 1
+    }
+    
+    -- ESP настройки
+    self.espSettings = {
+        enabled = false,
+        showBox = true,
+        showTracer = true,
+        showHealth = true,
+        showName = true,
+        showDistance = true,
+        showSkeleton = false,
+        showChams = false,
+        teamCheck = true,
+        color = Color3.fromRGB(255, 50, 50),
+        maxDistance = 1000,
+        chamsColor = Color3.fromRGB(255, 0, 255),
+        chamsTransparency = 0.3
+    }
+    
+    -- AimBot настройки
+    self.aimSettings = {
+        enabled = false,
+        aimKey = Enum.UserInputType.MouseButton2,
+        smoothness = 10,
+        fov = 50,
+        teamCheck = true,
+        friendCheck = false,
+        wallCheck = true,
+        visibleCheck = true,
+        prediction = 0.1,
+        aimPart = "Head"
+    }
+    
+    -- Локальные функции
+    self.localSettings = {
+        speedHack = false,
+        speedMultiplier = 2,
+        jumpPower = false,
+        jumpMultiplier = 2,
+        noclip = false,
+        fly = false,
+        flySpeed = 2,
+        infiniteJump = false,
+        antiAfk = true,
+        noClip = false
+    }
+    
+    -- Настройки атмосферы
+    self.atmosphereSettings = {
+        ambient = Color3.fromRGB(127, 127, 127),
+        outdoorAmbient = Color3.fromRGB(127, 127, 127),
+        brightness = 2,
+        globalShadows = true,
+        fogStart = 0,
+        fogEnd = 1000,
+        fogColor = Color3.fromRGB(191, 191, 191)
+    }
+    
+    -- Друзья список
+    self.friendsList = {}
+    
+    self:cleanupOldMenus()
+    self:createMainWindow()
+    self:setupLocalFunctions()
+    self:setupESP()
+    self:setupAimBot()
+    self:setupAtmosphere()
+    
+    -- Запускаем анимацию водяного знака
+    task.spawn(function()
+        while self.screenGui and self.screenGui.Parent do
+            self:animateWatermark()
+            wait(0.1)
+        end
+    end)
+    
+    return self
+end
+
+function ElegantModMenu:cleanupOldMenus()
+    local coreGui = game:GetService("CoreGui")
+    
+    for _, child in pairs(coreGui:GetChildren()) do
+        if child.Name == "ElegantModMenu" then
+            child:Destroy()
+        end
+    end
+end
+
+function ElegantModMenu:animateWatermark()
+    if not self.watermark or not self.watermark.Visible then return end
+    
+    -- Останавливаем предыдущие твины
+    for _, tweenObj in pairs(self.watermarkTweens) do
+        tweenObj:Cancel()
+    end
+    
+    self.watermarkTweens = {}
+    
+    -- Анимация движения
+    local startPos = UDim2.new(math.random(-0.5, 0.5), 0, math.random(-0.5, 0.5), 0)
+    local endPos = UDim2.new(math.random(-0.5, 0.5), 0, math.random(-0.5, 0.5), 0)
+    
+    self.watermark.Position = startPos
+    
+    local tween1 = tween(self.watermark, {
+        Position = endPos
+    }, 15 / self.settings.watermarkSpeed)
+    
+    -- Анимация вращения
+    local startRot = math.random(0, 360)
+    local endRot = startRot + 180
+    
+    self.watermark.Rotation = startRot
+    
+    local tween2 = tween(self.watermark, {
+        Rotation = endRot
+    }, 20 / self.settings.watermarkSpeed)
+    
+    -- Анимация прозрачности
+    local tween3 = tween(self.watermark, {
+        TextTransparency = math.random(85, 95) / 100
+    }, 10 / self.settings.watermarkSpeed)
+    
+    table.insert(self.watermarkTweens, tween1)
+    table.insert(self.watermarkTweens, tween2)
+    table.insert(self.watermarkTweens, tween3)
+end
+
+function ElegantModMenu:createMainWindow()
+    -- Основной GUI
+    self.screenGui = Instance.new("ScreenGui")
+    self.screenGui.Name = "ElegantModMenu"
+    self.screenGui.ResetOnSpawn = false
+    self.screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    self.screenGui.IgnoreGuiInset = true
+    self.screenGui.Parent = game:GetService("CoreGui")
+    
+    -- Модальный фон
+    self.modalBackground = Instance.new("Frame")
+    self.modalBackground.Name = "ModalBackground"
+    self.modalBackground.Size = UDim2.new(1, 0, 1, 0)
+    self.modalBackground.BackgroundColor3 = COLORS.BACKGROUND.MODAL
+    self.modalBackground.BackgroundTransparency = 1
+    self.modalBackground.Visible = false
+    self.modalBackground.ZIndex = 98
+    self.modalBackground.Parent = self.screenGui
+    
+    local modalButton = Instance.new("TextButton")
+    modalButton.Name = "ModalButton"
+    modalButton.Size = UDim2.new(1, 0, 1, 0)
+    modalButton.BackgroundTransparency = 1
+    modalButton.Text = ""
+    modalButton.ZIndex = 99
+    modalButton.Parent = self.modalBackground
+    
+    modalButton.MouseButton1Click:Connect(function()
+        self:hide()
+    end)
+    
+    -- Основное окно
+    self.window = Instance.new("Frame")
+    self.window.Name = "Window"
+    self.window.Size = UDim2.new(0, CONFIG.WINDOW_WIDTH, 0, 0)
+    self.window.Position = UDim2.new(0.5, -CONFIG.WINDOW_WIDTH/2, 0.5, 0)
+    self.window.BackgroundColor3 = COLORS.BACKGROUND.PRIMARY
+    self.window.BackgroundTransparency = 1 - self.settings.menuOpacity
+    self.window.ClipsDescendants = true
+    self.window.Visible = false
+    self.window.ZIndex = 100
+    self.window.Parent = self.screenGui
+    
+    local windowCorner = Instance.new("UICorner")
+    windowCorner.CornerRadius = UDim.new(0, 16)
+    windowCorner.Parent = self.window
+    
+    local windowStroke = Instance.new("UIStroke")
+    windowStroke.Color = COLORS.THEME.LIGHT
+    windowStroke.Thickness = 1.5
+    windowStroke.Transparency = 0.2
+    windowStroke.Parent = self.window
+    
+    -- Водяной знак "Фатима ♥️" с анимацией
+    self.watermark = Instance.new("TextLabel")
+    self.watermark.Name = "Watermark"
+    self.watermark.Size = UDim2.new(3, 0, 3, 0)
+    self.watermark.Position = UDim2.new(-0.5, 0, -0.5, 0)
+    self.watermark.BackgroundTransparency = 1
+    self.watermark.Text = "Фатима ♥️"
+    self.watermark.TextColor3 = COLORS.THEME.PRIMARY
+    self.watermark.TextTransparency = 0.92
+    self.watermark.Font = Enum.Font.GothamBold
+    self.watermark.TextSize = 48
+    self.watermark.TextXAlignment = Enum.TextXAlignment.Center
+    self.watermark.TextYAlignment = Enum.TextYAlignment.Center
+    self.watermark.Rotation = 45
+    self.watermark.ZIndex = -1
+    self.watermark.Parent = self.window
+    self.watermark.Visible = self.settings.showWatermark
+    
+    -- Заголовок
+    self.header = Instance.new("Frame")
+    self.header.Name = "Header"
+    self.header.Size = UDim2.new(1, 0, 0, 60)
+    self.header.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    self.header.BackgroundTransparency = 1 - self.settings.menuOpacity
+    self.header.ZIndex = 101
+    self.header.Parent = self.window
+    
+    local headerCorner = Instance.new("UICorner")
+    headerCorner.CornerRadius = UDim.new(0, 16, 0, 0)
+    headerCorner.Parent = self.header
+    
+    -- Иконка и название
+    local titleContainer = Instance.new("Frame")
+    titleContainer.Name = "TitleContainer"
+    titleContainer.Size = UDim2.new(1, -100, 1, 0)
+    titleContainer.Position = UDim2.new(0, 15, 0, 0)
+    titleContainer.BackgroundTransparency = 1
+    titleContainer.Parent = self.header
+    
+    self.titleIcon = createTextLabel(self.icon, 24, titleContainer)
+    self.titleIcon.Size = UDim2.new(0, 40, 1, 0)
+    self.titleIcon.TextXAlignment = Enum.TextXAlignment.Left
+    self.titleIcon.Font = Enum.Font.GothamBold
+    
+    self.titleLabel = createTextLabel(self.name, 20, titleContainer)
+    self.titleLabel.Size = UDim2.new(1, -45, 1, 0)
+    self.titleLabel.Position = UDim2.new(0, 40, 0, 0)
+    self.titleLabel.Font = Enum.Font.GothamBold
+    self.titleLabel.TextColor3 = COLORS.TEXT.PRIMARY
+    
+    -- Кнопка настроек
+    self.settingsButton = Instance.new("TextButton")
+    self.settingsButton.Name = "SettingsButton"
+    self.settingsButton.Size = UDim2.new(0, 36, 0, 36)
+    self.settingsButton.Position = UDim2.new(1, -88, 0.5, -18)
+    self.settingsButton.BackgroundColor3 = COLORS.THEME.SECONDARY
+    self.settingsButton.BackgroundTransparency = 0.7
+    self.settingsButton.Text = "⚙️"
+    self.settingsButton.TextColor3 = COLORS.TEXT.PRIMARY
+    self.settingsButton.TextSize = 18
+    self.settingsButton.Font = Enum.Font.GothamBold
+    self.settingsButton.AutoButtonColor = false
+    self.settingsButton.ZIndex = 102
+    self.settingsButton.Parent = self.header
+    
+    local settingsCorner = Instance.new("UICorner")
+    settingsCorner.CornerRadius = UDim.new(0, 8)
+    settingsCorner.Parent = self.settingsButton
+    
+    self.settingsButton.MouseEnter:Connect(function()
+        tween(self.settingsButton, {BackgroundTransparency = 0.5})
+    end)
+    
+    self.settingsButton.MouseLeave:Connect(function()
+        tween(self.settingsButton, {BackgroundTransparency = 0.7})
+    end)
+    
+    self.settingsButton.MouseButton1Click:Connect(function()
+        self:showSettingsMenu()
+    end)
+    
+    -- Кнопка закрытия
+    self.closeButton = Instance.new("TextButton")
+    self.closeButton.Name = "CloseButton"
+    self.closeButton.Size = UDim2.new(0, 36, 0, 36)
+    self.closeButton.Position = UDim2.new(1, -42, 0.5, -18)
+    self.closeButton.BackgroundColor3 = COLORS.ACCENT.ERROR
+    self.closeButton.BackgroundTransparency = 0.7
+    self.closeButton.Text = "✕"
+    self.closeButton.TextColor3 = COLORS.TEXT.PRIMARY
+    self.closeButton.TextSize = 18
+    self.closeButton.Font = Enum.Font.GothamBold
+    self.closeButton.AutoButtonColor = false
+    self.closeButton.ZIndex = 102
+    self.closeButton.Parent = self.header
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 8)
+    closeCorner.Parent = self.closeButton
+    
+    self.closeButton.MouseEnter:Connect(function()
+        tween(self.closeButton, {BackgroundTransparency = 0.5})
+    end)
+    
+    self.closeButton.MouseLeave:Connect(function()
+        tween(self.closeButton, {BackgroundTransparency = 0.7})
+    end)
+    
+    self.closeButton.MouseButton1Click:Connect(function()
+        self:hide()
+    end)
+    
+    -- Контент
+    self.content = Instance.new("Frame")
+    self.content.Name = "Content"
+    self.content.Size = UDim2.new(1, -CONFIG.PADDING*2, 1, -80)
+    self.content.Position = UDim2.new(0, CONFIG.PADDING, 0, 70)
+    self.content.BackgroundTransparency = 1
+    self.content.ClipsDescendants = true
+    self.content.ZIndex = 103
+    self.content.Parent = self.window
+    
+    -- Scrolling frame
+    self.scrollingFrame = Instance.new("ScrollingFrame")
+    self.scrollingFrame.Name = "ScrollingFrame"
+    self.scrollingFrame.Size = UDim2.new(1, 0, 1, 0)
+    self.scrollingFrame.BackgroundTransparency = 1
+    self.scrollingFrame.BorderSizePixel = 0
+    self.scrollingFrame.ScrollBarThickness = self.isMobile and 8 or 5
+    self.scrollingFrame.ScrollBarImageColor3 = self.accentColor
+    self.scrollingFrame.ScrollBarImageTransparency = 0.7
+    self.scrollingFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+    self.scrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    self.scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    self.scrollingFrame.ZIndex = 104
+    self.scrollingFrame.Parent = self.content
+    
+    -- UIListLayout
+    self.uiListLayout = Instance.new("UIListLayout")
+    self.uiListLayout.Padding = UDim.new(0, CONFIG.PADDING)
+    self.uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    self.uiListLayout.Parent = self.scrollingFrame
+    
+    -- Фабричная кнопка
+    self:createFabButton()
+end
+
+function ElegantModMenu:createFabButton()
+    self.fabButton = Instance.new("TextButton")
+    self.fabButton.Name = "FabButton"
+    self.fabButton.Size = UDim2.new(0, 60, 0, 60)
+    self.fabButton.Position = UDim2.new(1, -72, 1, -72)
+    self.fabButton.BackgroundColor3 = self.accentColor
+    self.fabButton.BackgroundTransparency = 0.2
+    self.fabButton.Text = self.icon
+    self.fabButton.TextColor3 = COLORS.TEXT.PRIMARY
+    self.fabButton.TextSize = 24
+    self.fabButton.Font = Enum.Font.GothamBold
+    self.fabButton.AutoButtonColor = false
+    self.fabButton.Visible = true
+    self.fabButton.ZIndex = 200
+    self.fabButton.Parent = self.screenGui
+    
+    local fabCorner = Instance.new("UICorner")
+    fabCorner.CornerRadius = UDim.new(1, 0)
+    fabCorner.Parent = self.fabButton
+    
+    -- Touch support для мобильных
+    if self.isMobile then
+        local touchCount = 0
+        local lastTouchTime = 0
+        
+        self.fabButton.TouchTap:Connect(function()
+            local currentTime = tick()
+            if currentTime - lastTouchTime < 0.3 then
+                touchCount = touchCount + 1
+            else
+                touchCount = 1
+            end
+            lastTouchTime = currentTime
+            
+            if touchCount >= 2 then
+                self:show()
+                touchCount = 0
+            end
+        end)
+    else
+        self.fabButton.MouseButton1Click:Connect(function()
+            self:show()
+        end)
+    end
+end
+
+-- Основные методы
+function ElegantModMenu:show()
+    if self.window.Visible then return end
+    
+    self.modalBackground.Visible = true
+    tween(self.modalBackground, {BackgroundTransparency = 0.25})
+    
+    self.window.Visible = true
+    self.window.Size = UDim2.new(0, CONFIG.WINDOW_WIDTH, 0, 0)
+    self.window.Position = UDim2.new(0.5, -CONFIG.WINDOW_WIDTH/2, 0.5, 0)
+    
+    tween(self.window, {
+        Size = UDim2.new(0, CONFIG.WINDOW_WIDTH, 0, CONFIG.WINDOW_HEIGHT),
+        Position = UDim2.new(0.5, -CONFIG.WINDOW_WIDTH/2, 0.5, -CONFIG.WINDOW_HEIGHT/2)
+    }, 0.4)
+    
+    self.fabButton.Visible = false
+end
+
+function ElegantModMenu:hide()
+    if not self.window.Visible then return end
+    
+    if self.settingsWindow and self.settingsWindow.Visible then
+        self:hideSettingsMenu()
+    end
+    
+    tween(self.window, {
+        Size = UDim2.new(0, CONFIG.WINDOW_WIDTH, 0, 0),
+        Position = UDim2.new(0.5, -CONFIG.WINDOW_WIDTH/2, 0.5, 0)
+    }, 0.35)
+    
+    tween(self.modalBackground, {BackgroundTransparency = 1})
+    
+    task.delay(0.35, function()
+        self.window.Visible = false
+        self.modalBackground.Visible = false
+        self.fabButton.Visible = true
+    end)
+end
+
+function ElegantModMenu:toggle()
+    if self.window.Visible then
+        self:hide()
+    else
+        self:show()
+    end
+end
+
+-- Секции
+function ElegantModMenu:addSection(name)
+    local section = {
+        name = name,
+        elements = {}
+    }
+    
+    table.insert(self.sections, section)
+    self.currentSection = section
+    
+    local sectionHeader = Instance.new("Frame")
+    sectionHeader.Name = "SectionHeader"
+    sectionHeader.Size = UDim2.new(1, 0, 0, 36)
+    sectionHeader.BackgroundTransparency = 1
+    sectionHeader.LayoutOrder = #self.elements + 1
+    sectionHeader.ZIndex = 105
+    sectionHeader.Parent = self.scrollingFrame
+    
+    local sectionLabel = createTextLabel(string.upper(name), 13, sectionHeader)
+    sectionLabel.Size = UDim2.new(1, -12, 1, 0)
+    sectionLabel.Position = UDim2.new(0, 12, 0, 0)
+    sectionLabel.TextColor3 = self.accentColor
+    sectionLabel.Font = Enum.Font.GothamBold
+    sectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    table.insert(self.elements, sectionHeader)
+    
+    return section
+end
+
+-- Кнопка
+function ElegantModMenu:button(name, callback, icon, iconType)
+    local buttonContainer = createRoundedFrame()
+    buttonContainer.Name = "ButtonContainer"
+    buttonContainer.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    buttonContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    buttonContainer.BackgroundTransparency = 0.7
+    buttonContainer.LayoutOrder = #self.elements + 1
+    buttonContainer.ZIndex = 106
+    buttonContainer.Parent = self.scrollingFrame
+    
+    local button = createButton()
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.Parent = buttonContainer
+    
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -20, 1, 0)
+    content.Position = UDim2.new(0, 10, 0, 0)
+    content.BackgroundTransparency = 1
+    content.Parent = buttonContainer
+    
+    if icon then
+        if iconType == "image" then
+            local iconImage = createIcon("image", icon, content, 24)
+            iconImage.Size = UDim2.new(0, 28, 0, 28)
+            iconImage.Position = UDim2.new(0, 0, 0.5, -14)
+        else
+            local iconLabel = createIcon("emoji", icon, content, 18)
+            iconLabel.Size = UDim2.new(0, 28, 0, 28)
+            iconLabel.Position = UDim2.new(0, 0, 0.5, -14)
+            iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+        end
+    end
+    
+    local textLabel = createTextLabel(name, 15, content)
+    textLabel.Size = UDim2.new(1, icon and -35 or -15, 1, 0)
+    textLabel.Position = icon and UDim2.new(0, 35, 0, 0) or UDim2.new(0, 5, 0, 0)
+    textLabel.Font = Enum.Font.GothamSemibold
+    
+    local overlay = button:FindFirstChild("Overlay")
+    
+    button.MouseEnter:Connect(function()
+        tween(overlay, {BackgroundTransparency = 0.8})
+        tween(buttonContainer, {BackgroundTransparency = 0.6})
+    end)
+    
+    button.MouseLeave:Connect(function()
+        tween(overlay, {BackgroundTransparency = 1})
+        tween(buttonContainer, {BackgroundTransparency = 0.7})
+    end)
+    
+    -- Touch support для мобильных
+    local function triggerCallback()
+        if callback then
+            callback()
+        end
+    end
+    
+    if self.isMobile then
+        button.TouchTap:Connect(triggerCallback)
+    else
+        button.MouseButton1Click:Connect(triggerCallback)
+    end
+    
+    table.insert(self.elements, buttonContainer)
+    
+    return buttonContainer
+end
+
+-- Переключатель
+function ElegantModMenu:toggle(name, defaultState, callback, icon, iconType)
+    local state = defaultState or false
+    
+    local toggleContainer = createRoundedFrame()
+    toggleContainer.Name = "ToggleContainer"
+    toggleContainer.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    toggleContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    toggleContainer.BackgroundTransparency = 0.7
+    toggleContainer.LayoutOrder = #self.elements + 1
+    toggleContainer.ZIndex = 106
+    toggleContainer.Parent = self.scrollingFrame
+    
+    local button = createButton()
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.Parent = toggleContainer
+    
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -20, 1, 0)
+    content.Position = UDim2.new(0, 10, 0, 0)
+    content.BackgroundTransparency = 1
+    content.Parent = toggleContainer
+    
+    if icon then
+        if iconType == "image" then
+            local iconImage = createIcon("image", icon, content, 22)
+            iconImage.Size = UDim2.new(0, 26, 0, 26)
+            iconImage.Position = UDim2.new(0, 0, 0.5, -13)
+        else
+            local iconLabel = createIcon("emoji", icon, content, 16)
+            iconLabel.Size = UDim2.new(0, 26, 0, 26)
+            iconLabel.Position = UDim2.new(0, 0, 0.5, -13)
+            iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+        end
+    end
+    
+    local textLabel = createTextLabel(name, 15, content)
+    textLabel.Size = UDim2.new(0.7, icon and -35 or -15, 1, 0)
+    textLabel.Position = icon and UDim2.new(0, 35, 0, 0) or UDim2.new(0, 5, 0, 0)
+    textLabel.Font = Enum.Font.GothamSemibold
+    
+    local toggleBackground = Instance.new("Frame")
+    toggleBackground.Name = "ToggleBackground"
+    toggleBackground.Size = UDim2.new(0, 50, 0, 26)
+    toggleBackground.Position = UDim2.new(1, -60, 0.5, -13)
+    toggleBackground.BackgroundColor3 = state and self.accentColor or COLORS.BACKGROUND.TERTIARY
+    toggleBackground.BorderSizePixel = 0
+    toggleBackground.ZIndex = 107
+    toggleBackground.Parent = content
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 13)
+    toggleCorner.Parent = toggleBackground
+    
+    local toggleCircle = Instance.new("Frame")
+    toggleCircle.Name = "ToggleCircle"
+    toggleCircle.Size = UDim2.new(0, 20, 0, 20)
+    toggleCircle.Position = state and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+    toggleCircle.BackgroundColor3 = COLORS.TEXT.PRIMARY
+    toggleCircle.BorderSizePixel = 0
+    toggleCircle.ZIndex = 108
+    toggleCircle.Parent = toggleBackground
+    
+    local circleCorner = Instance.new("UICorner")
+    circleCorner.CornerRadius = UDim.new(0.5, 0)
+    circleCorner.Parent = toggleCircle
+    
+    local function setState(newState)
+        state = newState
+        
+        tween(toggleBackground, {
+            BackgroundColor3 = state and self.accentColor or COLORS.BACKGROUND.TERTIARY
+        })
+        
+        tween(toggleCircle, {
+            Position = state and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+        })
+        
+        if callback then
+            callback(state)
+        end
+    end
+    
+    -- Touch support для мобильных
+    if self.isMobile then
+        button.TouchTap:Connect(function()
+            setState(not state)
+        end)
+    else
+        button.MouseButton1Click:Connect(function()
+            setState(not state)
+        end)
+    end
+    
+    table.insert(self.elements, toggleContainer)
+    
+    return {
+        setState = function(newState)
+            setState(newState)
+        end,
+        getState = function()
+            return state
+        end
+    }
+end
+
+-- Слайдер
+function ElegantModMenu:slider(name, min, max, defaultValue, callback, icon, iconType)
+    local value = defaultValue or min
+    
+    local sliderContainer = createRoundedFrame()
+    sliderContainer.Name = "SliderContainer"
+    sliderContainer.Size = UDim2.new(1, 0, 0, 70)
+    sliderContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    sliderContainer.BackgroundTransparency = 0.7
+    sliderContainer.LayoutOrder = #self.elements + 1
+    sliderContainer.ZIndex = 106
+    sliderContainer.Parent = self.scrollingFrame
+    
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.Size = UDim2.new(1, -20, 0, 24)
+    header.Position = UDim2.new(0, 10, 0, 5)
+    header.BackgroundTransparency = 1
+    header.Parent = sliderContainer
+    
+    if icon then
+        if iconType == "image" then
+            local iconImage = createIcon("image", icon, header, 20)
+            iconImage.Size = UDim2.new(0, 24, 0, 24)
+        else
+            local iconLabel = createIcon("emoji", icon, header, 14)
+            iconLabel.Size = UDim2.new(0, 24, 0, 24)
+            iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+        end
+    end
+    
+    local nameLabel = createTextLabel(name, 14, header)
+    nameLabel.Size = UDim2.new(0.6, icon and -30 or -5, 1, 0)
+    nameLabel.Position = icon and UDim2.new(0, 30, 0, 0) or UDim2.new(0, 0, 0, 0)
+    nameLabel.Font = Enum.Font.GothamSemibold
+    
+    local valueLabel = createTextLabel(tostring(value), 14, header)
+    valueLabel.Size = UDim2.new(0.4, -5, 1, 0)
+    valueLabel.Position = UDim2.new(0.6, 5, 0, 0)
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valueLabel.TextColor3 = self.accentColor
+    valueLabel.Font = Enum.Font.GothamBold
+    
+    local track = Instance.new("Frame")
+    track.Name = "Track"
+    track.Size = UDim2.new(1, -20, 0, 10)
+    track.Position = UDim2.new(0, 10, 0, 45)
+    track.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    track.BorderSizePixel = 0
+    track.ZIndex = 107
+    track.Parent = sliderContainer
+    
+    local trackCorner = Instance.new("UICorner")
+    trackCorner.CornerRadius = UDim.new(0, 5)
+    trackCorner.Parent = track
+    
+    local fill = Instance.new("Frame")
+    fill.Name = "Fill"
+    fill.Size = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = self.accentColor
+    fill.BorderSizePixel = 0
+    fill.ZIndex = 108
+    fill.Parent = track
+    
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(0, 5)
+    fillCorner.Parent = fill
+    
+    local thumb = Instance.new("TextButton")
+    thumb.Name = "Thumb"
+    thumb.Size = UDim2.new(0, 24, 0, 24)
+    thumb.Position = UDim2.new(0, -12, 0.5, -12)
+    thumb.BackgroundColor3 = COLORS.TEXT.PRIMARY
+    thumb.BorderSizePixel = 0
+    thumb.Text = ""
+    thumb.AutoButtonColor = false
+    thumb.ZIndex = 109
+    thumb.Parent = track
+    
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(0.5, 0)
+    thumbCorner.Parent = thumb
+    
+    local function updateValue(newValue)
+        value = math.clamp(newValue, min, max)
+        value = math.floor(value * 100) / 100
+        
+        local percentage = (value - min) / (max - min)
+        
+        fill.Size = UDim2.new(percentage, 0, 1, 0)
+        thumb.Position = UDim2.new(percentage, -12, 0.5, -12)
+        valueLabel.Text = string.format("%.1f", value)
+        
+        if callback then
+            callback(value)
+        end
+    end
+    
+    local dragging = false
+    local userInputService = game:GetService("UserInputService")
+    
+    local function beginDrag()
+        dragging = true
+    end
+    
+    local function endDrag()
+        dragging = false
+    end
+    
+    if self.isMobile then
+        thumb.TouchStarted:Connect(beginDrag)
+        thumb.TouchEnded:Connect(endDrag)
+        track.TouchTap:Connect(function()
+            local touch = userInputService:GetTouchInputs()[1]
+            if touch then
+                local trackAbsolute = track.AbsolutePosition
+                local trackSize = track.AbsoluteSize
+                local relativeX = (touch.Position.X - trackAbsolute.X) / trackSize.X
+                local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+                updateValue(newValue)
+            end
+        end)
+    else
+        thumb.MouseButton1Down:Connect(beginDrag)
+        userInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                endDrag()
+            end
+        end)
+        
+        track.MouseButton1Down:Connect(function()
+            local mouse = userInputService:GetMouseLocation()
+            local trackAbsolute = track.AbsolutePosition
+            local trackSize = track.AbsoluteSize
+            local relativeX = (mouse.X - trackAbsolute.X) / trackSize.X
+            local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+            updateValue(newValue)
+        end)
+    end
+    
+    userInputService.InputChanged:Connect(function(input)
+        if dragging then
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                local mouse = userInputService:GetMouseLocation()
+                local trackAbsolute = track.AbsolutePosition
+                local trackSize = track.AbsoluteSize
+                local relativeX = (mouse.X - trackAbsolute.X) / trackSize.X
+                local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+                updateValue(newValue)
+            elseif input.UserInputType == Enum.UserInputType.Touch then
+                local touch = input.Position
+                local trackAbsolute = track.AbsolutePosition
+                local trackSize = track.AbsoluteSize
+                local relativeX = (touch.X - trackAbsolute.X) / trackSize.X
+                local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+                updateValue(newValue)
+            end
+        end
+    end)
+    
+    updateValue(value)
+    
+    table.insert(self.elements, sliderContainer)
+    
+    return {
+        setValue = function(newValue)
+            updateValue(newValue)
+        end,
+        getValue = function()
+            return value
+        end
+    }
+end
+
+-- Выпадающий список
+function ElegantModMenu:dropdown(name, options, defaultValue, callback, icon, iconType)
+    local selected = defaultValue or options[1]
+    local isOpen = false
+    
+    local dropdownContainer = createRoundedFrame()
+    dropdownContainer.Name = "DropdownContainer"
+    dropdownContainer.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    dropdownContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    dropdownContainer.BackgroundTransparency = 0.7
+    dropdownContainer.LayoutOrder = #self.elements + 1
+    dropdownContainer.ZIndex = 106
+    dropdownContainer.Parent = self.scrollingFrame
+    
+    local button = createButton()
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.Parent = dropdownContainer
+    
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -20, 1, 0)
+    content.Position = UDim2.new(0, 10, 0, 0)
+    content.BackgroundTransparency = 1
+    content.Parent = dropdownContainer
+    
+    if icon then
+        if iconType == "image" then
+            local iconImage = createIcon("image", icon, content, 22)
+            iconImage.Size = UDim2.new(0, 26, 0, 26)
+            iconImage.Position = UDim2.new(0, 0, 0.5, -13)
+        else
+            local iconLabel = createIcon("emoji", icon, content, 16)
+            iconLabel.Size = UDim2.new(0, 26, 0, 26)
+            iconLabel.Position = UDim2.new(0, 0, 0.5, -13)
+            iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+        end
+    end
+    
+    local nameLabel = createTextLabel(name, 15, content)
+    nameLabel.Size = UDim2.new(0.6, icon and -35 or -15, 1, 0)
+    nameLabel.Position = icon and UDim2.new(0, 35, 0, 0) or UDim2.new(0, 5, 0, 0)
+    nameLabel.Font = Enum.Font.GothamSemibold
+    
+    local valueLabel = createTextLabel(selected, 14, content)
+    valueLabel.Size = UDim2.new(0.3, -10, 1, 0)
+    valueLabel.Position = UDim2.new(0.7, 0, 0, 0)
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    valueLabel.TextColor3 = self.accentColor
+    valueLabel.Font = Enum.Font.GothamMedium
+    
+    local arrow = createTextLabel("▼", 12, content)
+    arrow.Size = UDim2.new(0, 20, 1, 0)
+    arrow.Position = UDim2.new(1, -20, 0, 0)
+    arrow.TextXAlignment = Enum.TextXAlignment.Center
+    arrow.TextColor3 = COLORS.TEXT.SECONDARY
+    
+    local dropdownList = Instance.new("Frame")
+    dropdownList.Name = "DropdownList"
+    dropdownList.Size = UDim2.new(1, 0, 0, 0)
+    dropdownList.Position = UDim2.new(0, 0, 1, 5)
+    dropdownList.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    dropdownList.BackgroundTransparency = 0.7
+    dropdownList.ClipsDescendants = true
+    dropdownList.Visible = false
+    dropdownList.ZIndex = 110
+    dropdownList.Parent = dropdownContainer
+    
+    local listCorner = Instance.new("UICorner")
+    listCorner.CornerRadius = UDim.new(0, 8)
+    listCorner.Parent = dropdownList
+    
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Padding = UDim.new(0, 2)
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Parent = dropdownList
+    
+    local function updateDropdown()
+        dropdownList:ClearAllChildren()
+        
+        for i, option in ipairs(options) do
+            local optionButton = Instance.new("TextButton")
+            optionButton.Name = "Option" .. i
+            optionButton.Size = UDim2.new(1, -10, 0, 32)
+            optionButton.Position = UDim2.new(0, 5, 0, (i-1)*34)
+            optionButton.BackgroundTransparency = 1
+            optionButton.Text = option
+            optionButton.TextColor3 = option == selected and self.accentColor or COLORS.TEXT.PRIMARY
+            optionButton.Font = Enum.Font.GothamMedium
+            optionButton.TextSize = 14
+            optionButton.AutoButtonColor = false
+            optionButton.ZIndex = 111
+            optionButton.Parent = dropdownList
+            
+            local optionOverlay = Instance.new("Frame")
+            optionOverlay.Name = "Overlay"
+            optionOverlay.Size = UDim2.new(1, 0, 1, 0)
+            optionOverlay.BackgroundTransparency = 1
+            optionOverlay.BackgroundColor3 = Color3.new(1, 1, 1)
+            optionOverlay.ZIndex = 112
+            optionOverlay.Parent = optionButton
+            
+            local optionCorner = Instance.new("UICorner")
+            optionCorner.CornerRadius = UDim.new(0, 6)
+            optionCorner.Parent = optionOverlay
+            
+            optionButton.MouseEnter:Connect(function()
+                tween(optionOverlay, {BackgroundTransparency = 0.9})
+            end)
+            
+            optionButton.MouseLeave:Connect(function()
+                tween(optionOverlay, {BackgroundTransparency = 1})
+            end)
+            
+            optionButton.MouseButton1Click:Connect(function()
+                selected = option
+                valueLabel.Text = selected
+                isOpen = false
+                dropdownList.Visible = false
+                tween(dropdownList, {Size = UDim2.new(1, 0, 0, 0)})
+                tween(arrow, {Rotation = 0})
+                
+                if callback then
+                    callback(selected)
+                end
+            end)
+            
+            -- Touch support
+            if self.isMobile then
+                optionButton.TouchTap:Connect(function()
+                    selected = option
+                    valueLabel.Text = selected
+                    isOpen = false
+                    dropdownList.Visible = false
+                    tween(dropdownList, {Size = UDim2.new(1, 0, 0, 0)})
+                    tween(arrow, {Rotation = 0})
+                    
+                    if callback then
+                        callback(selected)
+                    end
+                end)
+            end
+        end
+        
+        dropdownList.Size = UDim2.new(1, 0, 0, #options * 34)
+    end
+    
+    updateDropdown()
+    
+    local function toggleDropdown()
+        isOpen = not isOpen
+        
+        if isOpen then
+            dropdownList.Visible = true
+            tween(dropdownList, {Size = UDim2.new(1, 0, 0, #options * 34)})
+            tween(arrow, {Rotation = 180})
+        else
+            tween(dropdownList, {Size = UDim2.new(1, 0, 0, 0)})
+            tween(arrow, {Rotation = 0})
+            task.delay(0.3, function()
+                dropdownList.Visible = false
+            end)
+        end
+    end
+    
+    if self.isMobile then
+        button.TouchTap:Connect(toggleDropdown)
+    else
+        button.MouseButton1Click:Connect(toggleDropdown)
+    end
+    
+    table.insert(self.elements, dropdownContainer)
+    
+    return {
+        setSelected = function(option)
+            selected = option
+            valueLabel.Text = selected
+            if callback then
+                callback(selected)
+            end
+        end,
+        getSelected = function()
+            return selected
+        end,
+        updateOptions = function(newOptions)
+            options = newOptions
+            updateDropdown()
+        end
+    }
+end
+
+-- Текстовое поле
+function ElegantModMenu:textbox(name, placeholder, defaultValue, callback, icon, iconType)
+    local value = defaultValue or ""
+    
+    local textboxContainer = createRoundedFrame()
+    textboxContainer.Name = "TextboxContainer"
+    textboxContainer.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    textboxContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    textboxContainer.BackgroundTransparency = 0.7
+    textboxContainer.LayoutOrder = #self.elements + 1
+    textboxContainer.ZIndex = 106
+    textboxContainer.Parent = self.scrollingFrame
+    
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -20, 1, 0)
+    content.Position = UDim2.new(0, 10, 0, 0)
+    content.BackgroundTransparency = 1
+    content.Parent = textboxContainer
+    
+    if icon then
+        if iconType == "image" then
+            local iconImage = createIcon("image", icon, content, 22)
+            iconImage.Size = UDim2.new(0, 26, 0, 26)
+            iconImage.Position = UDim2.new(0, 0, 0.5, -13)
+        else
+            local iconLabel = createIcon("emoji", icon, content, 16)
+            iconLabel.Size = UDim2.new(0, 26, 0, 26)
+            iconLabel.Position = UDim2.new(0, 0, 0.5, -13)
+            iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+        end
+    end
+    
+    local nameLabel = createTextLabel(name, 15, content)
+    nameLabel.Size = UDim2.new(0.4, icon and -35 or -15, 1, 0)
+    nameLabel.Position = icon and UDim2.new(0, 35, 0, 0) or UDim2.new(0, 5, 0, 0)
+    nameLabel.Font = Enum.Font.GothamSemibold
+    
+    local textBox = Instance.new("TextBox")
+    textBox.Name = "TextBox"
+    textBox.Size = UDim2.new(0.6, -10, 0.7, 0)
+    textBox.Position = UDim2.new(0.4, 5, 0.15, 0)
+    textBox.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    textBox.BackgroundTransparency = 0.5
+    textBox.Text = value
+    textBox.PlaceholderText = placeholder or "Введите текст..."
+    textBox.TextColor3 = COLORS.TEXT.PRIMARY
+    textBox.Font = Enum.Font.GothamMedium
+    textBox.TextSize = 14
+    textBox.ClearTextOnFocus = false
+    textBox.ZIndex = 107
+    textBox.Parent = content
+    
+    local textBoxCorner = Instance.new("UICorner")
+    textBoxCorner.CornerRadius = UDim.new(0, 6)
+    textBoxCorner.Parent = textBox
+    
+    textBox.FocusLost:Connect(function()
+        value = textBox.Text
+        if callback then
+            callback(value)
+        end
+    end)
+    
+    table.insert(self.elements, textboxContainer)
+    
+    return {
+        setText = function(newText)
+            value = newText
+            textBox.Text = newText
+            if callback then
+                callback(value)
+            end
+        end,
+        getText = function()
+            return value
+        end
+    }
+end
+
+-- Цветовая палитра
+function ElegantModMenu:colorpicker(name, defaultColor, callback, icon, iconType)
+    local selectedColor = defaultColor or COLORS.THEME.PRIMARY
+    local isOpen = false
+    
+    local colorContainer = createRoundedFrame()
+    colorContainer.Name = "ColorContainer"
+    colorContainer.Size = UDim2.new(1, 0, 0, CONFIG.ELEMENT_HEIGHT)
+    colorContainer.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    colorContainer.BackgroundTransparency = 0.7
+    colorContainer.LayoutOrder = #self.elements + 1
+    colorContainer.ZIndex = 106
+    colorContainer.Parent = self.scrollingFrame
+    
+    local button = createButton()
+    button.Size = UDim2.new(1, 0, 1, 0)
+    button.Parent = colorContainer
+    
+    local content = Instance.new("Frame")
+    content.Name = "Content"
+    content.Size = UDim2.new(1, -20, 1, 0)
+    content.Position = UDim2.new(0, 10, 0, 0)
+    content.BackgroundTransparency = 1
+    content.Parent = colorContainer
+    
+    if icon then
+        if iconType == "image" then
+            local iconImage = createIcon("image", icon, content, 22)
+            iconImage.Size = UDim2.new(0, 26, 0, 26)
+            iconImage.Position = UDim2.new(0, 0, 0.5, -13)
+        else
+            local iconLabel = createIcon("emoji", icon, content, 16)
+            iconLabel.Size = UDim2.new(0, 26, 0, 26)
+            iconLabel.Position = UDim2.new(0, 0, 0.5, -13)
+            iconLabel.TextXAlignment = Enum.TextXAlignment.Left
+        end
+    end
+    
+    local nameLabel = createTextLabel(name, 15, content)
+    nameLabel.Size = UDim2.new(0.6, icon and -35 or -15, 1, 0)
+    nameLabel.Position = icon and UDim2.new(0, 35, 0, 0) or UDim2.new(0, 5, 0, 0)
+    nameLabel.Font = Enum.Font.GothamSemibold
+    
+    local colorPreview = Instance.new("Frame")
+    colorPreview.Name = "ColorPreview"
+    colorPreview.Size = UDim2.new(0, 40, 0, 30)
+    colorPreview.Position = UDim2.new(1, -50, 0.5, -15)
+    colorPreview.BackgroundColor3 = selectedColor
+    colorPreview.BorderSizePixel = 0
+    colorPreview.ZIndex = 107
+    colorPreview.Parent = content
+    
+    local previewCorner = Instance.new("UICorner")
+    previewCorner.CornerRadius = UDim.new(0, 6)
+    previewCorner.Parent = colorPreview
+    
+    local colorPickerWindow = Instance.new("Frame")
+    colorPickerWindow.Name = "ColorPickerWindow"
+    colorPickerWindow.Size = UDim2.new(0, 200, 0, 180)
+    colorPickerWindow.Position = UDim2.new(1, 10, 0, 0)
+    colorPickerWindow.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    colorPickerWindow.BackgroundTransparency = 0.1
+    colorPickerWindow.Visible = false
+    colorPickerWindow.ZIndex = 110
+    colorPickerWindow.Parent = colorContainer
+    
+    local pickerCorner = Instance.new("UICorner")
+    pickerCorner.CornerRadius = UDim.new(0, 8)
+    pickerCorner.Parent = colorPickerWindow
+    
+    local pickerStroke = Instance.new("UIStroke")
+    pickerStroke.Color = COLORS.THEME.LIGHT
+    pickerStroke.Thickness = 1
+    pickerStroke.Transparency = 0.3
+    pickerStroke.Parent = colorPickerWindow
+    
+    -- Простая реализация выбора цвета через RGB слайдеры
+    local redSlider = self:createColorSlider("R", 0, 255, selectedColor.R * 255, function(value)
+        selectedColor = Color3.fromRGB(value, selectedColor.G * 255, selectedColor.B * 255)
+        colorPreview.BackgroundColor3 = selectedColor
+        if callback then callback(selectedColor) end
+    end, colorPickerWindow, UDim2.new(0, 10, 0, 10))
+    
+    local greenSlider = self:createColorSlider("G", 0, 255, selectedColor.G * 255, function(value)
+        selectedColor = Color3.fromRGB(selectedColor.R * 255, value, selectedColor.B * 255)
+        colorPreview.BackgroundColor3 = selectedColor
+        if callback then callback(selectedColor) end
+    end, colorPickerWindow, UDim2.new(0, 10, 0, 50))
+    
+    local blueSlider = self:createColorSlider("B", 0, 255, selectedColor.B * 255, function(value)
+        selectedColor = Color3.fromRGB(selectedColor.R * 255, selectedColor.G * 255, value)
+        colorPreview.BackgroundColor3 = selectedColor
+        if callback then callback(selectedColor) end
+    end, colorPickerWindow, UDim2.new(0, 10, 0, 90))
+    
+    local function toggleColorPicker()
+        isOpen = not isOpen
+        colorPickerWindow.Visible = isOpen
+    end
+    
+    if self.isMobile then
+        button.TouchTap:Connect(toggleColorPicker)
+    else
+        button.MouseButton1Click:Connect(toggleColorPicker)
+    end
+    
+    table.insert(self.elements, colorContainer)
+    
+    return {
+        setColor = function(newColor)
+            selectedColor = newColor
+            colorPreview.BackgroundColor3 = selectedColor
+            if callback then callback(selectedColor) end
+        end,
+        getColor = function()
+            return selectedColor
+        end
+    }
+end
+
+function ElegantModMenu:createColorSlider(label, min, max, defaultValue, callback, parent, position)
+    local value = defaultValue
+    
+    local sliderFrame = Instance.new("Frame")
+    sliderFrame.Size = UDim2.new(1, -20, 0, 30)
+    sliderFrame.Position = position
+    sliderFrame.BackgroundTransparency = 1
+    sliderFrame.Parent = parent
+    
+    local labelText = createTextLabel(label, 14, sliderFrame)
+    labelText.Size = UDim2.new(0, 20, 1, 0)
+    
+    local valueText = createTextLabel(tostring(value), 14, sliderFrame)
+    valueText.Size = UDim2.new(0, 40, 1, 0)
+    valueText.Position = UDim2.new(1, -40, 0, 0)
+    valueText.TextXAlignment = Enum.TextXAlignment.Right
+    
+    local track = Instance.new("Frame")
+    track.Name = "Track"
+    track.Size = UDim2.new(1, -70, 0, 10)
+    track.Position = UDim2.new(0, 25, 0.5, -5)
+    track.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    track.BorderSizePixel = 0
+    track.Parent = sliderFrame
+    
+    local trackCorner = Instance.new("UICorner")
+    trackCorner.CornerRadius = UDim.new(0, 5)
+    trackCorner.Parent = track
+    
+    local fill = Instance.new("Frame")
+    fill.Name = "Fill"
+    fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(label == "R" and 255 or 0, label == "G" and 255 or 0, label == "B" and 255 or 0)
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(0, 5)
+    fillCorner.Parent = fill
+    
+    local thumb = Instance.new("TextButton")
+    thumb.Name = "Thumb"
+    thumb.Size = UDim2.new(0, 20, 0, 20)
+    thumb.Position = UDim2.new((value - min) / (max - min), -10, 0.5, -10)
+    thumb.BackgroundColor3 = COLORS.TEXT.PRIMARY
+    thumb.BorderSizePixel = 0
+    thumb.Text = ""
+    thumb.AutoButtonColor = false
+    thumb.Parent = track
+    
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(0.5, 0)
+    thumbCorner.Parent = thumb
+    
+    local function updateValue(newValue)
+        value = math.clamp(newValue, min, max)
+        local percentage = (value - min) / (max - min)
+        
+        fill.Size = UDim2.new(percentage, 0, 1, 0)
+        thumb.Position = UDim2.new(percentage, -10, 0.5, -10)
+        valueText.Text = tostring(math.floor(value))
+        
+        if callback then
+            callback(value)
+        end
+    end
+    
+    local dragging = false
+    local userInputService = game:GetService("UserInputService")
+    
+    if self.isMobile then
+        thumb.TouchStarted:Connect(function()
+            dragging = true
+        end)
+        
+        thumb.TouchEnded:Connect(function()
+            dragging = false
+        end)
+        
+        track.TouchTap:Connect(function(touchPositions)
+            if #touchPositions > 0 then
+                local touch = touchPositions[1]
+                local trackAbsolute = track.AbsolutePosition
+                local trackSize = track.AbsoluteSize
+                local relativeX = (touch.Position.X - trackAbsolute.X) / trackSize.X
+                local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+                updateValue(newValue)
+            end
+        end)
+    else
+        thumb.MouseButton1Down:Connect(function()
+            dragging = true
+        end)
+        
+        userInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+        
+        track.MouseButton1Down:Connect(function()
+            local mouse = userInputService:GetMouseLocation()
+            local trackAbsolute = track.AbsolutePosition
+            local trackSize = track.AbsoluteSize
+            local relativeX = (mouse.X - trackAbsolute.X) / trackSize.X
+            local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+            updateValue(newValue)
+        end)
+    end
+    
+    userInputService.InputChanged:Connect(function(input)
+        if dragging then
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                local mouse = userInputService:GetMouseLocation()
+                local trackAbsolute = track.AbsolutePosition
+                local trackSize = track.AbsoluteSize
+                local relativeX = (mouse.X - trackAbsolute.X) / trackSize.X
+                local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+                updateValue(newValue)
+            elseif input.UserInputType == Enum.UserInputType.Touch then
+                local touch = input.Position
+                local trackAbsolute = track.AbsolutePosition
+                local trackSize = track.AbsoluteSize
+                local relativeX = (touch.X - trackAbsolute.X) / trackSize.X
+                local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+                updateValue(newValue)
+            end
+        end
+    end)
+    
+    return sliderFrame
+end
+
+-- ESP система
+function ElegantModMenu:setupESP()
+    self.espObjects = {}
+    self.espConnections = {}
+    self.chamsCache = {}
+    
+    local function getTeam(player)
+        if player.Team then
+            return player.Team
+        end
+        return nil
+    end
+    
+    local function isEnemy(player)
+        if not self.espSettings.teamCheck then
+            return true
+        end
+        
+        local localPlayer = game.Players.LocalPlayer
+        local localTeam = getTeam(localPlayer)
+        local playerTeam = getTeam(player)
+        
+        return localTeam ~= playerTeam
+    end
+    
+    local function isFriend(player)
+        return self.friendsList[player.UserId] == true
+    end
+    
+    local function createChams(player)
+        if not player.Character or not self.espSettings.showChams then
+            return
+        end
+        
+        if self.chamsCache[player] then
+            for _, part in pairs(self.chamsCache[player]) do
+                if part then
+                    part:Destroy()
+                end
+            end
+        end
+        
+        self.chamsCache[player] = {}
+        
+        for _, part in pairs(player.Character:GetChildren()) do
+            if part:IsA("BasePart") then
+                local box = Instance.new("BoxHandleAdornment")
+                box.Name = "Chams_" .. part.Name
+                box.Adornee = part
+                box.AlwaysOnTop = true
+                box.ZIndex = 5
+                box.Size = part.Size
+                box.Transparency = self.espSettings.chamsTransparency
+                box.Color3 = self.espSettings.chamsColor
+                box.Visible = self.espSettings.showChams and isEnemy(player)
+                box.Parent = part
+                
+                table.insert(self.chamsCache[player], box)
+            end
+        end
+    end
+    
+    local function createESP(player)
+        if not player.Character or player == game.Players.LocalPlayer then
+            return
+        end
+        
+        if self.espObjects[player] then
+            for _, obj in pairs(self.espObjects[player]) do
+                if obj then
+                    obj:Destroy()
+                end
+            end
+        end
+        
+        self.espObjects[player] = {}
+        
+        -- Box ESP
+        local box = Instance.new("Frame")
+        box.Name = "ESPBox"
+        box.BackgroundTransparency = 1
+        box.BorderSizePixel = 2
+        box.BorderColor3 = self.espSettings.color
+        box.Visible = self.espSettings.showBox and isEnemy(player) and not isFriend(player)
+        box.ZIndex = 1000
+        box.Parent = self.screenGui
+        
+        -- Tracer
+        local tracer = Instance.new("Frame")
+        tracer.Name = "ESPTracer"
+        tracer.BackgroundTransparency = 0
+        tracer.BackgroundColor3 = self.espSettings.color
+        tracer.BorderSizePixel = 0
+        tracer.Size = UDim2.new(0, 2, 0, 0)
+        tracer.Visible = self.espSettings.showTracer and isEnemy(player) and not isFriend(player)
+        tracer.ZIndex = 999
+        tracer.Parent = self.screenGui
+        
+        -- Health bar
+        local healthBar = Instance.new("Frame")
+        healthBar.Name = "ESPHealth"
+        healthBar.BackgroundTransparency = 0
+        healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+        healthBar.BorderSizePixel = 1
+        healthBar.BorderColor3 = Color3.fromRGB(0, 0, 0)
+        healthBar.Visible = self.espSettings.showHealth and isEnemy(player) and not isFriend(player)
+        healthBar.ZIndex = 1001
+        healthBar.Parent = self.screenGui
+        
+        -- Name label
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "ESPName"
+        nameLabel.Text = player.Name
+        nameLabel.TextColor3 = self.espSettings.color
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.TextSize = 14
+        nameLabel.Visible = self.espSettings.showName and isEnemy(player) and not isFriend(player)
+        nameLabel.ZIndex = 1002
+        nameLabel.Parent = self.screenGui
+        
+        -- Distance label
+        local distanceLabel = Instance.new("TextLabel")
+        distanceLabel.Name = "ESPDistance"
+        distanceLabel.Text = "0 studs"
+        distanceLabel.TextColor3 = self.espSettings.color
+        distanceLabel.BackgroundTransparency = 1
+        distanceLabel.Font = Enum.Font.Gotham
+        distanceLabel.TextSize = 12
+        distanceLabel.Visible = self.espSettings.showDistance and isEnemy(player) and not isFriend(player)
+        distanceLabel.ZIndex = 1002
+        distanceLabel.Parent = self.screenGui
+        
+        -- Skeleton lines
+        local skeletonLines = {}
+        if self.espSettings.showSkeleton then
+            local connections = {
+                {"HumanoidRootPart", "Head"},
+                {"HumanoidRootPart", "LeftUpperArm"},
+                {"HumanoidRootPart", "RightUpperArm"},
+                {"HumanoidRootPart", "LeftUpperLeg"},
+                {"HumanoidRootPart", "RightUpperLeg"},
+                {"LeftUpperArm", "LeftLowerArm"},
+                {"RightUpperArm", "RightLowerArm"},
+                {"LeftUpperLeg", "LeftLowerLeg"},
+                {"RightUpperLeg", "RightLowerLeg"},
+                {"LeftLowerArm", "LeftHand"},
+                {"RightLowerArm", "RightHand"},
+                {"LeftLowerLeg", "LeftFoot"},
+                {"RightLowerLeg", "RightFoot"}
+            }
+            
+            for _, connection in pairs(connections) do
+                local line = Instance.new("Frame")
+                line.Name = "SkeletonLine_" .. connection[1] .. "_" .. connection[2]
+                line.BackgroundTransparency = 0
+                line.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                line.BorderSizePixel = 0
+                line.Visible = false
+                line.ZIndex = 998
+                line.Parent = self.screenGui
+                table.insert(skeletonLines, line)
+            end
+        end
+        
+        self.espObjects[player] = {
+            box = box,
+            tracer = tracer,
+            healthBar = healthBar,
+            nameLabel = nameLabel,
+            distanceLabel = distanceLabel,
+            skeletonLines = skeletonLines
+        }
+        
+        -- Создаем Chams если включено
+        if self.espSettings.showChams then
+            createChams(player)
+        end
+    end
+    
+    local function updateSkeleton(player, objects)
+        if not objects.skeletonLines or not self.espSettings.showSkeleton then return end
+        
+        local character = player.Character
+        if not character then return end
+        
+        local camera = workspace.CurrentCamera
+        local connections = {
+            {"HumanoidRootPart", "Head"},
+            {"HumanoidRootPart", "LeftUpperArm"},
+            {"HumanoidRootPart", "RightUpperArm"},
+            {"HumanoidRootPart", "LeftUpperLeg"},
+            {"HumanoidRootPart", "RightUpperLeg"},
+            {"LeftUpperArm", "LeftLowerArm"},
+            {"RightUpperArm", "RightLowerArm"},
+            {"LeftUpperLeg", "LeftLowerLeg"},
+            {"RightUpperLeg", "RightLowerLeg"},
+            {"LeftLowerArm", "LeftHand"},
+            {"RightLowerArm", "RightHand"},
+            {"LeftLowerLeg", "LeftFoot"},
+            {"RightLowerLeg", "RightFoot"}
+        }
+        
+        for i, connection in ipairs(connections) do
+            local line = objects.skeletonLines[i]
+            if line then
+                local part1 = character:FindFirstChild(connection[1])
+                local part2 = character:FindFirstChild(connection[2])
+                
+                if part1 and part2 then
+                    local pos1, onScreen1 = camera:WorldToViewportPoint(part1.Position)
+                    local pos2, onScreen2 = camera:WorldToViewportPoint(part2.Position)
+                    
+                    if onScreen1 and onScreen2 then
+                        local distance = (part1.Position - camera.CFrame.Position).Magnitude
+                        if distance <= self.espSettings.maxDistance then
+                            local midpoint = Vector2.new((pos1.X + pos2.X) / 2, (pos1.Y + pos2.Y) / 2)
+                            local length = (Vector2.new(pos1.X, pos1.Y) - Vector2.new(pos2.X, pos2.Y)).Magnitude
+                            local angle = math.atan2(pos2.Y - pos1.Y, pos2.X - pos1.X)
+                            
+                            line.Position = UDim2.new(0, midpoint.X - length/2, 0, midpoint.Y)
+                            line.Size = UDim2.new(0, length, 0, 1)
+                            line.Rotation = math.deg(angle)
+                            line.Visible = true
+                        else
+                            line.Visible = false
+                        end
+                    else
+                        line.Visible = false
+                    end
+                else
+                    line.Visible = false
+                end
+            end
+        end
+    end
+    
+    local function updateESP()
+        if not self.espSettings.enabled then return end
+        
+        local camera = workspace.CurrentCamera
+        if not camera then return end
+        
+        for player, objects in pairs(self.espObjects) do
+            if not player or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+                for _, obj in pairs(objects) do
+                    if obj and obj ~= objects.skeletonLines then
+                        obj.Visible = false
+                    end
+                end
+                continue
+            end
+            
+            if not isEnemy(player) or isFriend(player) then
+                for _, obj in pairs(objects) do
+                    if obj and obj ~= objects.skeletonLines then
+                        obj.Visible = false
+                    end
+                end
+                if objects.skeletonLines then
+                    for _, line in pairs(objects.skeletonLines) do
+                        line.Visible = false
+                    end
+                end
+                continue
+            end
+            
+            local rootPart = player.Character.HumanoidRootPart
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            
+            if not rootPart or not humanoid then
+                continue
+            end
+            
+            local position, onScreen = camera:WorldToViewportPoint(rootPart.Position)
+            local distance = (rootPart.Position - camera.CFrame.Position).Magnitude
+            
+            if distance > self.espSettings.maxDistance then
+                for _, obj in pairs(objects) do
+                    if obj and obj ~= objects.skeletonLines then
+                        obj.Visible = false
+                    end
+                end
+                if objects.skeletonLines then
+                    for _, line in pairs(objects.skeletonLines) do
+                        line.Visible = false
+                    end
+                end
+                continue
+            end
+            
+            if onScreen then
+                local height = 40
+                local width = 20
+                
+                -- Box
+                if objects.box then
+                    objects.box.Position = UDim2.new(0, position.X - width/2, 0, position.Y - height/2)
+                    objects.box.Size = UDim2.new(0, width, 0, height)
+                    objects.box.Visible = self.espSettings.showBox
+                end
+                
+                -- Tracer
+                if objects.tracer then
+                    objects.tracer.Position = UDim2.new(0.5, 0, 1, -100)
+                    objects.tracer.Size = UDim2.new(0, 2, 0, math.min(200, position.Y - 100))
+                    objects.tracer.Visible = self.espSettings.showTracer
+                end
+                
+                -- Health bar
+                if objects.healthBar then
+                    local healthPercent = humanoid.Health / humanoid.MaxHealth
+                    objects.healthBar.Position = UDim2.new(0, position.X - width/2 - 6, 0, position.Y - height/2)
+                    objects.healthBar.Size = UDim2.new(0, 3, 0, height * healthPercent)
+                    objects.healthBar.BackgroundColor3 = Color3.fromRGB(
+                        255 * (1 - healthPercent),
+                        255 * healthPercent,
+                        0
+                    )
+                    objects.healthBar.Visible = self.espSettings.showHealth
+                end
+                
+                -- Name
+                if objects.nameLabel then
+                    objects.nameLabel.Position = UDim2.new(0, position.X - width/2, 0, position.Y - height/2 - 20)
+                    objects.nameLabel.Text = player.Name
+                    objects.nameLabel.Visible = self.espSettings.showName
+                end
+                
+                -- Distance
+                if objects.distanceLabel then
+                    objects.distanceLabel.Position = UDim2.new(0, position.X - width/2, 0, position.Y + height/2 + 5)
+                    objects.distanceLabel.Text = string.format("%.0f studs", distance)
+                    objects.distanceLabel.Visible = self.espSettings.showDistance
+                end
+                
+                -- Skeleton
+                if self.espSettings.showSkeleton then
+                    updateSkeleton(player, objects)
+                end
+            else
+                for _, obj in pairs(objects) do
+                    if obj and obj ~= objects.skeletonLines then
+                        obj.Visible = false
+                    end
+                end
+                if objects.skeletonLines then
+                    for _, line in pairs(objects.skeletonLines) do
+                        line.Visible = false
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Обновление Chams
+    local function updateChams()
+        if not self.espSettings.showChams then return end
+        
+        for player, chams in pairs(self.chamsCache) do
+            if player and player.Character then
+                local isVisible = self.espSettings.enabled and isEnemy(player) and not isFriend(player)
+                for _, cham in pairs(chams) do
+                    if cham then
+                        cham.Visible = isVisible
+                        cham.Color3 = self.espSettings.chamsColor
+                        cham.Transparency = self.espSettings.chamsTransparency
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Инициализация ESP для всех игроков
+    for _, player in pairs(game.Players:GetPlayers()) do
+        createESP(player)
+        if self.espSettings.showChams then
+            createChams(player)
+        end
+    end
+    
+    -- Обработчик добавления игроков
+    local playerAddedConnection = game.Players.PlayerAdded:Connect(function(player)
+        createESP(player)
+        if self.espSettings.showChams then
+            createChams(player)
+        end
+    end)
+    
+    -- Обработчик удаления игроков
+    local playerRemovingConnection = game.Players.PlayerRemoving:Connect(function(player)
+        if self.espObjects[player] then
+            for _, obj in pairs(self.espObjects[player]) do
+                if obj then
+                    if type(obj) == "table" then
+                        for _, line in pairs(obj) do
+                            if line then
+                                line:Destroy()
+                            end
+                        end
+                    else
+                        obj:Destroy()
+                    end
+                end
+            end
+            self.espObjects[player] = nil
+        end
+        
+        if self.chamsCache[player] then
+            for _, cham in pairs(self.chamsCache[player]) do
+                if cham then
+                    cham:Destroy()
+                end
+            end
+            self.chamsCache[player] = nil
+        end
+    end)
+    
+    -- Основной цикл обновления ESP
+    local runService = game:GetService("RunService")
+    local espUpdateConnection = runService.RenderStepped:Connect(function()
+        if self.espSettings.enabled then
+            updateESP()
+            updateChams()
+        else
+            -- Скрываем все ESP объекты
+            for _, objects in pairs(self.espObjects) do
+                for _, obj in pairs(objects) do
+                    if obj and obj ~= objects.skeletonLines then
+                        obj.Visible = false
+                    end
+                end
+                if objects.skeletonLines then
+                    for _, line in pairs(objects.skeletonLines) do
+                        line.Visible = false
+                    end
+                end
+            end
+            
+            -- Скрываем все Chams
+            for _, chams in pairs(self.chamsCache) do
+                for _, cham in pairs(chams) do
+                    if cham then
+                        cham.Visible = false
+                    end
+                end
+            end
+        end
+    end)
+    
+    self.espConnections = {
+        playerAdded = playerAddedConnection,
+        playerRemoving = playerRemovingConnection,
+        espUpdate = espUpdateConnection
+    }
+end
+
+-- AimBot система
+function ElegantModMenu:setupAimBot()
+    self.aimBotActive = false
+    self.currentTarget = nil
+    
+    local function getTeam(player)
+        if player.Team then
+            return player.Team
+        end
+        return nil
+    end
+    
+    local function isEnemy(player)
+        if not self.aimSettings.teamCheck then
+            return true
+        end
+        
+        local localPlayer = game.Players.LocalPlayer
+        local localTeam = getTeam(localPlayer)
+        local playerTeam = getTeam(player)
+        
+        return localTeam ~= playerTeam
+    end
+    
+    local function isFriend(player)
+        return self.friendsList[player.UserId] == true
+    end
+    
+    local function isVisible(targetPart)
+        if not self.aimSettings.wallCheck then
+            return true
+        end
+        
+        local camera = workspace.CurrentCamera
+        local origin = camera.CFrame.Position
+        local direction = (targetPart.Position - origin).Unit
+        local ray = Ray.new(origin, direction * 1000)
+        
+        local hit, position = workspace:FindPartOnRayWithIgnoreList(ray, {game.Players.LocalPlayer.Character})
+        
+        if hit then
+            local targetModel = targetPart:FindFirstAncestorOfClass("Model")
+            local hitModel = hit:FindFirstAncestorOfClass("Model")
+            
+            if targetModel and hitModel and targetModel == hitModel then
+                return true
+            end
+        end
+        
+        return false
+    end
+    
+    local function getClosestTarget()
+        local camera = workspace.CurrentCamera
+        if not camera then return nil end
+        
+        local localPlayer = game.Players.LocalPlayer
+        if not localPlayer.Character or not localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            return nil
+        end
+        
+        local closestDistance = math.huge
+        local closestPlayer = nil
+        local closestPart = nil
+        
+        for _, player in pairs(game.Players:GetPlayers()) do
+            if player == localPlayer then continue end
+            if not isEnemy(player) then continue end
+            if self.aimSettings.friendCheck and isFriend(player) then continue end
+            if not player.Character then continue end
+            
+            local targetPart = player.Character:FindFirstChild(self.aimSettings.aimPart)
+            if not targetPart then continue end
+            
+            if self.aimSettings.visibleCheck and not isVisible(targetPart) then continue end
+            
+            local screenPoint, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+            
+            if onScreen then
+                local mouse = game:GetService("UserInputService"):GetMouseLocation()
+                local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - Vector2.new(mouse.X, mouse.Y)).Magnitude
+                
+                if distance < self.aimSettings.fov and distance < closestDistance then
+                    closestDistance = distance
+                    closestPlayer = player
+                    closestPart = targetPart
+                end
+            end
+        end
+        
+        return closestPlayer, closestPart
+    end
+    
+    local userInputService = game:GetService("UserInputService")
+    
+    self.aimBotConnection = userInputService.InputBegan:Connect(function(input)
+        if input.UserInputType == self.aimSettings.aimKey and self.aimSettings.enabled then
+            self.aimBotActive = true
+            
+            local target, targetPart = getClosestTarget()
+            self.currentTarget = target
+            
+            if target and targetPart then
+                local runService = game:GetService("RunService")
+                
+                while self.aimBotActive and self.aimSettings.enabled and target and targetPart do
+                    if not target.Character or not target.Character:FindFirstChild(self.aimSettings.aimPart) then
+                        break
+                    end
+                    
+                    targetPart = target.Character:FindFirstChild(self.aimSettings.aimPart)
+                    
+                    if targetPart then
+                        local camera = workspace.CurrentCamera
+                        local targetPosition = targetPart.Position
+                        
+                        -- Предсказание движения
+                        if targetPart.Velocity.Magnitude > 0 then
+                            targetPosition = targetPosition + (targetPart.Velocity * self.aimSettings.prediction)
+                        end
+                        
+                        local currentCFrame = camera.CFrame
+                        local targetCFrame = CFrame.lookAt(currentCFrame.Position, targetPosition)
+                        
+                        -- Плавное наведение
+                        local smoothness = math.max(1, self.aimSettings.smoothness)
+                        local newCFrame = currentCFrame:Lerp(targetCFrame, 1/smoothness)
+                        
+                        camera.CFrame = newCFrame
+                    end
+                    
+                    runService.RenderStepped:Wait()
+                end
+            end
+        end
+    end)
+    
+    self.aimBotEndConnection = userInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == self.aimSettings.aimKey then
+            self.aimBotActive = false
+            self.currentTarget = nil
+        end
+    end)
+end
+
+-- Локальные функции
+function ElegantModMenu:setupLocalFunctions()
+    local localPlayer = game.Players.LocalPlayer
+    
+    -- Speed Hack
+    local speedConnection
+    self.speedToggle = self:toggle("Speed Hack", false, function(state)
+        self.localSettings.speedHack = state
+        
+        if speedConnection then
+            speedConnection:Disconnect()
+            speedConnection = nil
+        end
+        
+        if state then
+            speedConnection = game:GetService("RunService").RenderStepped:Connect(function()
+                if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+                    local humanoid = localPlayer.Character.Humanoid
+                    humanoid.WalkSpeed = 16 * self.localSettings.speedMultiplier
+                end
+            end)
+        else
+            if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+                localPlayer.Character.Humanoid.WalkSpeed = 16
+            end
+        end
+    end, "⚡", "emoji")
+    
+    -- Jump Power
+    local jumpConnection
+    self.jumpToggle = self:toggle("Super Jump", false, function(state)
+        self.localSettings.jumpPower = state
+        
+        if jumpConnection then
+            jumpConnection:Disconnect()
+            jumpConnection = nil
+        end
+        
+        if state then
+            jumpConnection = game:GetService("RunService").RenderStepped:Connect(function()
+                if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+                    local humanoid = localPlayer.Character.Humanoid
+                    humanoid.JumpPower = 50 * self.localSettings.jumpMultiplier
+                end
+            end)
+        else
+            if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+                localPlayer.Character.Humanoid.JumpPower = 50
+            end
+        end
+    end, "🦘", "emoji")
+    
+    -- Noclip
+    local noclipConnection
+    self.noclipToggle = self:toggle("Noclip", false, function(state)
+        self.localSettings.noclip = state
+        
+        if noclipConnection then
+            noclipConnection:Disconnect()
+            noclipConnection = nil
+        end
+        
+        if state then
+            noclipConnection = game:GetService("RunService").Stepped:Connect(function()
+                if localPlayer.Character then
+                    for _, part in pairs(localPlayer.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        else
+            if localPlayer.Character then
+                for _, part in pairs(localPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = true
+                    end
+                end
+            end
+        end
+    end, "👻", "emoji")
+    
+    -- Fly
+    local flyConnection
+    self.flyToggle = self:toggle("Fly", false, function(state)
+        self.localSettings.fly = state
+        
+        if flyConnection then
+            flyConnection:Disconnect()
+            flyConnection = nil
+        end
+        
+        if state then
+            local bodyVelocity = Instance.new("BodyVelocity")
+            bodyVelocity.MaxForce = Vector3.new(10000, 10000, 10000)
+            bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            
+            if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                bodyVelocity.Parent = localPlayer.Character.HumanoidRootPart
+            end
+            
+            flyConnection = game:GetService("RunService").RenderStepped:Connect(function()
+                if not bodyVelocity or not bodyVelocity.Parent then return end
+                
+                local userInputService = game:GetService("UserInputService")
+                local camera = workspace.CurrentCamera
+                local root = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+                
+                if not root then return end
+                
+                local forward = camera.CFrame.LookVector
+                local right = camera.CFrame.RightVector
+                local up = Vector3.new(0, 1, 0)
+                
+                local direction = Vector3.new(0, 0, 0)
+                
+                if userInputService:IsKeyDown(Enum.KeyCode.W) then
+                    direction = direction + forward
+                end
+                if userInputService:IsKeyDown(Enum.KeyCode.S) then
+                    direction = direction - forward
+                end
+                if userInputService:IsKeyDown(Enum.KeyCode.D) then
+                    direction = direction + right
+                end
+                if userInputService:IsKeyDown(Enum.KeyCode.A) then
+                    direction = direction - right
+                end
+                if userInputService:IsKeyDown(Enum.KeyCode.Space) then
+                    direction = direction + up
+                end
+                if userInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                    direction = direction - up
+                end
+                
+                if direction.Magnitude > 0 then
+                    direction = direction.Unit * self.localSettings.flySpeed
+                end
+                
+                bodyVelocity.Velocity = direction * 100
+            end)
+            
+            self.flyConnection = flyConnection
+            self.flyBodyVelocity = bodyVelocity
+        else
+            if self.flyBodyVelocity then
+                self.flyBodyVelocity:Destroy()
+                self.flyBodyVelocity = nil
+            end
+        end
+    end, "🕊️", "emoji")
+    
+    -- Infinite Jump
+    local infiniteJumpConnection
+    self.infiniteJumpToggle = self:toggle("Infinite Jump", false, function(state)
+        self.localSettings.infiniteJump = state
+        
+        if infiniteJumpConnection then
+            infiniteJumpConnection:Disconnect()
+            infiniteJumpConnection = nil
+        end
+        
+        if state then
+            infiniteJumpConnection = game:GetService("UserInputService").JumpRequest:Connect(function()
+                if localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+                    localPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end)
+        end
+    end, "∞", "emoji")
+    
+    -- Anti-AFK
+    self.antiAfkToggle = self:toggle("Anti-AFK", true, function(state)
+        self.localSettings.antiAfk = state
+        
+        if state then
+            local vu = game:GetService("VirtualUser")
+            game:GetService("Players").LocalPlayer.Idled:Connect(function()
+                vu:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                wait(1)
+                vu:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+            end)
+        end
+    end, "⏰", "emoji")
+end
+
+-- Настройки атмосферы
+function ElegantModMenu:setupAtmosphere()
+    local lighting = game:GetService("Lighting")
+    
+    -- Сохраняем оригинальные настройки
+    self.originalAtmosphere = {
+        ambient = lighting.Ambient,
+        outdoorAmbient = lighting.OutdoorAmbient,
+        brightness = lighting.Brightness,
+        globalShadows = lighting.GlobalShadows,
+        fogStart = lighting.FogStart,
+        fogEnd = lighting.FogEnd,
+        fogColor = lighting.FogColor
+    }
+    
+    -- Функция применения настроек атмосферы
+    local function applyAtmosphere()
+        lighting.Ambient = self.atmosphereSettings.ambient
+        lighting.OutdoorAmbient = self.atmosphereSettings.outdoorAmbient
+        lighting.Brightness = self.atmosphereSettings.brightness
+        lighting.GlobalShadows = self.atmosphereSettings.globalShadows
+        lighting.FogStart = self.atmosphereSettings.fogStart
+        lighting.FogEnd = self.atmosphereSettings.fogEnd
+        lighting.FogColor = self.atmosphereSettings.fogColor
+    end
+    
+    -- Восстановление оригинальных настроек
+    local function restoreAtmosphere()
+        lighting.Ambient = self.originalAtmosphere.ambient
+        lighting.OutdoorAmbient = self.originalAtmosphere.outdoorAmbient
+        lighting.Brightness = self.originalAtmosphere.brightness
+        lighting.GlobalShadows = self.originalAtmosphere.globalShadows
+        lighting.FogStart = self.originalAtmosphere.fogStart
+        lighting.FogEnd = self.originalAtmosphere.fogEnd
+        lighting.FogColor = self.originalAtmosphere.fogColor
+    end
+    
+    -- Применяем настройки при изменении
+    self.atmosphereToggle = self:toggle("Atmosphere Mod", false, function(state)
+        if state then
+            applyAtmosphere()
+        else
+            restoreAtmosphere()
+        end
+    end, "🌅", "emoji")
+    
+    -- Слайдеры для настроек атмосферы
+    self.brightnessSlider = self:slider("Brightness", 0, 10, 2, function(value)
+        self.atmosphereSettings.brightness = value
+        if self.atmosphereToggle.getState() then
+            lighting.Brightness = value
+        end
+    end, "☀️", "emoji")
+    
+    self.fogStartSlider = self:slider("Fog Start", 0, 1000, 0, function(value)
+        self.atmosphereSettings.fogStart = value
+        if self.atmosphereToggle.getState() then
+            lighting.FogStart = value
+        end
+    end, "🌫️", "emoji")
+    
+    self.fogEndSlider = self:slider("Fog End", 0, 10000, 1000, function(value)
+        self.atmosphereSettings.fogEnd = value
+        if self.atmosphereToggle.getState() then
+            lighting.FogEnd = value
+        end
+    end, "🌁", "emoji")
+    
+    -- Color picker для цвета тумана
+    self.fogColorPicker = self:colorpicker("Fog Color", Color3.fromRGB(191, 191, 191), function(color)
+        self.atmosphereSettings.fogColor = color
+        if self.atmosphereToggle.getState() then
+            lighting.FogColor = color
+        end
+    end, "🎨", "emoji")
+end
+
+-- Меню настроек
+function ElegantModMenu:showSettingsMenu()
+    if self.settingsWindow and self.settingsWindow.Parent then
+        self.settingsWindow:Destroy()
+    end
+    
+    local settingsWindow = Instance.new("Frame")
+    settingsWindow.Name = "SettingsWindow"
+    settingsWindow.Size = UDim2.new(0, self.isMobile and 320 or 350, 0, 500)
+    settingsWindow.Position = UDim2.new(0.5, - (self.isMobile and 160 or 175), 0.5, -250)
+    settingsWindow.BackgroundColor3 = COLORS.BACKGROUND.PRIMARY
+    settingsWindow.BackgroundTransparency = 0.1
+    settingsWindow.ZIndex = 300
+    settingsWindow.Parent = self.screenGui
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 16)
+    corner.Parent = settingsWindow
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = self.accentColor
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.3
+    stroke.Parent = settingsWindow
+    
+    -- Заголовок
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.Size = UDim2.new(1, 0, 0, 60)
+    header.BackgroundColor3 = COLORS.BACKGROUND.SECONDARY
+    header.BackgroundTransparency = 0.1
+    header.ZIndex = 301
+    header.Parent = settingsWindow
+    
+    local headerCorner = Instance.new("UICorner")
+    headerCorner.CornerRadius = UDim.new(0, 16, 0, 0)
+    headerCorner.Parent = header
+    
+    local title = createTextLabel("НАСТРОЙКИ", 22, header)
+    title.Size = UDim2.new(1, -20, 1, 0)
+    title.Position = UDim2.new(0, 15, 0, 0)
+    title.Font = Enum.Font.GothamBold
+    title.TextColor3 = self.accentColor
+    
+    -- Контент с вкладками
+    local tabContainer = Instance.new("Frame")
+    tabContainer.Name = "TabContainer"
+    tabContainer.Size = UDim2.new(1, -20, 1, -80)
+    tabContainer.Position = UDim2.new(0, 10, 0, 70)
+    tabContainer.BackgroundTransparency = 1
+    tabContainer.ZIndex = 302
+    tabContainer.Parent = settingsWindow
+    
+    -- Табы
+    local tabs = {"Меню", "ESP", "AimBot", "Атмосфера"}
+    local currentTab = "Меню"
+    
+    local tabButtons = Instance.new("Frame")
+    tabButtons.Name = "TabButtons"
+    tabButtons.Size = UDim2.new(1, 0, 0, 40)
+    tabButtons.BackgroundTransparency = 1
+    tabButtons.Parent = tabContainer
+    
+    local tabContent = Instance.new("Frame")
+    tabContent.Name = "TabContent"
+    tabContent.Size = UDim2.new(1, 0, 1, -45)
+    tabContent.Position = UDim2.new(0, 0, 0, 45)
+    tabContent.BackgroundTransparency = 1
+    tabContent.ClipsDescendants = true
+    tabContent.Parent = tabContainer
+    
+    -- Создаем контент для каждой вкладки
+    local function createMenuTab()
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Size = UDim2.new(1, 0, 1, 0)
+        scroll.BackgroundTransparency = 1
+        scroll.ScrollBarThickness = 5
+        scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        scroll.Parent = tabContent
+        
+        local list = Instance.new("UIListLayout")
+        list.Padding = UDim.new(0, 10)
+        list.SortOrder = Enum.SortOrder.LayoutOrder
+        list.Parent = scroll
+        
+        -- Настройки водяного знака
+        local watermarkToggle = self:createSettingsToggle("Водяной знак", self.settings.showWatermark, function(state)
+            self.settings.showWatermark = state
+            self.watermark.Visible = state
+            if state then
+                self:animateWatermark()
+            end
+        end, scroll)
+        watermarkToggle.LayoutOrder = 1
+        
+        local watermarkSpeed = self:createSettingsSlider("Скорость анимации", 0.5, 3, self.settings.watermarkSpeed, function(value)
+            self.settings.watermarkSpeed = value
+        end, scroll)
+        watermarkSpeed.LayoutOrder = 2
+        
+        local opacitySlider = self:createSettingsSlider("Прозрачность меню", 0.5, 1, self.settings.menuOpacity, function(value)
+            self.settings.menuOpacity = value
+            self.window.BackgroundTransparency = 1 - value
+            self.header.BackgroundTransparency = 1 - value
+        end, scroll)
+        opacitySlider.LayoutOrder = 3
+        
+        local animationSpeed = self:createSettingsSlider("Скорость анимации", 0.1, 1, self.settings.animationSpeed, function(value)
+            self.settings.animationSpeed = value
+        end, scroll)
+        animationSpeed.LayoutOrder = 4
+        
+        local themeColor = self:createSettingsColor("Цвет темы", self.settings.themeColor, function(color)
+            self.settings.themeColor = color
+            self.accentColor = color
+            -- Обновляем цвет элементов
+            if self.window then
+                local stroke = self.window:FindFirstChild("UIStroke")
+                if stroke then
+                    stroke.Color = color
+                end
+            end
+        end, scroll)
+        themeColor.LayoutOrder = 5
+        
+        return scroll
+    end
+    
+    local function createESPTab()
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Size = UDim2.new(1, 0, 1, 0)
+        scroll.BackgroundTransparency = 1
+        scroll.ScrollBarThickness = 5
+        scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        scroll.Parent = tabContent
+        
+        local list = Instance.new("UIListLayout")
+        list.Padding = UDim.new(0, 10)
+        list.SortOrder = Enum.SortOrder.LayoutOrder
+        list.Parent = scroll
+        
+        local toggles = {
+            {"Включено", "espSettings.enabled"},
+            {"Квадрат", "espSettings.showBox"},
+            {"Линия к цели", "espSettings.showTracer"},
+            {"Здоровье", "espSettings.showHealth"},
+            {"Имя", "espSettings.showName"},
+            {"Дистанция", "espSettings.showDistance"},
+            {"Скелет", "espSettings.showSkeleton"},
+            {"Chams", "espSettings.showChams"},
+            {"Проверка команды", "espSettings.teamCheck"}
+        }
+        
+        for i, toggleData in ipairs(toggles) do
+            local toggle = self:createSettingsToggle(toggleData[1], 
+                self.espSettings[toggleData[2]:gsub("espSettings%.", "")], 
+                function(state)
+                    self.espSettings[toggleData[2]:gsub("espSettings%.", "")] = state
+                end, scroll)
+            toggle.LayoutOrder = i
+        end
+        
+        local maxDistance = self:createSettingsSlider("Макс. дистанция", 100, 5000, self.espSettings.maxDistance, function(value)
+            self.espSettings.maxDistance = value
+        end, scroll)
+        maxDistance.LayoutOrder = #toggles + 1
+        
+        local espColor = self:createSettingsColor("Цвет ESP", self.espSettings.color, function(color)
+            self.espSettings.color = color
+        end, scroll)
+        espColor.LayoutOrder = #toggles + 2
+        
+        local chamsColor = self:createSettingsColor("Цвет Chams", self.espSettings.chamsColor, function(color)
+            self.espSettings.chamsColor = color
+        end, scroll)
+        chamsColor.LayoutOrder = #toggles + 3
+        
+        local chamsTransparency = self:createSettingsSlider("Прозрачность Chams", 0, 1, self.espSettings.chamsTransparency, function(value)
+            self.espSettings.chamsTransparency = value
+        end, scroll)
+        chamsTransparency.LayoutOrder = #toggles + 4
+        
+        return scroll
+    end
+    
+    local function createAimTab()
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Size = UDim2.new(1, 0, 1, 0)
+        scroll.BackgroundTransparency = 1
+        scroll.ScrollBarThickness = 5
+        scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        scroll.Parent = tabContent
+        
+        local list = Instance.new("UIListLayout")
+        list.Padding = UDim.new(0, 10)
+        list.SortOrder = Enum.SortOrder.LayoutOrder
+        list.Parent = scroll
+        
+        local toggles = {
+            {"Включено", "aimSettings.enabled"},
+            {"Проверка стен", "aimSettings.wallCheck"},
+            {"Проверка видимости", "aimSettings.visibleCheck"},
+            {"Проверка команды", "aimSettings.teamCheck"},
+            {"Проверка друзей", "aimSettings.friendCheck"}
+        }
+        
+        for i, toggleData in ipairs(toggles) do
+            local toggle = self:createSettingsToggle(toggleData[1], 
+                self.aimSettings[toggleData[2]:gsub("aimSettings%.", "")], 
+                function(state)
+                    self.aimSettings[toggleData[2]:gsub("aimSettings%.", "")] = state
+                end, scroll)
+            toggle.LayoutOrder = i
+        end
+        
+        local fovSlider = self:createSettingsSlider("FOV", 1, 360, self.aimSettings.fov, function(value)
+            self.aimSettings.fov = value
+        end, scroll)
+        fovSlider.LayoutOrder = #toggles + 1
+        
+        local smoothnessSlider = self:createSettingsSlider("Плавность", 1, 50, self.aimSettings.smoothness, function(value)
+            self.aimSettings.smoothness = value
+        end, scroll)
+        smoothnessSlider.LayoutOrder = #toggles + 2
+        
+        local predictionSlider = self:createSettingsSlider("Предсказание", 0, 1, self.aimSettings.prediction, function(value)
+            self.aimSettings.prediction = value
+        end, scroll)
+        predictionSlider.LayoutOrder = #toggles + 3
+        
+        local aimParts = {"Head", "HumanoidRootPart", "Torso"}
+        local aimPartDropdown = self:createSettingsDropdown("Цель", aimParts, self.aimSettings.aimPart, function(value)
+            self.aimSettings.aimPart = value
+        end, scroll)
+        aimPartDropdown.LayoutOrder = #toggles + 4
+        
+        return scroll
+    end
+    
+    local function createAtmosphereTab()
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Size = UDim2.new(1, 0, 1, 0)
+        scroll.BackgroundTransparency = 1
+        scroll.ScrollBarThickness = 5
+        scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        scroll.Parent = tabContent
+        
+        local list = Instance.new("UIListLayout")
+        list.Padding = UDim.new(0, 10)
+        list.SortOrder = Enum.SortOrder.LayoutOrder
+        list.Parent = scroll
+        
+        local ambientColor = self:createSettingsColor("Цвет окружения", self.atmosphereSettings.ambient, function(color)
+            self.atmosphereSettings.ambient = color
+            if self.atmosphereToggle.getState() then
+                game:GetService("Lighting").Ambient = color
+            end
+        end, scroll)
+        ambientColor.LayoutOrder = 1
+        
+        local outdoorColor = self:createSettingsColor("Уличное освещение", self.atmosphereSettings.outdoorAmbient, function(color)
+            self.atmosphereSettings.outdoorAmbient = color
+            if self.atmosphereToggle.getState() then
+                game:GetService("Lighting").OutdoorAmbient = color
+            end
+        end, scroll)
+        outdoorColor.LayoutOrder = 2
+        
+        local brightnessSlider = self:createSettingsSlider("Яркость", 0, 10, self.atmosphereSettings.brightness, function(value)
+            self.atmosphereSettings.brightness = value
+            if self.atmosphereToggle.getState() then
+                game:GetService("Lighting").Brightness = value
+            end
+        end, scroll)
+        brightnessSlider.LayoutOrder = 3
+        
+        local shadowsToggle = self:createSettingsToggle("Тени", self.atmosphereSettings.globalShadows, function(state)
+            self.atmosphereSettings.globalShadows = state
+            if self.atmosphereToggle.getState() then
+                game:GetService("Lighting").GlobalShadows = state
+            end
+        end, scroll)
+        shadowsToggle.LayoutOrder = 4
+        
+        return scroll
+    end
+    
+    -- Создаем кнопки табов
+    for i, tabName in ipairs(tabs) do
+        local tabButton = Instance.new("TextButton")
+        tabButton.Name = "Tab_" .. tabName
+        tabButton.Size = UDim2.new(1 / #tabs, -5, 1, 0)
+        tabButton.Position = UDim2.new((i-1) / #tabs, 0, 0, 0)
+        tabButton.BackgroundColor3 = currentTab == tabName and self.accentColor or COLORS.BACKGROUND.TERTIARY
+        tabButton.BackgroundTransparency = currentTab == tabName and 0.3 or 0.7
+        tabButton.Text = tabName
+        tabButton.TextColor3 = COLORS.TEXT.PRIMARY
+        tabButton.Font = Enum.Font.GothamBold
+        tabButton.TextSize = 14
+        tabButton.AutoButtonColor = false
+        tabButton.Parent = tabButtons
+        
+        local tabCorner = Instance.new("UICorner")
+        tabCorner.CornerRadius = UDim.new(0, 6)
+        tabCorner.Parent = tabButton
+        
+        tabButton.MouseButton1Click:Connect(function()
+            currentTab = tabName
+            for _, btn in pairs(tabButtons:GetChildren()) do
+                if btn:IsA("TextButton") then
+                    tween(btn, {
+                        BackgroundColor3 = btn.Name == "Tab_" .. tabName and self.accentColor or COLORS.BACKGROUND.TERTIARY,
+                        BackgroundTransparency = btn.Name == "Tab_" .. tabName and 0.3 or 0.7
+                    })
+                end
+            end
+            
+            -- Очищаем контент и создаем новый
+            for _, child in pairs(tabContent:GetChildren()) do
+                child:Destroy()
+            end
+            
+            if tabName == "Меню" then
+                createMenuTab()
+            elseif tabName == "ESP" then
+                createESPTab()
+            elseif tabName == "AimBot" then
+                createAimTab()
+            elseif tabName == "Атмосфера" then
+                createAtmosphereTab()
+            end
+        end)
+    end
+    
+    -- Создаем начальную вкладку
+    createMenuTab()
+    
+    -- Кнопка закрытия
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0, 36, 0, 36)
+    closeButton.Position = UDim2.new(1, -42, 0, 4)
+    closeButton.BackgroundColor3 = COLORS.ACCENT.ERROR
+    closeButton.BackgroundTransparency = 0.7
+    closeButton.Text = "✕"
+    closeButton.TextColor3 = COLORS.TEXT.PRIMARY
+    closeButton.TextSize = 18
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.AutoButtonColor = false
+    closeButton.ZIndex = 303
+    closeButton.Parent = settingsWindow
+    
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 8)
+    closeCorner.Parent = closeButton
+    
+    closeButton.MouseButton1Click:Connect(function()
+        settingsWindow:Destroy()
+        self.settingsWindow = nil
+    end)
+    
+    if self.isMobile then
+        closeButton.TouchTap:Connect(function()
+            settingsWindow:Destroy()
+            self.settingsWindow = nil
+        end)
+    end
+    
+    self.settingsWindow = settingsWindow
+end
+
+function ElegantModMenu:createSettingsToggle(name, defaultValue, callback, parent)
+    local toggleFrame = Instance.new("Frame")
+    toggleFrame.Size = UDim2.new(1, 0, 0, 40)
+    toggleFrame.BackgroundTransparency = 1
+    toggleFrame.Parent = parent
+    
+    local label = createTextLabel(name, 16, toggleFrame)
+    label.Size = UDim2.new(0.7, 0, 1, 0)
+    label.Font = Enum.Font.GothamMedium
+    
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.Size = UDim2.new(0, 50, 0, 26)
+    toggleButton.Position = UDim2.new(1, -55, 0.5, -13)
+    toggleButton.BackgroundColor3 = defaultValue and self.accentColor or COLORS.BACKGROUND.TERTIARY
+    toggleButton.BackgroundTransparency = 0.3
+    toggleButton.Text = ""
+    toggleButton.AutoButtonColor = false
+    toggleButton.Parent = toggleFrame
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 13)
+    toggleCorner.Parent = toggleButton
+    
+    local toggleCircle = Instance.new("Frame")
+    toggleCircle.Size = UDim2.new(0, 20, 0, 20)
+    toggleCircle.Position = defaultValue and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+    toggleCircle.BackgroundColor3 = COLORS.TEXT.PRIMARY
+    toggleCircle.BorderSizePixel = 0
+    toggleCircle.Parent = toggleButton
+    
+    local circleCorner = Instance.new("UICorner")
+    circleCorner.CornerRadius = UDim.new(0.5, 0)
+    circleCorner.Parent = toggleCircle
+    
+    local state = defaultValue
+    
+    local function setState(newState)
+        state = newState
+        tween(toggleButton, {
+            BackgroundColor3 = newState and self.accentColor or COLORS.BACKGROUND.TERTIARY
+        })
+        tween(toggleCircle, {
+            Position = newState and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+        })
+        if callback then callback(newState) end
+    end
+    
+    toggleButton.MouseButton1Click:Connect(function()
+        setState(not state)
+    end)
+    
+    if self.isMobile then
+        toggleButton.TouchTap:Connect(function()
+            setState(not state)
+        end)
+    end
+    
+    return toggleFrame
+end
+
+function ElegantModMenu:createSettingsSlider(name, min, max, defaultValue, callback, parent)
+    local sliderFrame = Instance.new("Frame")
+    sliderFrame.Size = UDim2.new(1, 0, 0, 60)
+    sliderFrame.BackgroundTransparency = 1
+    sliderFrame.Parent = parent
+    
+    local label = createTextLabel(name, 16, sliderFrame)
+    label.Size = UDim2.new(1, 0, 0, 20)
+    label.Font = Enum.Font.GothamMedium
+    
+    local value = defaultValue
+    
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(1, 0, 0, 10)
+    track.Position = UDim2.new(0, 0, 0, 35)
+    track.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    track.BorderSizePixel = 0
+    track.Parent = sliderFrame
+    
+    local trackCorner = Instance.new("UICorner")
+    trackCorner.CornerRadius = UDim.new(0, 5)
+    trackCorner.Parent = track
+    
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
+    fill.BackgroundColor3 = self.accentColor
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(0, 5)
+    fillCorner.Parent = fill
+    
+    local thumb = Instance.new("TextButton")
+    thumb.Size = UDim2.new(0, 20, 0, 20)
+    thumb.Position = UDim2.new((value - min) / (max - min), -10, 0.5, -10)
+    thumb.BackgroundColor3 = COLORS.TEXT.PRIMARY
+    thumb.BorderSizePixel = 0
+    thumb.Text = ""
+    thumb.AutoButtonColor = false
+    thumb.Parent = track
+    
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(0.5, 0)
+    thumbCorner.Parent = thumb
+    
+    local valueLabel = createTextLabel(tostring(value), 14, sliderFrame)
+    valueLabel.Size = UDim2.new(0, 40, 0, 20)
+    valueLabel.Position = UDim2.new(1, -40, 0, 0)
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    
+    local function updateValue(newValue)
+        value = math.clamp(newValue, min, max)
+        local percentage = (value - min) / (max - min)
+        
+        fill.Size = UDim2.new(percentage, 0, 1, 0)
+        thumb.Position = UDim2.new(percentage, -10, 0.5, -10)
+        valueLabel.Text = string.format("%.1f", value)
+        
+        if callback then callback(value) end
+    end
+    
+    local dragging = false
+    local userInputService = game:GetService("UserInputService")
+    
+    if self.isMobile then
+        thumb.TouchStarted:Connect(function()
+            dragging = true
+        end)
+        
+        thumb.TouchEnded:Connect(function()
+            dragging = false
+        end)
+        
+        track.TouchTap:Connect(function(touchPositions)
+            if #touchPositions > 0 then
+                local touch = touchPositions[1]
+                local trackAbsolute = track.AbsolutePosition
+                local trackSize = track.AbsoluteSize
+                local relativeX = (touch.Position.X - trackAbsolute.X) / trackSize.X
+                local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+                updateValue(newValue)
+            end
+        end)
+    else
+        thumb.MouseButton1Down:Connect(function()
+            dragging = true
+        end)
+        
+        userInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+        
+        track.MouseButton1Down:Connect(function()
+            local mouse = userInputService:GetMouseLocation()
+            local trackAbsolute = track.AbsolutePosition
+            local trackSize = track.AbsoluteSize
+            local relativeX = (mouse.X - trackAbsolute.X) / trackSize.X
+            local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+            updateValue(newValue)
+        end)
+    end
+    
+    userInputService.InputChanged:Connect(function(input)
+        if dragging then
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                local mouse = userInputService:GetMouseLocation()
+                local trackAbsolute = track.AbsolutePosition
+                local trackSize = track.AbsoluteSize
+                local relativeX = (mouse.X - trackAbsolute.X) / trackSize.X
+                local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+                updateValue(newValue)
+            elseif input.UserInputType == Enum.UserInputType.Touch then
+                local touch = input.Position
+                local trackAbsolute = track.AbsolutePosition
+                local trackSize = track.AbsoluteSize
+                local relativeX = (touch.X - trackAbsolute.X) / trackSize.X
+                local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
+                updateValue(newValue)
+            end
+        end
+    end)
+    
+    return sliderFrame
+end
+
+function ElegantModMenu:createSettingsColor(name, defaultValue, callback, parent)
+    local colorFrame = Instance.new("Frame")
+    colorFrame.Size = UDim2.new(1, 0, 0, 40)
+    colorFrame.BackgroundTransparency = 1
+    colorFrame.Parent = parent
+    
+    local label = createTextLabel(name, 16, colorFrame)
+    label.Size = UDim2.new(0.7, 0, 1, 0)
+    label.Font = Enum.Font.GothamMedium
+    
+    local colorPreview = Instance.new("TextButton")
+    colorPreview.Size = UDim2.new(0, 50, 0, 30)
+    colorPreview.Position = UDim2.new(1, -55, 0.5, -15)
+    colorPreview.BackgroundColor3 = defaultValue
+    colorPreview.BorderSizePixel = 0
+    colorPreview.Text = ""
+    colorPreview.AutoButtonColor = false
+    colorPreview.Parent = colorFrame
+    
+    local previewCorner = Instance.new("UICorner")
+    previewCorner.CornerRadius = UDim.new(0, 6)
+    previewCorner.Parent = colorPreview
+    
+    -- Простой выбор цвета через RGB
+    local function openColorPicker()
+        local colorPicker = Instance.new("Frame")
+        colorPicker.Size = UDim2.new(0, 200, 0, 150)
+        colorPicker.Position = UDim2.new(1, 10, 0.5, -75)
+        colorPicker.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+        colorPicker.BackgroundTransparency = 0.1
+        colorPicker.ZIndex = 1000
+        colorPicker.Parent = colorFrame
+        
+        local pickerCorner = Instance.new("UICorner")
+        pickerCorner.CornerRadius = UDim.new(0, 8)
+        pickerCorner.Parent = colorPicker
+        
+        local currentColor = defaultValue
+        
+        local function updateColor()
+            colorPreview.BackgroundColor3 = currentColor
+            if callback then callback(currentColor) end
+        end
+        
+        -- Простая реализация выбора цвета
+        for i = 1, 5 do
+            for j = 1, 5 do
+                local colorButton = Instance.new("TextButton")
+                colorButton.Size = UDim2.new(0, 30, 0, 30)
+                colorButton.Position = UDim2.new(0, 10 + (j-1)*35, 0, 10 + (i-1)*35)
+                colorButton.BackgroundColor3 = Color3.fromHSV((i-1)/5, 1, (j)/5)
+                colorButton.BorderSizePixel = 0
+                colorButton.Text = ""
+                colorButton.AutoButtonColor = false
+                colorButton.ZIndex = 1001
+                colorButton.Parent = colorPicker
+                
+                colorButton.MouseButton1Click:Connect(function()
+                    currentColor = colorButton.BackgroundColor3
+                    updateColor()
+                    colorPicker:Destroy()
+                end)
+                
+                if self.isMobile then
+                    colorButton.TouchTap:Connect(function()
+                        currentColor = colorButton.BackgroundColor3
+                        updateColor()
+                        colorPicker:Destroy()
+                    end)
+                end
+            end
+        end
+    end
+    
+    colorPreview.MouseButton1Click:Connect(openColorPicker)
+    
+    if self.isMobile then
+        colorPreview.TouchTap:Connect(openColorPicker)
+    end
+    
+    return colorFrame
+end
+
+function ElegantModMenu:createSettingsDropdown(name, options, defaultValue, callback, parent)
+    local dropdownFrame = Instance.new("Frame")
+    dropdownFrame.Size = UDim2.new(1, 0, 0, 40)
+    dropdownFrame.BackgroundTransparency = 1
+    dropdownFrame.Parent = parent
+    
+    local label = createTextLabel(name, 16, dropdownFrame)
+    label.Size = UDim2.new(0.6, 0, 1, 0)
+    label.Font = Enum.Font.GothamMedium
+    
+    local selected = defaultValue
+    
+    local dropdownButton = Instance.new("TextButton")
+    dropdownButton.Size = UDim2.new(0.4, 0, 0.7, 0)
+    dropdownButton.Position = UDim2.new(0.6, 0, 0.15, 0)
+    dropdownButton.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    dropdownButton.BackgroundTransparency = 0.5
+    dropdownButton.Text = selected
+    dropdownButton.TextColor3 = COLORS.TEXT.PRIMARY
+    dropdownButton.Font = Enum.Font.GothamMedium
+    dropdownButton.TextSize = 14
+    dropdownButton.AutoButtonColor = false
+    dropdownButton.Parent = dropdownFrame
+    
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, 6)
+    buttonCorner.Parent = dropdownButton
+    
+    local isOpen = false
+    local dropdownList = Instance.new("Frame")
+    dropdownList.Size = UDim2.new(0.4, 0, 0, 0)
+    dropdownList.Position = UDim2.new(0.6, 0, 0.85, 5)
+    dropdownList.BackgroundColor3 = COLORS.BACKGROUND.TERTIARY
+    dropdownList.BackgroundTransparency = 0.1
+    dropdownList.ClipsDescendants = true
+    dropdownList.Visible = false
+    dropdownList.ZIndex = 1000
+    dropdownList.Parent = dropdownFrame
+    
+    local listCorner = Instance.new("UICorner")
+    listCorner.CornerRadius = UDim.new(0, 6)
+    listCorner.Parent = dropdownList
+    
+    local function updateDropdown()
+        dropdownList:ClearAllChildren()
+        
+        for i, option in ipairs(options) do
+            local optionButton = Instance.new("TextButton")
+            optionButton.Size = UDim2.new(1, -10, 0, 30)
+            optionButton.Position = UDim2.new(0, 5, 0, (i-1)*32)
+            optionButton.BackgroundTransparency = 1
+            optionButton.Text = option
+            optionButton.TextColor3 = option == selected and self.accentColor or COLORS.TEXT.PRIMARY
+            optionButton.Font = Enum.Font.GothamMedium
+            optionButton.TextSize = 13
+            optionButton.AutoButtonColor = false
+            optionButton.ZIndex = 1001
+            optionButton.Parent = dropdownList
+            
+            optionButton.MouseButton1Click:Connect(function()
+                selected = option
+                dropdownButton.Text = selected
+                isOpen = false
+                dropdownList.Visible = false
+                tween(dropdownList, {Size = UDim2.new(0.4, 0, 0, 0)})
+                
+                if callback then callback(selected) end
+            end)
+            
+            if self.isMobile then
+                optionButton.TouchTap:Connect(function()
+                    selected = option
+                    dropdownButton.Text = selected
+                    isOpen = false
+                    dropdownList.Visible = false
+                    tween(dropdownList, {Size = UDim2.new(0.4, 0, 0, 0)})
+                    
+                    if callback then callback(selected) end
+                end)
+            end
+        end
+    end
+    
+    updateDropdown()
+    
+    local function toggleDropdown()
+        isOpen = not isOpen
+        
+        if isOpen then
+            dropdownList.Visible = true
+            tween(dropdownList, {Size = UDim2.new(0.4, 0, 0, #options * 32)})
+        else
+            tween(dropdownList, {Size = UDim2.new(0.4, 0, 0, 0)})
+            task.delay(0.3, function()
+                dropdownList.Visible = false
+            end)
+        end
+    end
+    
+    dropdownButton.MouseButton1Click:Connect(toggleDropdown)
+    
+    if self.isMobile then
+        dropdownButton.TouchTap:Connect(toggleDropdown)
+    end
+    
+    return dropdownFrame
+end
+
+function ElegantModMenu:hideSettingsMenu()
+    if self.settingsWindow then
+        self.settingsWindow:Destroy()
+        self.settingsWindow = nil
+    end
+end
+
+-- Публичные методы
+function ElegantModMenu:destroy()
+    -- Отключаем все соединения
+    if self.espConnections then
+        for _, connection in pairs(self.espConnections) do
+            if connection then
+                connection:Disconnect()
+            end
+        end
+    end
+    
+    if self.aimBotConnection then
+        self.aimBotConnection:Disconnect()
+    end
+    
+    if self.aimBotEndConnection then
+        self.aimBotEndConnection:Disconnect()
+    end
+    
+    -- Удаляем ESP объекты
+    if self.espObjects then
+        for _, objects in pairs(self.espObjects) do
+            for _, obj in pairs(objects) do
+                if obj then
+                    if type(obj) == "table" then
+                        for _, line in pairs(obj) do
+                            if line then
+                                line:Destroy()
+                            end
+                        end
+                    else
+                        obj:Destroy()
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Удаляем Chams
+    if self.chamsCache then
+        for _, chams in pairs(self.chamsCache) do
+            for _, cham in pairs(chams) do
+                if cham then
+                    cham:Destroy()
+                end
+            end
+        end
+    end
+    
+    -- Удаляем GUI
+    if self.screenGui then
+        self.screenGui:Destroy()
+    end
+    
+    -- Восстанавливаем атмосферу
+    if self.originalAtmosphere then
+        local lighting = game:GetService("Lighting")
+        lighting.Ambient = self.originalAtmosphere.ambient
+        lighting.OutdoorAmbient = self.originalAtmosphere.outdoorAmbient
+        lighting.Brightness = self.originalAtmosphere.brightness
+        lighting.GlobalShadows = self.originalAtmosphere.globalShadows
+        lighting.FogStart = self.originalAtmosphere.fogStart
+        lighting.FogEnd = self.originalAtmosphere.fogEnd
+        lighting.FogColor = self.originalAtmosphere.fogColor
+    end
+end
+
+function ElegantModMenu:setVisible(visible)
+    if visible then
+        self:show()
+    else
+        self:hide()
+    end
+end
+
+-- Экспорт
+return ElegantModMenu
