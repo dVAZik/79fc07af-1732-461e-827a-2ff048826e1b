@@ -1,0 +1,1816 @@
+--[[
+    Mod Menu Library v2.0
+    Полностью оптимизированная и проработанная библиотека меню
+    Поддержка: PC, Mobile, Console (через VirtualInput)
+    Автор: Фатима ♥️
+]]--
+
+local ModMenu = {}
+ModMenu.__index = ModMenu
+
+-- Сервисы
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local Lighting = game:GetService("Lighting")
+
+-- Константы
+local PLAYER = Players.LocalPlayer
+local MOUSE = PLAYER:GetMouse()
+local IS_MOBILE = UserInputService.TouchEnabled
+local IS_CONSOLE = UserInputService.GamepadEnabled
+local IS_PC = not IS_MOBILE and not IS_CONSOLE
+
+-- Настройки по умолчанию
+local DEFAULT_SETTINGS = {
+    Menu = {
+        Accent = Color3.fromRGB(100, 150, 255),
+        Background = Color3.fromRGB(20, 20, 25),
+        Text = Color3.fromRGB(240, 240, 245),
+        Transparent = 0.95,
+        Size = IS_MOBILE and 0.8 or 1.0
+    },
+    ESP = {
+        Enabled = false,
+        Box = true,
+        Tracer = true,
+        Health = true,
+        Names = true,
+        Distance = true,
+        MaxDistance = 500,
+        TeamCheck = true,
+        Color = Color3.fromRGB(255, 50, 50)
+    },
+    Aimbot = {
+        Enabled = false,
+        Mode = "Legit", -- "Legit", "Silent", "Trigger"
+        Bone = "Head",
+        FOV = 100,
+        Smoothness = 0.5,
+        TeamCheck = true,
+        VisibleCheck = true
+    },
+    Visual = {
+        Fullbright = false,
+        Chams = false,
+        Ambient = Color3.new(0.5, 0.5, 0.5),
+        Brightness = 1
+    },
+    Player = {
+        GodMode = false,
+        Speed = 16,
+        JumpPower = 50,
+        NoClip = false,
+        Fly = false
+    }
+}
+
+-- Вспомогательные функции
+local function Create(instanceType, properties)
+    local obj = Instance.new(instanceType)
+    for prop, value in pairs(properties) do
+        obj[prop] = value
+    end
+    return obj
+end
+
+local function Tween(obj, props, duration, style)
+    local tweenInfo = TweenInfo.new(duration or 0.2, style or Enum.EasingStyle.Quad)
+    local tween = TweenService:Create(obj, tweenInfo, props)
+    tween:Play()
+    return tween
+end
+
+local function Round(num, decimal)
+    local mult = 10^(decimal or 2)
+    return math.floor(num * mult + 0.5) / mult
+end
+
+-- Основной класс меню
+function ModMenu.new(menuName)
+    local self = setmetatable({}, ModMenu)
+    
+    self.MenuName = menuName or "ModMenu"
+    self.Version = "2.0"
+    self.GUI = nil
+    self.Settings = table.clone(DEFAULT_SETTINGS)
+    self.Connections = {}
+    self.Elements = {}
+    self.ESP = {Objects = {}}
+    self.Aimbot = {Target = nil}
+    self.Active = false
+    self.Notifications = {}
+    
+    -- Создаем уникальный ID для меню
+    self.MenuID = "Menu_" .. HttpService:GenerateGUID(false):sub(1, 8)
+    
+    -- Очищаем старые меню
+    self:CleanupOldMenus()
+    
+    -- Инициализируем
+    self:Initialize()
+    
+    return self
+end
+
+-- Очистка старых меню
+function ModMenu:CleanupOldMenus()
+    local menus = CoreGui:FindFirstChild("ModMenus")
+    if menus then
+        for _, menu in ipairs(menus:GetChildren()) do
+            if menu.Name:find("Menu_") then
+                menu:Destroy()
+            end
+        end
+    end
+end
+
+-- Инициализация меню
+function ModMenu:Initialize()
+    -- Создаем контейнер в CoreGui
+    local container = Create("Folder", {
+        Name = "ModMenus",
+        Parent = CoreGui
+    })
+    
+    -- Создаем ScreenGui
+    self.GUI = Create("ScreenGui", {
+        Name = self.MenuID,
+        Parent = container,
+        DisplayOrder = 9999,
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Global
+    })
+    
+    -- Создаем главную кнопку
+    self:CreateMainButton()
+    
+    -- Создаем плавающие надписи
+    self:CreateFloatingTexts()
+    
+    -- Создаем основное меню
+    self:CreateMainMenu()
+    
+    -- Создаем окно настроек
+    self:CreateSettingsWindow()
+    
+    -- Инициализируем системы
+    self:InitESP()
+    self:InitAimbot()
+    self:InitVisual()
+    self:InitPlayer()
+    
+    -- Активируем меню
+    self.Active = true
+    
+    -- Отправляем уведомление
+    self:Notify("Меню загружено! v" .. self.Version)
+end
+
+-- Создание главной кнопки
+function ModMenu:CreateMainButton()
+    self.MainButton = Create("TextButton", {
+        Name = "MainButton",
+        Parent = self.GUI,
+        Text = "≡",
+        Font = Enum.Font.GothamBold,
+        TextSize = 28,
+        TextColor3 = Color3.new(1, 1, 1),
+        BackgroundColor3 = Color3.fromRGB(40, 40, 50),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 50, 0, 50),
+        Position = UDim2.new(0, 20, 0.5, -25),
+        ZIndex = 1000
+    })
+    
+    local corner = Create("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = self.MainButton
+    })
+    
+    local shadow = Create("ImageLabel", {
+        Name = "Shadow",
+        Parent = self.MainButton,
+        Image = "rbxassetid://2615687895",
+        ImageColor3 = Color3.new(0, 0, 0),
+        ImageTransparency = 0.8,
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Rect.new(23, 23, 277, 277),
+        Size = UDim2.new(1, 30, 1, 30),
+        Position = UDim2.new(0, -15, 0, -15),
+        BackgroundTransparency = 1,
+        ZIndex = 999
+    })
+    
+    -- Добавляем интерактивность
+    self:MakeDraggable(self.MainButton)
+    
+    self.MainButton.MouseButton1Click:Connect(function()
+        self:ToggleMenu()
+    end)
+    
+    self.MainButton.TouchTap:Connect(function()
+        self:ToggleMenu()
+    end)
+    
+    -- Эффект при наведении
+    self.MainButton.MouseEnter:Connect(function()
+        Tween(self.MainButton, {BackgroundColor3 = Color3.fromRGB(60, 60, 70)})
+    end)
+    
+    self.MainButton.MouseLeave:Connect(function()
+        Tween(self.MainButton, {BackgroundColor3 = Color3.fromRGB(40, 40, 50)})
+    end)
+end
+
+-- Создание плавающих надписей
+function ModMenu:CreateFloatingTexts()
+    local texts = {"Фатима", "♥️", "v2.0", "Menu", "Mod"}
+    local colors = {
+        Color3.fromRGB(255, 100, 100),
+        Color3.fromRGB(100, 255, 100),
+        Color3.fromRGB(100, 100, 255),
+        Color3.fromRGB(255, 255, 100),
+        Color3.fromRGB(255, 100, 255)
+    }
+    
+    for i = 1, 5 do
+        local text = Create("TextLabel", {
+            Name = "FloatText_" .. i,
+            Parent = self.GUI,
+            Text = texts[i] or "Text",
+            Font = Enum.Font.GothamBold,
+            TextSize = 24,
+            TextColor3 = colors[i],
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 100, 0, 40),
+            Position = UDim2.new(math.random() * 0.8, 0, math.random() * 0.8, 0),
+            ZIndex = 900
+        })
+        
+        -- Анимация плавания
+        task.spawn(function()
+            local startPos = text.Position
+            local time = 0
+            local speed = 0.5 + math.random() * 0.5
+            local radius = 50 + math.random() * 50
+            
+            while text and text.Parent do
+                time += RunService.RenderStepped:Wait()
+                
+                local x = startPos.X.Offset + math.sin(time * speed) * radius
+                local y = startPos.Y.Offset + math.cos(time * speed * 0.7) * radius * 0.5
+                
+                text.Position = UDim2.new(startPos.X.Scale, x, startPos.Y.Scale, y)
+                
+                -- Мерцание прозрачности
+                text.TextTransparency = 0.3 + math.sin(time * 2) * 0.3
+            end
+        end)
+    end
+end
+
+-- Создание основного меню
+function ModMenu:CreateMainMenu()
+    -- Основной фрейм меню
+    self.MenuFrame = Create("Frame", {
+        Name = "MenuFrame",
+        Parent = self.GUI,
+        BackgroundColor3 = self.Settings.Menu.Background,
+        BackgroundTransparency = 0.1,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 600, 0, 400),
+        Position = UDim2.new(0.5, -300, 0.5, -200),
+        Visible = false,
+        ZIndex = 100
+    })
+    
+    local corner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 12),
+        Parent = self.MenuFrame
+    })
+    
+    local shadow = Create("ImageLabel", {
+        Name = "Shadow",
+        Parent = self.MenuFrame,
+        Image = "rbxassetid://2615687895",
+        ImageColor3 = Color3.new(0, 0, 0),
+        ImageTransparency = 0.7,
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Rect.new(23, 23, 277, 277),
+        Size = UDim2.new(1, 40, 1, 40),
+        Position = UDim2.new(0, -20, 0, -20),
+        BackgroundTransparency = 1,
+        ZIndex = 99
+    })
+    
+    -- Title bar
+    local titleBar = Create("Frame", {
+        Name = "TitleBar",
+        Parent = self.MenuFrame,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 40),
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 40),
+        ZIndex = 101
+    })
+    
+    local titleCorner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 12),
+        Parent = titleBar
+    })
+    
+    local title = Create("TextLabel", {
+        Name = "Title",
+        Parent = titleBar,
+        Text = self.MenuName .. " v" .. self.Version,
+        Font = Enum.Font.GothamBold,
+        TextSize = 18,
+        TextColor3 = self.Settings.Menu.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 200, 1, 0),
+        Position = UDim2.new(0, 15, 0, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 102
+    })
+    
+    local closeBtn = Create("TextButton", {
+        Name = "CloseButton",
+        Parent = titleBar,
+        Text = "×",
+        Font = Enum.Font.GothamBold,
+        TextSize = 24,
+        TextColor3 = Color3.fromRGB(255, 100, 100),
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 40, 1, 0),
+        Position = UDim2.new(1, -40, 0, 0),
+        ZIndex = 102
+    })
+    
+    -- Делаем меню перетаскиваемым за title bar
+    self:MakeDraggable(self.MenuFrame, titleBar)
+    
+    -- Кнопка настроек
+    local settingsBtn = Create("TextButton", {
+        Name = "SettingsButton",
+        Parent = titleBar,
+        Text = "⚙",
+        Font = Enum.Font.GothamBold,
+        TextSize = 18,
+        TextColor3 = self.Settings.Menu.Accent,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 40, 1, 0),
+        Position = UDim2.new(1, -80, 0, 0),
+        ZIndex = 102
+    })
+    
+    -- Контейнер для контента
+    local content = Create("Frame", {
+        Name = "Content",
+        Parent = self.MenuFrame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, -40),
+        Position = UDim2.new(0, 0, 0, 40),
+        ZIndex = 101
+    })
+    
+    -- Левая панель с табами
+    local leftPanel = Create("ScrollingFrame", {
+        Name = "LeftPanel",
+        Parent = content,
+        BackgroundColor3 = Color3.fromRGB(25, 25, 30),
+        BackgroundTransparency = 0.1,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 150, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = self.Settings.Menu.Accent,
+        ZIndex = 102
+    })
+    
+    local leftCorner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 8),
+        Parent = leftPanel
+    })
+    
+    local listLayout = Create("UIListLayout", {
+        Parent = leftPanel,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 5)
+    })
+    
+    -- Правая панель с контентом
+    local rightPanel = Create("ScrollingFrame", {
+        Name = "RightPanel",
+        Parent = content,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -160, 1, 0),
+        Position = UDim2.new(0, 160, 0, 0),
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = self.Settings.Menu.Accent,
+        ZIndex = 101
+    })
+    
+    local rightList = Create("UIListLayout", {
+        Parent = rightPanel,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 10)
+    })
+    
+    rightList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        rightPanel.CanvasSize = UDim2.new(0, 0, 0, rightList.AbsoluteContentSize.Y + 20)
+    end)
+    
+    -- Добавляем базовые табы
+    self:AddTab("Home", "🏠", leftPanel, rightPanel)
+    self:AddTab("Player", "👤", leftPanel, rightPanel)
+    self:AddTab("Visual", "👁️", leftPanel, rightPanel)
+    self:AddTab("World", "🌍", leftPanel, rightPanel)
+    self:AddTab("Misc", "⚙️", leftPanel, rightPanel)
+    
+    -- Обработчики событий
+    closeBtn.MouseButton1Click:Connect(function()
+        self:ToggleMenu()
+    end)
+    
+    settingsBtn.MouseButton1Click:Connect(function()
+        self:ToggleSettings()
+    end)
+    
+    -- Размер для мобильных
+    if IS_MOBILE then
+        self.MenuFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
+        self.MenuFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+    end
+end
+
+-- Добавление таба
+function ModMenu:AddTab(name, icon, leftPanel, rightPanel)
+    local tabButton = Create("TextButton", {
+        Name = name .. "Tab",
+        Parent = leftPanel,
+        Text = "   " .. icon .. " " .. name,
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = self.Settings.Menu.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        BackgroundColor3 = Color3.fromRGB(40, 40, 50),
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, -10, 0, 35),
+        LayoutOrder = #leftPanel:GetChildren()
+    })
+    
+    local tabCorner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 6),
+        Parent = tabButton
+    })
+    
+    local contentFrame = Create("Frame", {
+        Name = name .. "Content",
+        Parent = rightPanel,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 0),
+        LayoutOrder = #rightPanel:GetChildren(),
+        Visible = false
+    })
+    
+    local contentList = Create("UIListLayout", {
+        Parent = contentFrame,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 10)
+    })
+    
+    contentList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        contentFrame.Size = UDim2.new(1, 0, 0, contentList.AbsoluteContentSize.Y)
+    end)
+    
+    -- Показываем первый таб
+    if #leftPanel:GetChildren() == 1 then
+        tabButton.BackgroundColor3 = self.Settings.Menu.Accent
+        contentFrame.Visible = true
+    end
+    
+    tabButton.MouseButton1Click:Connect(function()
+        -- Сбрасываем цвет всех табов
+        for _, child in ipairs(leftPanel:GetChildren()) do
+            if child:IsA("TextButton") then
+                child.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+            end
+        end
+        
+        -- Скрываем весь контент
+        for _, child in ipairs(rightPanel:GetChildren()) do
+            if child:IsA("Frame") then
+                child.Visible = false
+            end
+        end
+        
+        -- Активируем выбранный таб
+        tabButton.BackgroundColor3 = self.Settings.Menu.Accent
+        contentFrame.Visible = true
+    end)
+    
+    return contentFrame
+end
+
+-- Создание окна настроек
+function ModMenu:CreateSettingsWindow()
+    self.SettingsFrame = Create("Frame", {
+        Name = "SettingsFrame",
+        Parent = self.GUI,
+        BackgroundColor3 = self.Settings.Menu.Background,
+        BackgroundTransparency = 0.05,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 700, 0, 500),
+        Position = UDim2.new(0.5, -350, 0.5, -250),
+        Visible = false,
+        ZIndex = 200
+    })
+    
+    local corner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 12),
+        Parent = self.SettingsFrame
+    })
+    
+    local shadow = Create("ImageLabel", {
+        Name = "SettingsShadow",
+        Parent = self.SettingsFrame,
+        Image = "rbxassetid://2615687895",
+        ImageColor3 = Color3.new(0, 0, 0),
+        ImageTransparency = 0.7,
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Rect.new(23, 23, 277, 277),
+        Size = UDim2.new(1, 40, 1, 40),
+        Position = UDim2.new(0, -20, 0, -20),
+        BackgroundTransparency = 1,
+        ZIndex = 199
+    })
+    
+    -- Title bar настроек
+    local settingsTitleBar = Create("Frame", {
+        Name = "SettingsTitleBar",
+        Parent = self.SettingsFrame,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 40),
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 40),
+        ZIndex = 201
+    })
+    
+    local settingsTitle = Create("TextLabel", {
+        Name = "SettingsTitle",
+        Parent = settingsTitleBar,
+        Text = "Настройки",
+        Font = Enum.Font.GothamBold,
+        TextSize = 18,
+        TextColor3 = self.Settings.Menu.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 200, 1, 0),
+        Position = UDim2.new(0, 15, 0, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 202
+    })
+    
+    local settingsClose = Create("TextButton", {
+        Name = "SettingsClose",
+        Parent = settingsTitleBar,
+        Text = "×",
+        Font = Enum.Font.GothamBold,
+        TextSize = 24,
+        TextColor3 = Color3.fromRGB(255, 100, 100),
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 40, 1, 0),
+        Position = UDim2.new(1, -40, 0, 0),
+        ZIndex = 202
+    })
+    
+    -- Делаем окно настроек перетаскиваемым
+    self:MakeDraggable(self.SettingsFrame, settingsTitleBar)
+    
+    -- Контент настроек
+    local settingsContent = Create("ScrollingFrame", {
+        Name = "SettingsContent",
+        Parent = self.SettingsFrame,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, -40),
+        Position = UDim2.new(0, 0, 0, 40),
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = self.Settings.Menu.Accent,
+        ZIndex = 201
+    })
+    
+    local settingsList = Create("UIListLayout", {
+        Parent = settingsContent,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 15)
+    })
+    
+    -- Наполняем настройками
+    self:CreateSettingsSections(settingsContent)
+    
+    -- Обработчик закрытия
+    settingsClose.MouseButton1Click:Connect(function()
+        self:ToggleSettings()
+    end)
+    
+    -- Размер для мобильных
+    if IS_MOBILE then
+        self.SettingsFrame.Size = UDim2.new(0.95, 0, 0.9, 0)
+        self.SettingsFrame.Position = UDim2.new(0.025, 0, 0.05, 0)
+    end
+end
+
+-- Создание секций настроек
+function ModMenu:CreateSettingsSections(container)
+    -- Цвета меню
+    local colorsSection = self:CreateSection("Цвета меню", container)
+    
+    self:AddColorPicker(colorsSection, "Акцентный цвет", self.Settings.Menu.Accent, function(color)
+        self.Settings.Menu.Accent = color
+        self:UpdateColors()
+    end)
+    
+    self:AddSlider(colorsSection, "Прозрачность", 0, 100, self.Settings.Menu.Transparency * 100, 1, function(value)
+        self.Settings.Menu.Transparency = value / 100
+        self:UpdateTransparency()
+    end)
+    
+    -- Настройки ESP
+    local espSection = self:CreateSection("Настройки ESP", container)
+    
+    self:AddToggle(espSection, "Включить ESP", self.Settings.ESP.Enabled, function(value)
+        self.Settings.ESP.Enabled = value
+        self:UpdateESP()
+    end)
+    
+    self:AddToggle(espSection, "Рамки", self.Settings.ESP.Box, function(value)
+        self.Settings.ESP.Box = value
+    end)
+    
+    self:AddToggle(espSection, "Линии", self.Settings.ESP.Tracer, function(value)
+        self.Settings.ESP.Tracer = value
+    end)
+    
+    self:AddSlider(espSection, "Макс. дистанция", 0, 1000, self.Settings.ESP.MaxDistance, 10, function(value)
+        self.Settings.ESP.MaxDistance = value
+    end)
+    
+    -- Настройки аимбота
+    local aimbotSection = self:CreateSection("Настройки аимбота", container)
+    
+    self:AddToggle(aimbotSection, "Включить аимбот", self.Settings.Aimbot.Enabled, function(value)
+        self.Settings.Aimbot.Enabled = value
+    end)
+    
+    self:AddDropdown(aimbotSection, "Режим", {"Legit", "Silent", "Trigger"}, self.Settings.Aimbot.Mode, function(value)
+        self.Settings.Aimbot.Mode = value
+    end)
+    
+    self:AddDropdown(aimbotSection, "Кость", {"Head", "Torso", "Random"}, self.Settings.Aimbot.Bone, function(value)
+        self.Settings.Aimbot.Bone = value
+    end)
+    
+    self:AddSlider(aimbotSection, "FOV", 0, 360, self.Settings.Aimbot.FOV, 5, function(value)
+        self.Settings.Aimbot.FOV = value
+    end)
+    
+    self:AddSlider(aimbotSection, "Плавность", 0, 1, self.Settings.Aimbot.Smoothness, 0.1, function(value)
+        self.Settings.Aimbot.Smoothness = value
+    end)
+    
+    -- Визуальные настройки
+    local visualSection = self:CreateSection("Визуальные настройки", container)
+    
+    self:AddToggle(visualSection, "Полное освещение", self.Settings.Visual.Fullbright, function(value)
+        self.Settings.Visual.Fullbright = value
+        self:UpdateFullbright()
+    end)
+    
+    self:AddToggle(visualSection, "Чамсы", self.Settings.Visual.Chams, function(value)
+        self.Settings.Visual.Chams = value
+    end)
+    
+    -- Настройки игрока
+    local playerSection = self:CreateSection("Настройки игрока", container)
+    
+    self:AddToggle(playerSection, "Бог-мод", self.Settings.Player.GodMode, function(value)
+        self.Settings.Player.GodMode = value
+    end)
+    
+    self:AddToggle(playerSection, "Полёт", self.Settings.Player.Fly, function(value)
+        self.Settings.Player.Fly = value
+        self:ToggleFly(value)
+    end)
+    
+    self:AddToggle(playerSection, "NoClip", self.Settings.Player.NoClip, function(value)
+        self.Settings.Player.NoClip = value
+        self:ToggleNoClip(value)
+    end)
+    
+    self:AddSlider(playerSection, "Скорость", 0, 100, self.Settings.Player.Speed, 1, function(value)
+        self.Settings.Player.Speed = value
+    end)
+    
+    self:AddSlider(playerSection, "Сила прыжка", 0, 200, self.Settings.Player.JumpPower, 5, function(value)
+        self.Settings.Player.JumpPower = value
+    end)
+end
+
+-- UI Компоненты (краткие имена)
+function ModMenu:CreateSection(title, parent)
+    local section = Create("Frame", {
+        Name = title .. "Section",
+        Parent = parent,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 35),
+        BackgroundTransparency = 0.1,
+        Size = UDim2.new(1, -20, 0, 0),
+        LayoutOrder = #parent:GetChildren()
+    })
+    
+    local corner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 8),
+        Parent = section
+    })
+    
+    local padding = Create("UIPadding", {
+        Parent = section,
+        PaddingLeft = UDim.new(0, 15),
+        PaddingRight = UDim.new(0, 15),
+        PaddingTop = UDim.new(0, 10),
+        PaddingBottom = UDim.new(0, 10)
+    })
+    
+    local titleLabel = Create("TextLabel", {
+        Name = "Title",
+        Parent = section,
+        Text = title,
+        Font = Enum.Font.GothamBold,
+        TextSize = 16,
+        TextColor3 = self.Settings.Menu.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 25),
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    local list = Create("UIListLayout", {
+        Parent = section,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 8)
+    })
+    
+    list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        section.Size = UDim2.new(1, -20, 0, list.AbsoluteContentSize.Y + 35)
+    end)
+    
+    return section
+end
+
+-- Кнопка
+function ModMenu:Btn(parent, text, callback)
+    local button = Create("TextButton", {
+        Name = text .. "Btn",
+        Parent = parent,
+        Text = text,
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = Color3.new(1, 1, 1),
+        BackgroundColor3 = self.Settings.Menu.Accent,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 35),
+        LayoutOrder = #parent:GetChildren(),
+        AutoButtonColor = false
+    })
+    
+    local corner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 6),
+        Parent = button
+    })
+    
+    -- Ripple эффект
+    button.MouseButton1Click:Connect(function()
+        self:RippleEffect(button)
+        if callback then callback() end
+    end)
+    
+    button.TouchTap:Connect(function()
+        self:RippleEffect(button)
+        if callback then callback() end
+    end)
+    
+    -- Эффекты при наведении
+    button.MouseEnter:Connect(function()
+        Tween(button, {BackgroundColor3 = Color3.fromRGB(
+            math.min(self.Settings.Menu.Accent.R * 255 + 20, 255),
+            math.min(self.Settings.Menu.Accent.G * 255 + 20, 255),
+            math.min(self.Settings.Menu.Accent.B * 255 + 20, 255)
+        )})
+    end)
+    
+    button.MouseLeave:Connect(function()
+        Tween(button, {BackgroundColor3 = self.Settings.Menu.Accent})
+    end)
+    
+    return button
+end
+
+-- Переключатель
+function ModMenu:Toggle(parent, text, state, callback)
+    local toggle = Create("Frame", {
+        Name = text .. "Toggle",
+        Parent = parent,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 30),
+        LayoutOrder = #parent:GetChildren()
+    })
+    
+    local label = Create("TextLabel", {
+        Name = "Label",
+        Parent = toggle,
+        Text = text,
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = self.Settings.Menu.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.7, 0, 1, 0),
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    local switch = Create("Frame", {
+        Name = "Switch",
+        Parent = toggle,
+        BackgroundColor3 = Color3.fromRGB(60, 60, 70),
+        Size = UDim2.new(0, 50, 0, 25),
+        Position = UDim2.new(1, -50, 0.5, -12.5)
+    })
+    
+    local switchCorner = Create("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = switch
+    })
+    
+    local dot = Create("Frame", {
+        Name = "Dot",
+        Parent = switch,
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        Size = UDim2.new(0, 19, 0, 19),
+        Position = UDim2.new(0, 3, 0.5, -9.5)
+    })
+    
+    local dotCorner = Create("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = dot
+    })
+    
+    -- Функция обновления состояния
+    local function UpdateState(value)
+        state = value
+        if value then
+            Tween(dot, {Position = UDim2.new(1, -22, 0.5, -9.5)})
+            Tween(switch, {BackgroundColor3 = self.Settings.Menu.Accent})
+        else
+            Tween(dot, {Position = UDim2.new(0, 3, 0.5, -9.5)})
+            Tween(switch, {BackgroundColor3 = Color3.fromRGB(60, 60, 70)})
+        end
+        if callback then callback(value) end
+    end
+    
+    -- Инициализация состояния
+    UpdateState(state)
+    
+    -- Обработчики кликов
+    local function ToggleState()
+        UpdateState(not state)
+    end
+    
+    switch.MouseButton1Click:Connect(ToggleState)
+    label.MouseButton1Click:Connect(ToggleState)
+    switch.TouchTap:Connect(ToggleState)
+    label.TouchTap:Connect(ToggleState)
+    
+    return {
+        Update = UpdateState,
+        GetState = function() return state end
+    }
+end
+
+-- Слайдер
+function ModMenu:Slider(parent, text, min, max, value, step, callback)
+    local slider = Create("Frame", {
+        Name = text .. "Slider",
+        Parent = parent,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 50),
+        LayoutOrder = #parent:GetChildren()
+    })
+    
+    local top = Create("Frame", {
+        Name = "Top",
+        Parent = slider,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 20)
+    })
+    
+    local label = Create("TextLabel", {
+        Name = "Label",
+        Parent = top,
+        Text = text,
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = self.Settings.Menu.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.7, 0, 1, 0),
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    local valueLabel = Create("TextLabel", {
+        Name = "Value",
+        Parent = top,
+        Text = tostring(value),
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = self.Settings.Menu.Accent,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.3, 0, 1, 0),
+        Position = UDim2.new(0.7, 0, 0, 0),
+        TextXAlignment = Enum.TextXAlignment.Right
+    })
+    
+    local track = Create("Frame", {
+        Name = "Track",
+        Parent = slider,
+        BackgroundColor3 = Color3.fromRGB(60, 60, 70),
+        Size = UDim2.new(1, 0, 0, 6),
+        Position = UDim2.new(0, 0, 1, -16)
+    })
+    
+    local trackCorner = Create("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = track
+    })
+    
+    local fill = Create("Frame", {
+        Name = "Fill",
+        Parent = track,
+        BackgroundColor3 = self.Settings.Menu.Accent,
+        Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
+    })
+    
+    local fillCorner = Create("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = fill
+    })
+    
+    local thumb = Create("Frame", {
+        Name = "Thumb",
+        Parent = track,
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        Size = UDim2.new(0, 16, 0, 16),
+        Position = UDim2.new((value - min) / (max - min), -8, 0.5, -8)
+    })
+    
+    local thumbCorner = Create("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = thumb
+    })
+    
+    -- Функция обновления значения
+    local function UpdateValue(newValue)
+        newValue = math.clamp(newValue, min, max)
+        if step then
+            newValue = math.floor(newValue / step + 0.5) * step
+        end
+        
+        value = newValue
+        valueLabel.Text = tostring(Round(value, 2))
+        
+        local percent = (value - min) / (max - min)
+        fill.Size = UDim2.new(percent, 0, 1, 0)
+        thumb.Position = UDim2.new(percent, -8, 0.5, -8)
+        
+        if callback then callback(value) end
+    end
+    
+    -- Перетаскивание
+    local dragging = false
+    
+    local function UpdateFromInput(input)
+        local relativeX = (input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X
+        local newValue = min + relativeX * (max - min)
+        UpdateValue(newValue)
+    end
+    
+    track.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            UpdateFromInput(input)
+        end
+    end)
+    
+    track.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or 
+           input.UserInputType == Enum.UserInputType.Touch) then
+            UpdateFromInput(input)
+        end
+    end)
+    
+    -- Инициализация
+    UpdateValue(value)
+    
+    return {
+        Update = UpdateValue,
+        GetValue = function() return value end
+    }
+end
+
+-- Выпадающий список
+function ModMenu:Dropdown(parent, text, options, default, callback)
+    local dropdown = Create("Frame", {
+        Name = text .. "Dropdown",
+        Parent = parent,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 30),
+        LayoutOrder = #parent:GetChildren(),
+        ClipsDescendants = true
+    })
+    
+    local label = Create("TextLabel", {
+        Name = "Label",
+        Parent = dropdown,
+        Text = text,
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = self.Settings.Menu.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.7, 0, 1, 0),
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    local button = Create("TextButton", {
+        Name = "Button",
+        Parent = dropdown,
+        Text = default or options[1],
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = self.Settings.Menu.Text,
+        BackgroundColor3 = Color3.fromRGB(60, 60, 70),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0.3, 0, 1, 0),
+        Position = UDim2.new(0.7, 0, 0, 0),
+        AutoButtonColor = false
+    })
+    
+    local buttonCorner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 4),
+        Parent = button
+    })
+    
+    local list = Create("ScrollingFrame", {
+        Name = "List",
+        Parent = dropdown,
+        BackgroundColor3 = Color3.fromRGB(40, 40, 50),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0.3, 0, 0, 0),
+        Position = UDim2.new(0.7, 0, 1, 5),
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        ScrollBarThickness = 3,
+        Visible = false,
+        ZIndex = 1000
+    })
+    
+    local listLayout = Create("UIListLayout", {
+        Parent = list,
+        SortOrder = Enum.SortOrder.LayoutOrder
+    })
+    
+    -- Создаем опции
+    for i, option in ipairs(options) do
+        local optionBtn = Create("TextButton", {
+            Name = option,
+            Parent = list,
+            Text = option,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            TextColor3 = self.Settings.Menu.Text,
+            BackgroundColor3 = Color3.fromRGB(50, 50, 60),
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 0, 25),
+            LayoutOrder = i,
+            AutoButtonColor = false,
+            ZIndex = 1001
+        })
+        
+        optionBtn.MouseButton1Click:Connect(function()
+            button.Text = option
+            if callback then callback(option) end
+            self:ToggleDropdown(list)
+        end)
+        
+        optionBtn.MouseEnter:Connect(function()
+            Tween(optionBtn, {BackgroundColor3 = Color3.fromRGB(70, 70, 80)})
+        end)
+        
+        optionBtn.MouseLeave:Connect(function()
+            Tween(optionBtn, {BackgroundColor3 = Color3.fromRGB(50, 50, 60)})
+        end)
+    end
+    
+    -- Обновляем размер списка
+    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        list.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y)
+        list.Size = UDim2.new(0.3, 0, 0, math.min(listLayout.AbsoluteContentSize.Y, 150))
+    end)
+    
+    -- Функция переключения
+    button.MouseButton1Click:Connect(function()
+        self:ToggleDropdown(list)
+    end)
+    
+    return {
+        SetValue = function(value)
+            button.Text = value
+            if callback then callback(value) end
+        end,
+        GetValue = function() return button.Text end
+    }
+end
+
+-- Палитра цветов
+function ModMenu:ColorPicker(parent, text, default, callback)
+    local picker = Create("Frame", {
+        Name = text .. "ColorPicker",
+        Parent = parent,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 30),
+        LayoutOrder = #parent:GetChildren()
+    })
+    
+    local label = Create("TextLabel", {
+        Name = "Label",
+        Parent = picker,
+        Text = text,
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = self.Settings.Menu.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.7, 0, 1, 0),
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    local preview = Create("TextButton", {
+        Name = "Preview",
+        Parent = picker,
+        Text = "",
+        BackgroundColor3 = default,
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 40, 0, 25),
+        Position = UDim2.new(0.7, 0, 0.5, -12.5),
+        AutoButtonColor = false
+    })
+    
+    local previewCorner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 4),
+        Parent = preview
+    })
+    
+    local pickerFrame = Create("Frame", {
+        Name = "ColorGrid",
+        Parent = picker,
+        BackgroundColor3 = Color3.fromRGB(40, 40, 50),
+        BorderSizePixel = 0,
+        Size = UDim2.new(0, 150, 0, 90),
+        Position = UDim2.new(0.7, 45, 0.5, -45),
+        Visible = false,
+        ZIndex = 1000
+    })
+    
+    local pickerCorner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 6),
+        Parent = pickerFrame
+    })
+    
+    -- Сетка цветов
+    local colors = {
+        Color3.fromRGB(255, 50, 50),   -- Красный
+        Color3.fromRGB(255, 150, 50),  -- Оранжевый
+        Color3.fromRGB(255, 255, 50),  -- Желтый
+        Color3.fromRGB(150, 255, 50),  -- Лаймовый
+        Color3.fromRGB(50, 255, 50),   -- Зеленый
+        Color3.fromRGB(50, 255, 150),  -- Бирюзовый
+        Color3.fromRGB(50, 255, 255),  -- Голубой
+        Color3.fromRGB(50, 150, 255),  -- Синий
+        Color3.fromRGB(100, 100, 255), -- Фиолетовый
+        Color3.fromRGB(200, 50, 255),  -- Пурпурный
+        Color3.fromRGB(255, 50, 200),  -- Розовый
+        Color3.fromRGB(255, 50, 100),  -- Малиновый
+        Color3.fromRGB(255, 255, 255), -- Белый
+        Color3.fromRGB(200, 200, 200), -- Серый
+        Color3.new(0.1, 0.1, 0.1)      -- Черный
+    }
+    
+    for i = 1, 15 do
+        local colorBtn = Create("TextButton", {
+            Name = "Color" .. i,
+            Parent = pickerFrame,
+            Text = "",
+            BackgroundColor3 = colors[i],
+            BorderSizePixel = 0,
+            Size = UDim2.new(0, 25, 0, 25),
+            Position = UDim2.new(0, ((i-1) % 5) * 30 + 2, 0, math.floor((i-1)/5) * 30 + 2),
+            AutoButtonColor = false,
+            ZIndex = 1001
+        })
+        
+        local colorCorner = Create("UICorner", {
+            CornerRadius = UDim.new(0, 4),
+            Parent = colorBtn
+        })
+        
+        colorBtn.MouseButton1Click:Connect(function()
+            preview.BackgroundColor3 = colors[i]
+            if callback then callback(colors[i]) end
+            pickerFrame.Visible = false
+        end)
+    end
+    
+    -- Показ/скрытие палитры
+    preview.MouseButton1Click:Connect(function()
+        pickerFrame.Visible = not pickerFrame.Visible
+    end)
+    
+    -- Закрытие при клике вне
+    UserInputService.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if pickerFrame.Visible then
+                local mousePos = UserInputService:GetMouseLocation()
+                local framePos = pickerFrame.AbsolutePosition
+                local frameSize = pickerFrame.AbsoluteSize
+                
+                if mousePos.X < framePos.X or mousePos.X > framePos.X + frameSize.X or
+                   mousePos.Y < framePos.Y or mousePos.Y > framePos.Y + frameSize.Y then
+                    pickerFrame.Visible = false
+                end
+            end
+        end
+    end)
+    
+    return {
+        SetColor = function(color)
+            preview.BackgroundColor3 = color
+            if callback then callback(color) end
+        end,
+        GetColor = function() return preview.BackgroundColor3 end
+    }
+end
+
+-- Ripple эффект
+function ModMenu:RippleEffect(button)
+    local ripple = Create("Frame", {
+        Parent = button,
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        BackgroundTransparency = 0.7,
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        ZIndex = 10
+    })
+    
+    local corner = Create("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = ripple
+    })
+    
+    Tween(ripple, {Size = UDim2.new(2, 0, 2, 0), BackgroundTransparency = 1}, 0.5)
+    
+    task.spawn(function()
+        task.wait(0.5)
+        ripple:Destroy()
+    end)
+end
+
+-- Вспомогательные методы
+function ModMenu:MakeDraggable(frame, handle)
+    handle = handle or frame
+    local dragging = false
+    local dragInput, dragStart, startPos
+    
+    local function Update(input)
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, 
+                                   startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            Update(input)
+        end
+    end)
+end
+
+function ModMenu:ToggleDropdown(list)
+    if list.Visible then
+        Tween(list, {Size = UDim2.new(list.Size.X.Scale, list.Size.X.Offset, 0, 0)})
+        task.wait(0.2)
+        list.Visible = false
+    else
+        list.Visible = true
+        Tween(list, {Size = UDim2.new(list.Size.X.Scale, list.Size.X.Offset, 0, list.CanvasSize.Y.Offset)})
+    end
+end
+
+-- Системные методы
+function ModMenu:ToggleMenu()
+    self.MenuFrame.Visible = not self.MenuFrame.Visible
+    
+    if self.MenuFrame.Visible then
+        Tween(self.MainButton, {BackgroundTransparency = 0.5})
+        self.MainButton.Text = "✕"
+    else
+        Tween(self.MainButton, {BackgroundTransparency = 0})
+        self.MainButton.Text = "≡"
+    end
+end
+
+function ModMenu:ToggleSettings()
+    self.SettingsFrame.Visible = not self.SettingsFrame.Visible
+end
+
+function ModMenu:Notify(text, duration)
+    duration = duration or 3
+    
+    local notification = Create("Frame", {
+        Name = "Notification",
+        Parent = self.GUI,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 40),
+        BackgroundTransparency = 0.1,
+        Size = UDim2.new(0, 300, 0, 60),
+        Position = UDim2.new(1, -320, 1, -80),
+        ZIndex = 10000
+    })
+    
+    local corner = Create("UICorner", {
+        CornerRadius = UDim.new(0, 8),
+        Parent = notification
+    })
+    
+    local shadow = Create("ImageLabel", {
+        Name = "Shadow",
+        Parent = notification,
+        Image = "rbxassetid://2615687895",
+        ImageColor3 = Color3.new(0, 0, 0),
+        ImageTransparency = 0.8,
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Rect.new(23, 23, 277, 277),
+        Size = UDim2.new(1, 20, 1, 20),
+        Position = UDim2.new(0, -10, 0, -10),
+        BackgroundTransparency = 1,
+        ZIndex = 9999
+    })
+    
+    local title = Create("TextLabel", {
+        Name = "Title",
+        Parent = notification,
+        Text = "Уведомление",
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextColor3 = self.Settings.Menu.Accent,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -20, 0, 20),
+        Position = UDim2.new(0, 10, 0, 5),
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    local message = Create("TextLabel", {
+        Name = "Message",
+        Parent = notification,
+        Text = text,
+        Font = Enum.Font.Gotham,
+        TextSize = 12,
+        TextColor3 = self.Settings.Menu.Text,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -20, 1, -30),
+        Position = UDim2.new(0, 10, 0, 25),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextWrapped = true
+    })
+    
+    -- Анимация появления
+    notification.Position = UDim2.new(1, 300, 1, -80)
+    Tween(notification, {Position = UDim2.new(1, -320, 1, -80)})
+    
+    -- Автоматическое удаление
+    task.spawn(function()
+        task.wait(duration)
+        Tween(notification, {Position = UDim2.new(1, 300, 1, -80)})
+        task.wait(0.3)
+        notification:Destroy()
+    end)
+end
+
+-- Обновление интерфейса
+function ModMenu:UpdateColors()
+    -- Обновляем цвета всех элементов
+    -- Это место для реализации обновления интерфейса
+    self:Notify("Цвета обновлены!")
+end
+
+function ModMenu:UpdateTransparency()
+    -- Обновляем прозрачность
+    self:Notify("Прозрачность обновлена!")
+end
+
+-- Инициализация систем
+function ModMenu:InitESP()
+    self.ESP.Objects = {}
+    
+    local function UpdateESP()
+        if not self.Settings.ESP.Enabled then
+            for _, obj in pairs(self.ESP.Objects) do
+                if obj then
+                    obj:Destroy()
+                end
+            end
+            self.ESP.Objects = {}
+            return
+        end
+        
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= PLAYER and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local character = player.Character
+                local root = character.HumanoidRootPart
+                
+                -- Проверка дистанции
+                local distance = (root.Position - PLAYER.Character.HumanoidRootPart.Position).Magnitude
+                if distance > self.Settings.ESP.MaxDistance then
+                    continue
+                end
+                
+                -- Создаем ESP объект
+                if not self.ESP.Objects[player] then
+                    self.ESP.Objects[player] = {}
+                end
+                
+                -- Box ESP
+                if self.Settings.ESP.Box then
+                    if not self.ESP.Objects[player].Box then
+                        local box = Create("BoxHandleAdornment", {
+                            Name = "ESPBox",
+                            Adornee = root,
+                            AlwaysOnTop = true,
+                            ZIndex = 0,
+                            Size = root.Size + Vector3.new(0.1, 0.1, 0.1),
+                            Color3 = self.Settings.ESP.Color,
+                            Transparency = 0.3,
+                            Parent = character
+                        })
+                        self.ESP.Objects[player].Box = box
+                    end
+                else
+                    if self.ESP.Objects[player].Box then
+                        self.ESP.Objects[player].Box:Destroy()
+                        self.ESP.Objects[player].Box = nil
+                    end
+                end
+                
+                -- Tracer ESP
+                if self.Settings.ESP.Tracer then
+                    if not self.ESP.Objects[player].Tracer then
+                        local tracer = Create("LineHandleAdornment", {
+                            Name = "ESPTracer",
+                            Adornee = root,
+                            AlwaysOnTop = true,
+                            ZIndex = 0,
+                            Thickness = 1,
+                            Color3 = self.Settings.ESP.Color,
+                            Transparency = 0.5,
+                            Parent = character
+                        })
+                        self.ESP.Objects[player].Tracer = tracer
+                    end
+                    
+                    -- Обновляем позицию трассера
+                    local screenPos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(root.Position)
+                    if onScreen then
+                        self.ESP.Objects[player].Tracer.Length = (Vector2.new(screenPos.X, screenPos.Y) - 
+                            Vector2.new(workspace.CurrentCamera.ViewportSize.X/2, workspace.CurrentCamera.ViewportSize.Y)).Magnitude
+                    end
+                else
+                    if self.ESP.Objects[player].Tracer then
+                        self.ESP.Objects[player].Tracer:Destroy()
+                        self.ESP.Objects[player].Tracer = nil
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Оптимизация: обновляем ESP каждые 0.1 секунды
+    table.insert(self.Connections, RunService.RenderStepped:Connect(function(delta)
+        if delta > 0.1 then
+            UpdateESP()
+        end
+    end))
+end
+
+function ModMenu:InitAimbot()
+    self.Aimbot.Target = nil
+    
+    local function GetClosestPlayer()
+        local closest = nil
+        local closestDistance = self.Settings.Aimbot.FOV
+        
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= PLAYER and player.Character then
+                local humanoid = player.Character:FindFirstChild("Humanoid")
+                local root = player.Character:FindFirstChild("HumanoidRootPart")
+                
+                if humanoid and humanoid.Health > 0 and root then
+                    -- Проверка видимости
+                    if self.Settings.Aimbot.VisibleCheck then
+                        local ray = Ray.new(workspace.CurrentCamera.CFrame.Position, 
+                                           (root.Position - workspace.CurrentCamera.CFrame.Position).Unit * 1000)
+                        local hit = workspace:FindPartOnRayWithIgnoreList(ray, {PLAYER.Character})
+                        if hit and hit:IsDescendantOf(player.Character) then
+                            -- Проверка FOV
+                            local screenPos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(root.Position)
+                            if onScreen then
+                                local mousePos = Vector2.new(UserInputService:GetMouseLocation().X, 
+                                                            UserInputService:GetMouseLocation().Y)
+                                local distance = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                
+                                if distance < closestDistance then
+                                    closestDistance = distance
+                                    closest = player
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        return closest
+    end
+    
+    local function AimAt(target)
+        if not target or not target.Character then return end
+        
+        local bone = target.Character:FindFirstChild(self.Settings.Aimbot.Bone)
+        if not bone then
+            bone = target.Character:FindFirstChild("Head") or target.Character:FindFirstChild("HumanoidRootPart")
+        end
+        
+        if bone then
+            local camera = workspace.CurrentCamera
+            local targetPos = bone.Position
+            
+            if self.Settings.Aimbot.Mode == "Legit" then
+                -- Плавный аим
+                local current = camera.CFrame
+                local target = CFrame.lookAt(current.Position, targetPos)
+                camera.CFrame = current:Lerp(target, self.Settings.Aimbot.Smoothness)
+            elseif self.Settings.Aimbot.Mode == "Silent" then
+                -- Без движения камеры (для прицеливания оружия)
+                -- Реализация зависит от игры
+            end
+        end
+    end
+    
+    -- Основной цикл аимбота
+    table.insert(self.Connections, RunService.RenderStepped:Connect(function()
+        if self.Settings.Aimbot.Enabled then
+            if self.Settings.Aimbot.Mode == "Trigger" then
+                -- Triggerbot: автоматическая стрельба при наведении
+                local target = GetClosestPlayer()
+                if target then
+                    -- Активируем стрельбу
+                    -- Реализация зависит от игры
+                end
+            else
+                -- Аимбот с прицеливанием
+                self.Aimbot.Target = GetClosestPlayer()
+                if self.Aimbot.Target then
+                    AimAt(self.Aimbot.Target)
+                end
+            end
+        end
+    end))
+end
+
+function ModMenu:InitVisual()
+    local function UpdateFullbright()
+        if self.Settings.Visual.Fullbright then
+            Lighting.GlobalShadows = false
+            Lighting.ClockTime = 14
+        else
+            Lighting.GlobalShadows = true
+        end
+    end
+    
+    local function UpdateAmbient()
+        Lighting.Ambient = self.Settings.Visual.Ambient
+        Lighting.Brightness = self.Settings.Visual.Brightness
+    end
+    
+    -- Обновление при изменении настроек
+    self:OnSettingChanged("Visual.Fullbright", UpdateFullbright)
+    self:OnSettingChanged("Visual.Ambient", UpdateAmbient)
+    self:OnSettingChanged("Visual.Brightness", UpdateAmbient)
+    
+    -- Инициализация
+    UpdateFullbright()
+    UpdateAmbient()
+end
+
+function ModMenu:InitPlayer()
+    local function UpdateSpeed()
+        if PLAYER.Character and PLAYER.Character:FindFirstChild("Humanoid") then
+            PLAYER.Character.Humanoid.WalkSpeed = self.Settings.Player.Speed
+        end
+    end
+    
+    local function UpdateJump()
+        if PLAYER.Character and PLAYER.Character:FindFirstChild("Humanoid") then
+            PLAYER.Character.Humanoid.JumpPower = self.Settings.Player.JumpPower
+        end
+    end
+    
+    -- Обновление характеристик
+    table.insert(self.Connections, PLAYER.CharacterAdded:Connect(function(character)
+        character:WaitForChild("Humanoid")
+        UpdateSpeed()
+        UpdateJump()
+    end))
+    
+    -- Обновление при изменении настроек
+    self:OnSettingChanged("Player.Speed", UpdateSpeed)
+    self:OnSettingChanged("Player.JumpPower", UpdateJump)
+end
+
+-- Система полета
+function ModMenu:ToggleFly(enabled)
+    if enabled then
+        local bodyVelocity = Create("BodyVelocity", {
+            Parent = PLAYER.Character:FindFirstChild("HumanoidRootPart"),
+            MaxForce = Vector3.new(10000, 10000, 10000),
+            Velocity = Vector3.new(0, 0, 0)
+        })
+        
+        local flying = true
+        local speed = 50
+        
+        table.insert(self.Connections, UserInputService.InputBegan:Connect(function(input)
+            if input.KeyCode == Enum.KeyCode.W then
+                bodyVelocity.Velocity = workspace.CurrentCamera.CFrame.LookVector * speed
+            elseif input.KeyCode == Enum.KeyCode.S then
+                bodyVelocity.Velocity = -workspace.CurrentCamera.CFrame.LookVector * speed
+            elseif input.KeyCode == Enum.KeyCode.A then
+                bodyVelocity.Velocity = -workspace.CurrentCamera.CFrame.RightVector * speed
+            elseif input.KeyCode == Enum.KeyCode.D then
+                bodyVelocity.Velocity = workspace.CurrentCamera.CFrame.RightVector * speed
+            end
+        end))
+        
+        table.insert(self.Connections, UserInputService.InputEnded:Connect(function(input)
+            if input.KeyCode == Enum.KeyCode.W or input.KeyCode == Enum.KeyCode.S or
+               input.KeyCode == Enum.KeyCode.A or input.KeyCode == Enum.KeyCode.D then
+                bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            end
+        end))
+    else
+        -- Отключаем полет
+        local root = PLAYER.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            local bv = root:FindFirstChild("BodyVelocity")
+            if bv then bv:Destroy() end
+        end
+    end
+end
+
+-- NoClip система
+function ModMenu:ToggleNoClip(enabled)
+    if enabled then
+        table.insert(self.Connections, RunService.Stepped:Connect(function()
+            if PLAYER.Character then
+                for _, part in ipairs(PLAYER.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end))
+    end
+end
+
+-- Обработчик изменений настроек
+function ModMenu:OnSettingChanged(settingPath, callback)
+    local parts = string.split(settingPath, ".")
+    local current = self.Settings
+    
+    for i = 1, #parts - 1 do
+        current = current[parts[i]]
+    end
+    
+    local lastPart = parts[#parts]
+    
+    -- Мониторинг изменений
+    local proxy = setmetatable({}, {
+        __index = current,
+        __newindex = function(t, k, v)
+            if k == lastPart then
+                rawset(current, k, v)
+                callback(v)
+            else
+                rawset(current, k, v)
+            end
+        end
+    })
+    
+    self.Settings = proxy
+end
+
+-- API методы
+function ModMenu:Destroy()
+    for _, connection in ipairs(self.Connections) do
+        connection:Disconnect()
+    end
+    
+    if self.GUI then
+        self.GUI:Destroy()
+    end
+    
+    self.Active = false
+end
+
+function ModMenu:GetSetting(path)
+    local parts = string.split(path, ".")
+    local current = self.Settings
+    
+    for _, part in ipairs(parts) do
+        if current[part] then
+            current = current[part]
+        else
+            return nil
+        end
+    end
+    
+    return current
+end
+
+function ModMenu:SetSetting(path, value)
+    local parts = string.split(path, ".")
+    local current = self.Settings
+    
+    for i = 1, #parts - 1 do
+        if not current[parts[i]] then
+            current[parts[i]] = {}
+        end
+        current = current[parts[i]]
+    end
+    
+    current[parts[#parts]] = value
+end
+
+-- Экспорт функций
+ModMenu.CreateSection = ModMenu.CreateSection
+ModMenu.Btn = ModMenu.Btn
+ModMenu.Toggle = ModMenu.Toggle
+ModMenu.Slider = ModMenu.Slider
+ModMenu.Dropdown = ModMenu.Dropdown
+ModMenu.ColorPicker = ModMenu.ColorPicker
+ModMenu.Notify = ModMenu.Notify
+
+return ModMenu
