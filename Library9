@@ -1,9 +1,4 @@
 
---[[
-    Mod Menu Library v3.1 - Стабильная версия
-    Без сложного копирования, полностью рабочая
-    Автор: Фатима ♥️
-]]--
 
 local ModMenu = {}
 ModMenu.__index = ModMenu
@@ -814,7 +809,7 @@ function ModMenu:Toggle(parent, text, state, callback)
     
     -- Обработчики
     toggleButton.MouseButton1Click:Connect(ToggleState)
-    label.MouseButton1Click:Connect(ToggleState)
+    
     toggleButton.TouchTap:Connect(ToggleState)
     label.TouchTap:Connect(ToggleState)
     
