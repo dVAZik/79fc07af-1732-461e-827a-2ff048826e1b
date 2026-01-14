@@ -1,6 +1,3 @@
--- Modern Elegant Mod Menu Library for Roblox
--- Fully compatible with PC and Mobile
--- Author: Fatima♥️
 
 local ModMenuLib = {}
 
@@ -16,27 +13,26 @@ local StarterGui = game:GetService("StarterGui")
 
 -- Player
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 -- Generate unique ID
 local MENU_ID = "ModMenu_" .. HttpService:GenerateGUID(false):sub(1, 8)
 
 -- Configuration
 local CONFIG = {
-    MenuColor = Color3.fromRGB(25, 25, 30),
-    AccentColor = Color3.fromRGB(0, 150, 255),
-    TextColor = Color3.fromRGB(240, 240, 240),
-    SecondaryColor = Color3.fromRGB(40, 40, 45),
+    MenuColor = Color3.fromRGB(28, 28, 35),
+    AccentColor = Color3.fromRGB(0, 170, 255),
+    TextColor = Color3.fromRGB(240, 240, 245),
+    SecondaryColor = Color3.fromRGB(40, 40, 48),
     Font = Enum.Font.GothamMedium,
     TitleFont = Enum.Font.GothamBold,
-    Transparency = 0.05,
-    CornerRadius = 8
+    Transparency = 0.08,
+    CornerRadius = 10
 }
 
 -- Menu variables
 ModMenuLib.Menu = nil
 ModMenuLib.Folder = nil
-ModMenuLib.Settings = nil
+ModMenuLib.SettingsGUI = nil
 ModMenuLib.OpenButton = nil
 ModMenuLib.Connections = {}
 ModMenuLib.EnabledFeatures = {}
@@ -44,6 +40,8 @@ ModMenuLib.ESPItems = {}
 ModMenuLib.AimItems = {}
 ModMenuLib.VisualItems = {}
 ModMenuLib.ActiveDropdown = nil
+ModMenuLib.Sections = {}
+ModMenuLib.CurrentSection = nil
 
 -- Utility functions
 local function CreateDraggable(frame, handle)
@@ -110,50 +108,64 @@ local function CreateRippleEffect(button)
     end)
 end
 
--- Background floating text
-local function CreateFloatingText(parent, text, position)
+-- Background floating text with different movements
+local function CreateFloatingText(parent, text, position, index)
     local label = Instance.new("TextLabel")
-    label.Name = "FloatingText_" .. text
+    label.Name = "FloatingText_" .. index
     label.Text = text
     label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.TextTransparency = 0.8
+    label.TextTransparency = 0.85
     label.Font = Enum.Font.GothamBold
-    label.TextSize = 22
+    label.TextSize = 24
     label.BackgroundTransparency = 1
     label.Size = UDim2.new(0, 150, 0, 40)
     label.Position = position
     label.ZIndex = 0
     label.Parent = parent
     
-    local angle = math.random() * math.pi * 2
-    local speed = math.random(20, 40) / 1000  -- Faster movement
-    local radius = math.random(60, 120)
-    local center = Vector2.new(parent.AbsoluteSize.X / 2, parent.AbsoluteSize.Y / 2)
+    -- Different movement patterns based on index
+    local patterns = {
+        {speedX = 0.02, speedY = 0.015, radiusX = 80, radiusY = 60, offsetX = 0, offsetY = 0},  -- Top Left
+        {speedX = -0.025, speedY = 0.018, radiusX = 90, radiusY = 70, offsetX = math.pi/3, offsetY = math.pi/4},  -- Top Right
+        {speedX = 0.018, speedY = -0.022, radiusX = 70, radiusY = 80, offsetX = math.pi/2, offsetY = math.pi/3},  -- Bottom Left
+        {speedX = -0.015, speedY = -0.02, radiusX = 85, radiusY = 65, offsetX = math.pi, offsetY = math.pi/2},  -- Bottom Right
+        {speedX = 0.03, speedY = 0.025, radiusX = 100, radiusY = 80, offsetX = math.pi/4, offsetY = math.pi/6}  -- Center
+    }
+    
+    local pattern = patterns[index] or patterns[1]
     local time = 0
-    local floatHeight = math.random(20, 40)
+    local centerX, centerY
     
     local connection = RunService.RenderStepped:Connect(function(delta)
         time = time + delta
         
-        -- Smooth circular motion with floating
-        local x = center.X + math.cos(angle + time * speed) * radius
-        local y = center.Y + math.sin(angle + time * speed * 0.7) * radius * 0.7 + math.sin(time * 0.5) * floatHeight
+        if not centerX then
+            centerX = label.AbsolutePosition.X + label.AbsoluteSize.X/2
+            centerY = label.AbsolutePosition.Y + label.AbsoluteSize.Y/2
+        end
+        
+        -- Complex elliptical movement
+        local x = centerX + math.cos(time * pattern.speedX + pattern.offsetX) * pattern.radiusX
+        local y = centerY + math.sin(time * pattern.speedY + pattern.offsetY) * pattern.radiusY
         
         label.Position = UDim2.new(0, x, 0, y)
-        label.TextTransparency = 0.6 + math.sin(time * 1.5) * 0.3  -- Smooth fade
-        label.Rotation = math.sin(time * 0.3) * 5  -- Slight rotation
+        
+        -- Smooth transparency wave
+        label.TextTransparency = 0.7 + math.sin(time * 2) * 0.2
+        
+        -- Slight rotation
+        label.Rotation = math.sin(time * 1.5) * 3
     end)
     
     return {label = label, connection = connection}
 end
 
--- UI Components with better organization
+-- UI Components with proper layout
 function ModMenuLib:CreateButton(parent, text, callback)
     local buttonFrame = Instance.new("Frame")
-    buttonFrame.Name = "ButtonFrame_" .. text
+    buttonFrame.Name = "ButtonFrame_" .. text:gsub("%s+", "_")
     buttonFrame.BackgroundTransparency = 1
-    buttonFrame.Size = UDim2.new(1, -20, 0, 40)
-    buttonFrame.Position = UDim2.new(0, 10, 0, 0)
+    buttonFrame.Size = UDim2.new(1, -20, 0, 42)
     buttonFrame.Parent = parent
     
     local button = Instance.new("TextButton")
@@ -180,7 +192,7 @@ function ModMenuLib:CreateButton(parent, text, callback)
     
     button.MouseEnter:Connect(function()
         TweenService:Create(button, TweenInfo.new(0.2), {
-            BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+            BackgroundColor3 = Color3.fromRGB(50, 50, 58)
         }):Play()
         TweenService:Create(stroke, TweenInfo.new(0.2), {
             Transparency = 0.3
@@ -211,10 +223,9 @@ end
 
 function ModMenuLib:CreateToggle(parent, text, default, callback)
     local toggleFrame = Instance.new("Frame")
-    toggleFrame.Name = "Toggle_" .. text
+    toggleFrame.Name = "Toggle_" .. text:gsub("%s+", "_")
     toggleFrame.BackgroundTransparency = 1
-    toggleFrame.Size = UDim2.new(1, -20, 0, 40)
-    toggleFrame.Position = UDim2.new(0, 10, 0, 0)
+    toggleFrame.Size = UDim2.new(1, -20, 0, 42)
     toggleFrame.Parent = parent
     
     local label = Instance.new("TextLabel")
@@ -233,20 +244,20 @@ function ModMenuLib:CreateToggle(parent, text, default, callback)
     toggleButton.Name = "ToggleButton"
     toggleButton.Text = ""
     toggleButton.BackgroundColor3 = default and CONFIG.AccentColor or CONFIG.SecondaryColor
-    toggleButton.Size = UDim2.new(0, 45, 0, 25)
-    toggleButton.Position = UDim2.new(1, -45, 0.5, -12.5)
+    toggleButton.Size = UDim2.new(0, 48, 0, 26)
+    toggleButton.Position = UDim2.new(1, -48, 0.5, -13)
     toggleButton.AutoButtonColor = false
     toggleButton.Parent = toggleFrame
     
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 12)
+    corner.CornerRadius = UDim.new(0, 13)
     corner.Parent = toggleButton
     
     local toggleCircle = Instance.new("Frame")
     toggleCircle.Name = "ToggleCircle"
     toggleCircle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    toggleCircle.Size = UDim2.new(0, 19, 0, 19)
-    toggleCircle.Position = default and UDim2.new(1, -22, 0.5, -9.5) or UDim2.new(0, 3, 0.5, -9.5)
+    toggleCircle.Size = UDim2.new(0, 20, 0, 20)
+    toggleCircle.Position = default and UDim2.new(1, -24, 0.5, -10) or UDim2.new(0, 4, 0.5, -10)
     toggleCircle.Parent = toggleButton
     
     local corner2 = Instance.new("UICorner")
@@ -258,7 +269,7 @@ function ModMenuLib:CreateToggle(parent, text, default, callback)
     local function UpdateToggle()
         local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         local tween = TweenService:Create(toggleCircle, tweenInfo, {
-            Position = isToggled and UDim2.new(1, -22, 0.5, -9.5) or UDim2.new(0, 3, 0.5, -9.5)
+            Position = isToggled and UDim2.new(1, -24, 0.5, -10) or UDim2.new(0, 4, 0.5, -10)
         })
         
         TweenService:Create(toggleButton, tweenInfo, {
@@ -294,10 +305,9 @@ end
 
 function ModMenuLib:CreateSlider(parent, text, min, max, default, callback)
     local sliderFrame = Instance.new("Frame")
-    sliderFrame.Name = "Slider_" .. text
+    sliderFrame.Name = "Slider_" .. text:gsub("%s+", "_")
     sliderFrame.BackgroundTransparency = 1
-    sliderFrame.Size = UDim2.new(1, -20, 0, 60)
-    sliderFrame.Position = UDim2.new(0, 10, 0, 0)
+    sliderFrame.Size = UDim2.new(1, -20, 0, 62)
     sliderFrame.Parent = parent
     
     local label = Instance.new("TextLabel")
@@ -308,7 +318,7 @@ function ModMenuLib:CreateSlider(parent, text, min, max, default, callback)
     label.TextSize = 14
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, 0, 0, 20)
+    label.Size = UDim2.new(1, 0, 0, 22)
     label.Position = UDim2.new(0, 0, 0, 0)
     label.Parent = sliderFrame
     
@@ -316,7 +326,7 @@ function ModMenuLib:CreateSlider(parent, text, min, max, default, callback)
     sliderBack.Name = "SliderBack"
     sliderBack.BackgroundColor3 = CONFIG.SecondaryColor
     sliderBack.Size = UDim2.new(1, 0, 0, 6)
-    sliderBack.Position = UDim2.new(0, 0, 0, 30)
+    sliderBack.Position = UDim2.new(0, 0, 0, 32)
     sliderBack.Parent = sliderFrame
     
     local corner = Instance.new("UICorner")
@@ -420,10 +430,9 @@ end
 
 function ModMenuLib:CreateDropdown(parent, text, options, default, callback, isPlayerList)
     local dropdownFrame = Instance.new("Frame")
-    dropdownFrame.Name = "Dropdown_" .. text
+    dropdownFrame.Name = "Dropdown_" .. text:gsub("%s+", "_")
     dropdownFrame.BackgroundTransparency = 1
-    dropdownFrame.Size = UDim2.new(1, -20, 0, 40)
-    dropdownFrame.Position = UDim2.new(0, 10, 0, 0)
+    dropdownFrame.Size = UDim2.new(1, -20, 0, 42)
     dropdownFrame.ClipsDescendants = true
     dropdownFrame.Parent = parent
     
@@ -464,7 +473,7 @@ function ModMenuLib:CreateDropdown(parent, text, options, default, callback, isP
     dropdownList.Visible = false
     dropdownList.ZIndex = 100
     dropdownList.ScrollBarThickness = 3
-    dropdownList.Parent = parent.Parent  -- Parent to container's parent for proper z-index
+    dropdownList.Parent = parent.Parent
     
     local listLayout = Instance.new("UIListLayout")
     listLayout.Padding = UDim.new(0, 2)
@@ -473,19 +482,25 @@ function ModMenuLib:CreateDropdown(parent, text, options, default, callback, isP
     local padding = Instance.new("UIPadding")
     padding.PaddingTop = UDim.new(0, 5)
     padding.PaddingBottom = UDim.new(0, 5)
+    padding.PaddingLeft = UDim.new(0, 2)
+    padding.PaddingRight = UDim.new(0, 2)
     padding.Parent = dropdownList
     
     local isOpen = false
     local selectedIndex = default or 1
     
     local function CloseAllDropdowns()
-        if ModMenuLib.ActiveDropdown and ModMenuLib.ActiveDropdown ~= dropdownList then
-            ModMenuLib.ActiveDropdown.Visible = false
-            TweenService:Create(ModMenuLib.ActiveDropdown, TweenInfo.new(0.2), {
+        if self.ActiveDropdown and self.ActiveDropdown ~= dropdownList then
+            TweenService:Create(self.ActiveDropdown, TweenInfo.new(0.2), {
                 Size = UDim2.new(0.45, 0, 0, 0)
             }):Play()
+            
+            task.wait(0.2)
+            if self.ActiveDropdown then
+                self.ActiveDropdown.Visible = false
+            end
         end
-        ModMenuLib.ActiveDropdown = dropdownList
+        self.ActiveDropdown = dropdownList
     end
     
     local function ToggleDropdown()
@@ -494,41 +509,24 @@ function ModMenuLib:CreateDropdown(parent, text, options, default, callback, isP
         
         if isOpen then
             dropdownList.Visible = true
-            -- Move other elements down
-            local container = parent.Parent
-            local startY = dropdownFrame.AbsolutePosition.Y + dropdownFrame.AbsoluteSize.Y + 5
-            
-            for i, child in pairs(container:GetChildren()) do
-                if child:IsA("Frame") and child.Position.Y.Offset > startY then
-                    TweenService:Create(child, TweenInfo.new(0.3), {
-                        Position = UDim2.new(child.Position.X.Scale, child.Position.X.Offset, 0, child.Position.Y.Offset + dropdownList.AbsoluteSize.Y + 10)
-                    }):Play()
-                end
-            end
-        else
-            -- Move other elements back up
-            local container = parent.Parent
-            local startY = dropdownFrame.AbsolutePosition.Y + dropdownFrame.AbsoluteSize.Y + 5
-            
-            for i, child in pairs(container:GetChildren()) do
-                if child:IsA("Frame") and child.Position.Y.Offset > startY then
-                    TweenService:Create(child, TweenInfo.new(0.3), {
-                        Position = UDim2.new(child.Position.X.Scale, child.Position.X.Offset, 0, child.Position.Y.Offset - dropdownList.AbsoluteSize.Y - 10)
-                    }):Play()
-                end
-            end
+            dropdownList.ZIndex = 100
         end
         
         local targetSize = isOpen and UDim2.new(0.45, 0, 0, math.min(#options * 32, 160)) or UDim2.new(0.45, 0, 0, 0)
         TweenService:Create(dropdownList, TweenInfo.new(0.3), {
             Size = targetSize
         }):Play()
+        
+        if not isOpen then
+            task.wait(0.3)
+            dropdownList.Visible = false
+        end
     end
     
-    local function UpdateOptions(newOptions)
+    local function CreateOptionButtons()
         dropdownList:ClearAllChildren()
         
-        for i, option in pairs(newOptions) do
+        for i, option in pairs(options) do
             local optionButton = Instance.new("TextButton")
             optionButton.Name = "Option_" .. i
             optionButton.Text = option
@@ -537,9 +535,9 @@ function ModMenuLib:CreateDropdown(parent, text, options, default, callback, isP
             optionButton.TextSize = 12
             optionButton.BackgroundColor3 = CONFIG.SecondaryColor
             optionButton.BackgroundTransparency = 1
-            optionButton.Size = UDim2.new(1, -10, 0, 30)
-            optionButton.Position = UDim2.new(0, 5, 0, (i-1)*32)
+            optionButton.Size = UDim2.new(1, -4, 0, 30)
             optionButton.AutoButtonColor = false
+            optionButton.ZIndex = 101
             optionButton.Parent = dropdownList
             
             local corner = Instance.new("UICorner")
@@ -574,30 +572,11 @@ function ModMenuLib:CreateDropdown(parent, text, options, default, callback, isP
         end
     end
     
-    -- Initial options
-    UpdateOptions(options)
-    
-    -- Update player list dynamically if needed
-    if isPlayerList then
-        local function UpdatePlayerList()
-            local playerOptions = {"All Players"}
-            for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer then
-                    table.insert(playerOptions, player.Name)
-                end
-            end
-            UpdateOptions(playerOptions)
-        end
-        
-        UpdatePlayerList()
-        Players.PlayerAdded:Connect(UpdatePlayerList)
-        Players.PlayerRemoving:Connect(UpdatePlayerList)
-    end
+    CreateOptionButtons()
     
     dropdownButton.MouseButton1Click:Connect(ToggleDropdown)
     dropdownButton.TouchTap:Connect(ToggleDropdown)
     
-    -- Close dropdown when clicking outside
     local function CloseDropdown(input)
         if isOpen and input.UserInputType == Enum.UserInputType.MouseButton1 then
             local mousePos = input.Position
@@ -624,16 +603,18 @@ function ModMenuLib:CreateDropdown(parent, text, options, default, callback, isP
         Get = function()
             return selectedIndex
         end,
-        UpdateOptions = UpdateOptions
+        UpdateOptions = function(newOptions)
+            options = newOptions
+            CreateOptionButtons()
+        end
     }
 end
 
 function ModMenuLib:CreateColorPicker(parent, text, defaultColor, callback)
     local colorFrame = Instance.new("Frame")
-    colorFrame.Name = "ColorPicker_" .. text
+    colorFrame.Name = "ColorPicker_" .. text:gsub("%s+", "_")
     colorFrame.BackgroundTransparency = 1
-    colorFrame.Size = UDim2.new(1, -20, 0, 50)
-    colorFrame.Position = UDim2.new(0, 10, 0, 0)
+    colorFrame.Size = UDim2.new(1, -20, 0, 52)
     colorFrame.Parent = parent
     
     local label = Instance.new("TextLabel")
@@ -644,7 +625,7 @@ function ModMenuLib:CreateColorPicker(parent, text, defaultColor, callback)
     label.TextSize = 14
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.BackgroundTransparency = 1
-    label.Size = UDim2.new(0.5, 0, 0, 20)
+    label.Size = UDim2.new(0.5, 0, 0, 22)
     label.Position = UDim2.new(0, 0, 0, 0)
     label.Parent = colorFrame
     
@@ -652,8 +633,8 @@ function ModMenuLib:CreateColorPicker(parent, text, defaultColor, callback)
     colorPreview.Name = "ColorPreview"
     colorPreview.Text = ""
     colorPreview.BackgroundColor3 = defaultColor
-    colorPreview.Size = UDim2.new(0, 35, 0, 35)
-    colorPreview.Position = UDim2.new(0.5, 0, 0, 15)
+    colorPreview.Size = UDim2.new(0, 36, 0, 36)
+    colorPreview.Position = UDim2.new(0.5, 0, 0, 16)
     colorPreview.AutoButtonColor = false
     colorPreview.Parent = colorFrame
     
@@ -685,17 +666,11 @@ function ModMenuLib:CreateColorPicker(parent, text, defaultColor, callback)
     stroke2.Thickness = 1
     stroke2.Parent = pickerFrame
     
-    -- Better color palette
     local colorGrid = {
-        -- Row 1: Reds
         {Color3.fromRGB(255, 50, 50), Color3.fromRGB(255, 100, 50), Color3.fromRGB(255, 150, 50)},
-        -- Row 2: Greens
         {Color3.fromRGB(50, 255, 50), Color3.fromRGB(100, 255, 100), Color3.fromRGB(150, 255, 150)},
-        -- Row 3: Blues
         {Color3.fromRGB(50, 50, 255), Color3.fromRGB(100, 100, 255), Color3.fromRGB(150, 150, 255)},
-        -- Row 4: Purples & Others
         {Color3.fromRGB(255, 50, 255), Color3.fromRGB(255, 255, 50), Color3.fromRGB(50, 255, 255)},
-        -- Row 5: Whites & Grays
         {Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 200, 200), Color3.fromRGB(100, 100, 100)}
     }
     
@@ -703,8 +678,10 @@ function ModMenuLib:CreateColorPicker(parent, text, defaultColor, callback)
     local currentColor = defaultColor
     
     local function OpenPicker()
+        if isOpen then return end
         isOpen = true
         pickerFrame.Visible = true
+        pickerFrame.ZIndex = 100
         
         pickerFrame:ClearAllChildren()
         
@@ -721,7 +698,7 @@ function ModMenuLib:CreateColorPicker(parent, text, defaultColor, callback)
                 colorButton.Parent = pickerFrame
                 
                 local corner = Instance.new("UICorner")
-                corner.CornerRadius = UDim.new(0, 4)
+                corner.CornerRadius = UDim.new(0, 6)
                 corner.Parent = colorButton
                 
                 local stroke = Instance.new("UIStroke")
@@ -792,7 +769,22 @@ function ModMenuLib:CreateColorPicker(parent, text, defaultColor, callback)
     }
 end
 
--- Optimized ESP System
+function ModMenuLib:CreateLabel(parent, text, size, isTitle)
+    local label = Instance.new("TextLabel")
+    label.Name = "Label_" .. text:gsub("%s+", "_")
+    label.Text = text
+    label.TextColor3 = CONFIG.TextColor
+    label.Font = isTitle and CONFIG.TitleFont or CONFIG.Font
+    label.TextSize = size or 16
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(1, -20, 0, size or 30)
+    label.Parent = parent
+    
+    return label
+end
+
+-- ESP System
 function ModMenuLib:CreateESP(player, settings)
     if not player or not player.Character then return end
     
@@ -806,14 +798,13 @@ function ModMenuLib:CreateESP(player, settings)
     
     if not humanoidRootPart or not humanoid then return end
     
-    -- Optimized Billboard GUI
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "ESPBillboard"
     billboard.Size = UDim2.new(0, 150, 0, 80)
     billboard.StudsOffset = Vector3.new(0, 3.5, 0)
     billboard.AlwaysOnTop = true
     billboard.MaxDistance = settings.MaxDistance or 500
-    billboard.Enabled = settings.ShowInfo or true
+    billboard.Enabled = true
     billboard.Parent = espFolder
     
     local nameLabel = Instance.new("TextLabel")
@@ -824,7 +815,6 @@ function ModMenuLib:CreateESP(player, settings)
     nameLabel.TextSize = 12
     nameLabel.BackgroundTransparency = 1
     nameLabel.Size = UDim2.new(1, 0, 0, 18)
-    nameLabel.Position = UDim2.new(0, 0, 0, 0)
     nameLabel.Parent = billboard
     
     local distanceLabel = Instance.new("TextLabel")
@@ -835,14 +825,12 @@ function ModMenuLib:CreateESP(player, settings)
     distanceLabel.TextSize = 10
     distanceLabel.BackgroundTransparency = 1
     distanceLabel.Size = UDim2.new(1, 0, 0, 14)
-    distanceLabel.Position = UDim2.new(0, 0, 0, 18)
     distanceLabel.Parent = billboard
     
     local healthBarBack = Instance.new("Frame")
     healthBarBack.Name = "HealthBarBack"
     healthBarBack.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     healthBarBack.Size = UDim2.new(1, 0, 0, 6)
-    healthBarBack.Position = UDim2.new(0, 0, 0, 36)
     healthBarBack.Parent = billboard
     
     local healthBar = Instance.new("Frame")
@@ -851,7 +839,6 @@ function ModMenuLib:CreateESP(player, settings)
     healthBar.Size = UDim2.new(0.5, 0, 1, 0)
     healthBar.Parent = healthBarBack
     
-    -- Box ESP
     if settings.BoxESP then
         local boxAdornment = Instance.new("BoxHandleAdornment")
         boxAdornment.Name = "BoxESP"
@@ -864,7 +851,6 @@ function ModMenuLib:CreateESP(player, settings)
         boxAdornment.Parent = espFolder
     end
     
-    -- Tracer ESP
     if settings.TracerESP then
         local tracer = Instance.new("LineHandleAdornment")
         tracer.Name = "Tracer"
@@ -873,73 +859,18 @@ function ModMenuLib:CreateESP(player, settings)
         tracer.Thickness = 1.5
         tracer.Color3 = settings.TracerColor or Color3.fromRGB(255, 100, 100)
         tracer.Transparency = 0.8
-        tracer.ZIndex = 0
         tracer.Parent = espFolder
-    end
-    
-    -- Head Dot ESP
-    if settings.HeadDot then
-        local head = character:FindFirstChild("Head")
-        if head then
-            local headDot = Instance.new("SphereHandleAdornment")
-            headDot.Name = "HeadDot"
-            headDot.Adornee = head
-            headDot.Radius = 0.3
-            headDot.Color3 = settings.HeadColor or Color3.fromRGB(255, 50, 50)
-            headDot.Transparency = 0.4
-            headDot.AlwaysOnTop = true
-            headDot.ZIndex = 2
-            headDot.Parent = espFolder
-        end
-    end
-    
-    -- Skeleton ESP
-    if settings.Skeleton then
-        local bones = {
-            {"Head", "UpperTorso"},
-            {"UpperTorso", "LowerTorso"},
-            {"UpperTorso", "LeftUpperArm"},
-            {"LeftUpperArm", "LeftLowerArm"},
-            {"LeftLowerArm", "LeftHand"},
-            {"UpperTorso", "RightUpperArm"},
-            {"RightUpperArm", "RightLowerArm"},
-            {"RightLowerArm", "RightHand"},
-            {"LowerTorso", "LeftUpperLeg"},
-            {"LeftUpperLeg", "LeftLowerLeg"},
-            {"LeftLowerLeg", "LeftFoot"},
-            {"LowerTorso", "RightUpperLeg"},
-            {"RightUpperLeg", "RightLowerLeg"},
-            {"RightLowerLeg", "RightFoot"}
-        }
-        
-        for _, bonePair in pairs(bones) do
-            local part1 = character:FindFirstChild(bonePair[1])
-            local part2 = character:FindFirstChild(bonePair[2])
-            
-            if part1 and part2 then
-                local boneLine = Instance.new("LineHandleAdornment")
-                boneLine.Name = "Bone_" .. bonePair[1] .. "_" .. bonePair[2]
-                boneLine.Adornee = humanoidRootPart
-                boneLine.Length = (part1.Position - part2.Position).Magnitude
-                boneLine.Thickness = 1
-                boneLine.Color3 = settings.SkeletonColor or Color3.fromRGB(255, 255, 255)
-                boneLine.Transparency = 0.7
-                boneLine.ZIndex = 0
-                boneLine.Parent = espFolder
-            end
-        end
     end
     
     local espData = {
         Player = player,
         Folder = espFolder,
-        Billboard = billboard,
         LastUpdate = tick(),
         Update = function()
             if not player or not player.Character then return false end
             
             local now = tick()
-            if now - espData.LastUpdate < 0.1 then return true end -- Update every 0.1 seconds
+            if now - espData.LastUpdate < 0.1 then return true end
             espData.LastUpdate = now
             
             local char = player.Character
@@ -948,16 +879,12 @@ function ModMenuLib:CreateESP(player, settings)
             
             if not hrp or not hum then return false end
             
-            -- Update distance
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
                 local distance = (hrp.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
                 distanceLabel.Text = math.floor(distance) .. "m"
-                
-                -- Update billboard visibility based on distance
                 billboard.Enabled = distance <= (settings.MaxDistance or 500)
             end
             
-            -- Update health
             local healthPercent = hum.Health / hum.MaxHealth
             healthBar.Size = UDim2.new(healthPercent, 0, 1, 0)
             healthBar.BackgroundColor3 = Color3.fromRGB(
@@ -977,12 +904,8 @@ function ModMenuLib:CreateESP(player, settings)
     return espData
 end
 
--- Optimized ESP Update System
 function ModMenuLib:UpdateESP()
-    local currentTime = tick()
-    local players = Players:GetPlayers()
-    
-    for _, player in pairs(players) do
+    for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             local espData = self.ESPItems[player]
             
@@ -1001,7 +924,6 @@ function ModMenuLib:UpdateESP()
         end
     end
     
-    -- Clean up removed players
     for player, espData in pairs(self.ESPItems) do
         if not player or not player.Parent then
             espData:Destroy()
@@ -1010,60 +932,51 @@ function ModMenuLib:UpdateESP()
     end
 end
 
--- Aimbot System
-function ModMenuLib:SetupAimbot(settings)
-    local aimbotData = {
-        Enabled = false,
-        Target = nil,
-        Bone = "Head",
-        FOV = 100,
-        Smoothness = 0.5,
-        SilentAim = false,
-        AutoShoot = false
-    }
+-- Notification system
+function ModMenuLib:ShowNotification(text, color)
+    if not self.Menu then return end
     
-    local lastUpdate = tick()
+    local notification = Instance.new("TextLabel")
+    notification.Name = "Notification"
+    notification.Text = text
+    notification.TextColor3 = Color3.fromRGB(255, 255, 255)
+    notification.Font = CONFIG.Font
+    notification.TextSize = 14
+    notification.BackgroundColor3 = color or CONFIG.AccentColor
+    notification.BackgroundTransparency = 0.3
+    notification.Size = UDim2.new(0, 200, 0, 40)
+    notification.Position = UDim2.new(0.5, -100, 1, -50)
+    notification.AnchorPoint = Vector2.new(0.5, 0)
+    notification.Parent = self.Menu
     
-    local connection = RunService.RenderStepped:Connect(function()
-        local now = tick()
-        if now - lastUpdate < 0.016 then return end -- ~60 FPS
-        lastUpdate = now
-        
-        if not aimbotData.Enabled or not settings.Enabled then return end
-        
-        local camera = workspace.CurrentCamera
-        local mouse = LocalPlayer:GetMouse()
-        
-        local closestPlayer = nil
-        local closestDistance = aimbotData.FOV
-        
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character then
-                local targetBone = player.Character:FindFirstChild(aimbotData.Bone)
-                
-                if targetBone then
-                    local screenPoint, visible = camera:WorldToViewportPoint(targetBone.Position)
-                    
-                    if visible then
-                        local mousePos = Vector2.new(mouse.X, mouse.Y)
-                        local bonePos = Vector2.new(screenPoint.X, screenPoint.Y)
-                        local distance = (mousePos - bonePos).Magnitude
-                        
-                        if distance < closestDistance then
-                            closestDistance = distance
-                            closestPlayer = player
-                        end
-                    end
-                end
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, CONFIG.CornerRadius)
+    corner.Parent = notification
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 1
+    stroke.Parent = notification
+    
+    notification.Position = UDim2.new(0.5, -100, 1, 10)
+    TweenService:Create(notification, TweenInfo.new(0.3), {
+        Position = UDim2.new(0.5, -100, 1, -50)
+    }):Play()
+    
+    task.delay(3, function()
+        if notification then
+            TweenService:Create(notification, TweenInfo.new(0.3), {
+                Position = UDim2.new(0.5, -100, 1, 10),
+                BackgroundTransparency = 1,
+                TextTransparency = 1
+            }):Play()
+            
+            task.wait(0.3)
+            if notification then
+                notification:Destroy()
             end
         end
-        
-        aimbotData.Target = closestPlayer
     end)
-    
-    table.insert(self.Connections, connection)
-    
-    return aimbotData
 end
 
 -- Main Menu Creation
@@ -1081,12 +994,12 @@ function ModMenuLib:CreateMenu(title)
     openGui.Name = MENU_ID .. "_OpenButton"
     openGui.ResetOnSpawn = false
     openGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-    openGui.DisplayOrder = 9999 -- Highest priority
+    openGui.DisplayOrder = 9999
     openGui.Parent = StarterGui
     
     self.OpenButton = Instance.new("TextButton")
     self.OpenButton.Name = "OpenMenuButton"
-    self.OpenButton.Text = "≡"
+    self.OpenButton.Text = "☰"
     self.OpenButton.TextColor3 = CONFIG.TextColor
     self.OpenButton.Font = Enum.Font.GothamBold
     self.OpenButton.TextSize = 24
@@ -1113,7 +1026,8 @@ function ModMenuLib:CreateMenu(title)
     self.Menu.Name = MENU_ID .. "_GUI"
     self.Menu.ResetOnSpawn = false
     self.Menu.ZIndexBehavior = Enum.ZIndexBehavior.Global
-    self.Menu.DisplayOrder = 9998 -- Just below open button
+    self.Menu.DisplayOrder = 9998
+    self.Menu.Enabled = false  -- Initially hidden
     self.Menu.Parent = self.Folder
     
     -- Background blur
@@ -1128,8 +1042,8 @@ function ModMenuLib:CreateMenu(title)
     mainContainer.Name = "MainContainer"
     mainContainer.BackgroundColor3 = CONFIG.MenuColor
     mainContainer.BackgroundTransparency = CONFIG.Transparency
-    mainContainer.Size = UDim2.new(0, 500, 0, 350)
-    mainContainer.Position = UDim2.new(0.5, -250, 0.5, -175)
+    mainContainer.Size = UDim2.new(0, 500, 0, 400)
+    mainContainer.Position = UDim2.new(0.5, -250, 0.5, -200)
     mainContainer.Parent = self.Menu
     
     local corner2 = Instance.new("UICorner")
@@ -1189,7 +1103,7 @@ function ModMenuLib:CreateMenu(title)
     closeButton.Position = UDim2.new(1, -40, 0, 0)
     closeButton.Parent = titleBar
     
-    -- Content area
+    -- Main content area with tabs
     local contentArea = Instance.new("Frame")
     contentArea.Name = "ContentArea"
     contentArea.BackgroundTransparency = 1
@@ -1197,39 +1111,72 @@ function ModMenuLib:CreateMenu(title)
     contentArea.Position = UDim2.new(0, 0, 0, 40)
     contentArea.Parent = mainContainer
     
-    -- Content container
-    local contentContainer = Instance.new("ScrollingFrame")
-    contentContainer.Name = "ContentContainer"
-    contentContainer.BackgroundTransparency = 1
-    contentContainer.Size = UDim2.new(1, 0, 1, 0)
-    contentContainer.Position = UDim2.new(0, 0, 0, 0)
-    contentContainer.ScrollingDirection = Enum.ScrollingDirection.Y
-    contentContainer.ScrollBarThickness = 3
-    contentContainer.Parent = contentArea
+    -- Tabs container
+    local tabsContainer = Instance.new("Frame")
+    tabsContainer.Name = "TabsContainer"
+    tabsContainer.BackgroundColor3 = CONFIG.SecondaryColor
+    tabsContainer.Size = UDim2.new(0, 120, 1, 0)
+    tabsContainer.Position = UDim2.new(0, 0, 0, 0)
+    tabsContainer.Parent = contentArea
+    
+    local corner4 = Instance.new("UICorner")
+    corner4.CornerRadius = UDim.new(0, 0, 0, CONFIG.CornerRadius)
+    corner4.Parent = tabsContainer
+    
+    -- Tabs scrolling
+    local tabsScrolling = Instance.new("ScrollingFrame")
+    tabsScrolling.Name = "TabsScrolling"
+    tabsScrolling.BackgroundTransparency = 1
+    tabsScrolling.Size = UDim2.new(1, 0, 1, 0)
+    tabsScrolling.Position = UDim2.new(0, 0, 0, 0)
+    tabsScrolling.ScrollingDirection = Enum.ScrollingDirection.Y
+    tabsScrolling.ScrollBarThickness = 3
+    tabsScrolling.Parent = tabsContainer
+    
+    local tabsLayout = Instance.new("UIListLayout")
+    tabsLayout.Padding = UDim.new(0, 5)
+    tabsLayout.Parent = tabsScrolling
+    
+    local tabsPadding = Instance.new("UIPadding")
+    tabsPadding.PaddingTop = UDim.new(0, 10)
+    tabsPadding.PaddingLeft = UDim.new(0, 5)
+    tabsPadding.PaddingRight = UDim.new(0, 5)
+    tabsPadding.PaddingBottom = UDim.new(0, 10)
+    tabsPadding.Parent = tabsScrolling
+    
+    -- Content scrolling
+    local contentScrolling = Instance.new("ScrollingFrame")
+    contentScrolling.Name = "ContentScrolling"
+    contentScrolling.BackgroundTransparency = 1
+    contentScrolling.Size = UDim2.new(1, -120, 1, 0)
+    contentScrolling.Position = UDim2.new(0, 120, 0, 0)
+    contentScrolling.ScrollingDirection = Enum.ScrollingDirection.Y
+    contentScrolling.ScrollBarThickness = 3
+    contentScrolling.Parent = contentArea
     
     local contentLayout = Instance.new("UIListLayout")
-    contentLayout.Padding = UDim.new(0, 8)
-    contentLayout.Parent = contentContainer
+    contentLayout.Padding = UDim.new(0, 10)
+    contentLayout.Parent = contentScrolling
     
-    local padding = Instance.new("UIPadding")
-    padding.PaddingLeft = UDim.new(0, 10)
-    padding.PaddingRight = UDim.new(0, 10)
-    padding.PaddingTop = UDim.new(0, 10)
-    padding.PaddingBottom = UDim.new(0, 10)
-    padding.Parent = contentContainer
+    local contentPadding = Instance.new("UIPadding")
+    contentPadding.PaddingLeft = UDim.new(0, 10)
+    contentPadding.PaddingRight = UDim.new(0, 10)
+    contentPadding.PaddingTop = UDim.new(0, 10)
+    contentPadding.PaddingBottom = UDim.new(0, 10)
+    contentPadding.Parent = contentScrolling
     
     -- Create floating background text
     local floatingTexts = {}
     local positions = {
-        UDim2.new(0, 20, 0, 20),      -- Top Left
-        UDim2.new(1, -170, 0, 20),    -- Top Right
-        UDim2.new(0, 20, 1, -60),     -- Bottom Left
-        UDim2.new(1, -170, 1, -60),   -- Bottom Right
+        UDim2.new(0, 30, 0, 30),      -- Top Left
+        UDim2.new(1, -180, 0, 30),    -- Top Right
+        UDim2.new(0, 30, 1, -70),     -- Bottom Left
+        UDim2.new(1, -180, 1, -70),   -- Bottom Right
         UDim2.new(0.5, -75, 0.5, -20) -- Center
     }
     
     for i, pos in ipairs(positions) do
-        local textData = CreateFloatingText(mainContainer, "Фатима♥️", pos)
+        local textData = CreateFloatingText(mainContainer, "Фатима♥️", pos, i)
         table.insert(floatingTexts, textData)
     end
     
@@ -1237,16 +1184,14 @@ function ModMenuLib:CreateMenu(title)
     self.MenuComponents = {
         MainContainer = mainContainer,
         TitleBar = titleBar,
-        ContentContainer = contentContainer,
+        TabsScrolling = tabsScrolling,
+        ContentScrolling = contentScrolling,
         BlurEffect = blur,
         FloatingTexts = floatingTexts,
         SettingsGUI = nil
     }
     
-    -- Menu visibility
-    self.Menu.Enabled = false
-    
-    -- Button events
+    -- Menu visibility toggle
     local function ToggleMenu()
         self.Menu.Enabled = not self.Menu.Enabled
         blur.Enabled = self.Menu.Enabled
@@ -1261,10 +1206,6 @@ function ModMenuLib:CreateMenu(title)
                 BackgroundTransparency = 0,
                 TextTransparency = 0
             }):Play()
-            -- Close settings if open
-            if self.MenuComponents.SettingsGUI then
-                self.MenuComponents.SettingsGUI.Enabled = false
-            end
         end
     end
     
@@ -1300,40 +1241,195 @@ function ModMenuLib:CreateMenu(title)
     
     CreateDraggable(mainContainer, titleBar)
     
-    -- Setup main content (simple welcome screen)
-    self:CreateMainContent()
+    -- Setup default sections
+    self:AddSection("Home", function(container)
+        self:CreateLabel(container, "Welcome to Mod Menu", 22, true)
+        self:CreateLabel(container, "Select a section from the left", 16)
+        self:CreateLabel(container, "Or open settings for more options", 16)
+        
+        self:CreateButton(container, "Quick ESP Toggle", function()
+            self.EnabledFeatures.ESP = not self.EnabledFeatures.ESP
+            if self.EnabledFeatures.ESP then
+                self:ShowNotification("ESP Enabled", Color3.fromRGB(0, 255, 0))
+            else
+                self:ShowNotification("ESP Disabled", Color3.fromRGB(255, 0, 0))
+            end
+        end)
+        
+        self:CreateButton(container, "Quick Aimbot Toggle", function()
+            self.EnabledFeatures.Aimbot = not self.EnabledFeatures.Aimbot
+            if self.EnabledFeatures.Aimbot then
+                self:ShowNotification("Aimbot Enabled", Color3.fromRGB(0, 255, 0))
+            else
+                self:ShowNotification("Aimbot Disabled", Color3.fromRGB(255, 0, 0))
+            end
+        end)
+        
+        self:CreateButton(container, "Test Notification", function()
+            self:ShowNotification("Test Notification!", Color3.fromRGB(0, 170, 255))
+        end)
+    end)
+    
+    self:AddSection("Player", function(container)
+        self:CreateLabel(container, "Player Settings", 20, true)
+        
+        self:CreateSlider(container, "Walk Speed", 16, 100, 16, function(value)
+            if LocalPlayer.Character then
+                local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+                if humanoid then
+                    humanoid.WalkSpeed = value
+                end
+            end
+        end)
+        
+        self:CreateSlider(container, "Jump Power", 50, 200, 50, function(value)
+            if LocalPlayer.Character then
+                local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+                if humanoid then
+                    humanoid.JumpPower = value
+                end
+            end
+        end)
+        
+        self:CreateButton(container, "Reset Character", function()
+            if LocalPlayer.Character then
+                LocalPlayer.Character:BreakJoints()
+                self:ShowNotification("Character Reset", Color3.fromRGB(255, 150, 0))
+            end
+        end)
+        
+        self:CreateToggle(container, "Anti-AFK", false, function(state)
+            if state then
+                local con = LocalPlayer.Idled:Connect(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new())
+                end)
+                table.insert(self.Connections, con)
+                self:ShowNotification("Anti-AFK Enabled", Color3.fromRGB(0, 255, 0))
+            end
+        end)
+        
+        self:CreateButton(container, "Teleport to Spawn", function()
+            local spawn = workspace:FindFirstChild("SpawnLocation") or workspace:FindFirstChildOfClass("SpawnLocation")
+            if spawn and LocalPlayer.Character then
+                LocalPlayer.Character:SetPrimaryPartCFrame(spawn.CFrame)
+                self:ShowNotification("Teleported to Spawn", Color3.fromRGB(0, 200, 255))
+            end
+        end)
+    end)
+    
+    self:AddSection("Visual", function(container)
+        self:CreateLabel(container, "Visual Settings", 20, true)
+        
+        self:CreateToggle(container, "Fullbright", false, function(state)
+            if state then
+                Lighting.GlobalShadows = false
+                Lighting.Brightness = 2
+                Lighting.ClockTime = 12
+                self:ShowNotification("Fullbright Enabled", Color3.fromRGB(255, 255, 150))
+            else
+                Lighting.GlobalShadows = true
+                Lighting.Brightness = 1
+                self:ShowNotification("Fullbright Disabled", Color3.fromRGB(150, 150, 150))
+            end
+        end)
+        
+        self:CreateSlider(container, "Brightness", 0, 5, 1, function(value)
+            Lighting.Brightness = value
+        end)
+        
+        self:CreateSlider(container, "Camera FOV", 70, 120, 70, function(value)
+            workspace.CurrentCamera.FieldOfView = value
+        end)
+        
+        self:CreateColorPicker(container, "Ambient Color", Lighting.Ambient, function(color)
+            Lighting.Ambient = color
+        end)
+        
+        self:CreateToggle(container, "No Fog", false, function(state)
+            if state then
+                Lighting.FogEnd = 100000
+            else
+                Lighting.FogEnd = 1000
+            end
+        end)
+    end)
+    
+    -- Set first section as active
+    if #self.Sections > 0 then
+        self:SwitchSection(self.Sections[1])
+    end
     
     return self.Menu
 end
 
-function ModMenuLib:CreateMainContent()
-    local container = self.MenuComponents.ContentContainer
-    container:ClearAllChildren()
+function ModMenuLib:AddSection(name, contentCallback)
+    local section = {
+        Name = name,
+        Callback = contentCallback,
+        TabButton = nil
+    }
     
-    self:CreateLabel(container, "Welcome to Mod Menu", 24, true)
-    self:CreateLabel(container, "Press ⚙ to open settings", 16)
+    table.insert(self.Sections, section)
     
-    self:CreateButton(container, "Quick ESP Toggle", function()
-        self.EnabledFeatures.ESP = not self.EnabledFeatures.ESP
-        if self.EnabledFeatures.ESP then
-            self:ShowNotification("ESP Enabled", Color3.fromRGB(0, 255, 0))
-        else
-            self:ShowNotification("ESP Disabled", Color3.fromRGB(255, 0, 0))
-        end
+    -- Create tab button if menu exists
+    if self.MenuComponents and self.MenuComponents.TabsScrolling then
+        self:CreateTabButton(section)
+    end
+    
+    return section
+end
+
+function ModMenuLib:CreateTabButton(section)
+    local tabButton = Instance.new("TextButton")
+    tabButton.Name = "Tab_" .. section.Name
+    tabButton.Text = section.Name
+    tabButton.TextColor3 = CONFIG.TextColor
+    tabButton.Font = CONFIG.Font
+    tabButton.TextSize = 14
+    tabButton.BackgroundColor3 = CONFIG.SecondaryColor
+    tabButton.BackgroundTransparency = 0.8
+    tabButton.Size = UDim2.new(1, -10, 0, 38)
+    tabButton.AutoButtonColor = false
+    tabButton.Parent = self.MenuComponents.TabsScrolling
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = tabButton
+    
+    section.TabButton = tabButton
+    
+    tabButton.MouseButton1Click:Connect(function()
+        self:SwitchSection(section)
     end)
     
-    self:CreateButton(container, "Quick Aimbot Toggle", function()
-        self.EnabledFeatures.Aimbot = not self.EnabledFeatures.Aimbot
-        if self.EnabledFeatures.Aimbot then
-            self:ShowNotification("Aimbot Enabled", Color3.fromRGB(0, 255, 0))
-        else
-            self:ShowNotification("Aimbot Disabled", Color3.fromRGB(255, 0, 0))
-        end
+    tabButton.TouchTap:Connect(function()
+        self:SwitchSection(section)
     end)
+end
+
+function ModMenuLib:SwitchSection(section)
+    if self.CurrentSection and self.CurrentSection.TabButton then
+        TweenService:Create(self.CurrentSection.TabButton, TweenInfo.new(0.2), {
+            BackgroundTransparency = 0.8
+        }):Play()
+    end
     
-    self:CreateButton(container, "Unload Menu", function()
-        self:DestroyMenu()
-    end)
+    self.CurrentSection = section
+    
+    if section.TabButton then
+        TweenService:Create(section.TabButton, TweenInfo.new(0.2), {
+            BackgroundTransparency = 0.2
+        }):Play()
+    end
+    
+    -- Clear and populate content
+    local content = self.MenuComponents.ContentScrolling
+    content:ClearAllChildren()
+    
+    if section.Callback then
+        section.Callback(content)
+    end
 end
 
 function ModMenuLib:OpenSettingsMenu()
@@ -1403,138 +1499,129 @@ function ModMenuLib:OpenSettingsMenu()
     closeSettingsButton.Parent = settingsTitleBar
     
     -- Settings tabs
-    local tabsContainer = Instance.new("Frame")
-    tabsContainer.Name = "TabsContainer"
-    tabsContainer.BackgroundColor3 = CONFIG.SecondaryColor
-    tabsContainer.Size = UDim2.new(0, 120, 1, -40)
-    tabsContainer.Position = UDim2.new(0, 0, 0, 40)
-    tabsContainer.Parent = settingsContainer
+    local settingsTabsContainer = Instance.new("Frame")
+    settingsTabsContainer.Name = "SettingsTabsContainer"
+    settingsTabsContainer.BackgroundColor3 = CONFIG.SecondaryColor
+    settingsTabsContainer.Size = UDim2.new(0, 120, 1, -40)
+    settingsTabsContainer.Position = UDim2.new(0, 0, 0, 40)
+    settingsTabsContainer.Parent = settingsContainer
     
     local corner3 = Instance.new("UICorner")
     corner3.CornerRadius = UDim.new(0, 0, 0, CONFIG.CornerRadius)
-    corner3.Parent = tabsContainer
+    corner3.Parent = settingsTabsContainer
     
-    local tabsList = Instance.new("ScrollingFrame")
-    tabsList.Name = "TabsList"
-    tabsList.BackgroundTransparency = 1
-    tabsList.Size = UDim2.new(1, 0, 1, 0)
-    tabsList.Position = UDim2.new(0, 0, 0, 0)
-    tabsList.ScrollingDirection = Enum.ScrollingDirection.Y
-    tabsList.ScrollBarThickness = 3
-    tabsList.Parent = tabsContainer
+    local settingsTabsScrolling = Instance.new("ScrollingFrame")
+    settingsTabsScrolling.Name = "SettingsTabsScrolling"
+    settingsTabsScrolling.BackgroundTransparency = 1
+    settingsTabsScrolling.Size = UDim2.new(1, 0, 1, 0)
+    settingsTabsScrolling.Position = UDim2.new(0, 0, 0, 0)
+    settingsTabsScrolling.ScrollingDirection = Enum.ScrollingDirection.Y
+    settingsTabsScrolling.ScrollBarThickness = 3
+    settingsTabsScrolling.Parent = settingsTabsContainer
     
-    local tabsLayout = Instance.new("UIListLayout")
-    tabsLayout.Padding = UDim.new(0, 5)
-    tabsLayout.Parent = tabsList
+    local settingsTabsLayout = Instance.new("UIListLayout")
+    settingsTabsLayout.Padding = UDim.new(0, 5)
+    settingsTabsLayout.Parent = settingsTabsScrolling
     
-    local tabsPadding = Instance.new("UIPadding")
-    tabsPadding.PaddingTop = UDim.new(0, 10)
-    tabsPadding.PaddingLeft = UDim.new(0, 5)
-    tabsPadding.PaddingRight = UDim.new(0, 5)
-    tabsPadding.Parent = tabsList
+    local settingsTabsPadding = Instance.new("UIPadding")
+    settingsTabsPadding.PaddingTop = UDim.new(0, 10)
+    settingsTabsPadding.PaddingLeft = UDim.new(0, 5)
+    settingsTabsPadding.PaddingRight = UDim.new(0, 5)
+    settingsTabsPadding.Parent = settingsTabsScrolling
     
     -- Settings content
-    local settingsContent = Instance.new("Frame")
+    local settingsContent = Instance.new("ScrollingFrame")
     settingsContent.Name = "SettingsContent"
     settingsContent.BackgroundTransparency = 1
     settingsContent.Size = UDim2.new(1, -120, 1, -40)
     settingsContent.Position = UDim2.new(0, 120, 0, 40)
+    settingsContent.ScrollingDirection = Enum.ScrollingDirection.Y
+    settingsContent.ScrollBarThickness = 3
     settingsContent.Parent = settingsContainer
     
-    local settingsScroll = Instance.new("ScrollingFrame")
-    settingsScroll.Name = "SettingsScroll"
-    settingsScroll.BackgroundTransparency = 1
-    settingsScroll.Size = UDim2.new(1, 0, 1, 0)
-    settingsScroll.Position = UDim2.new(0, 0, 0, 0)
-    settingsScroll.ScrollingDirection = Enum.ScrollingDirection.Y
-    settingsScroll.ScrollBarThickness = 3
-    settingsScroll.Parent = settingsContent
+    local settingsContentLayout = Instance.new("UIListLayout")
+    settingsContentLayout.Padding = UDim.new(0, 10)
+    settingsContentLayout.Parent = settingsContent
     
-    local settingsLayout = Instance.new("UIListLayout")
-    settingsLayout.Padding = UDim.new(0, 10)
-    settingsLayout.Parent = settingsScroll
-    
-    local settingsPadding = Instance.new("UIPadding")
-    settingsPadding.PaddingLeft = UDim.new(0, 10)
-    settingsPadding.PaddingRight = UDim.new(0, 10)
-    settingsPadding.PaddingTop = UDim.new(0, 10)
-    settingsPadding.PaddingBottom = UDim.new(0, 10)
-    settingsPadding.Parent = settingsScroll
+    local settingsContentPadding = Instance.new("UIPadding")
+    settingsContentPadding.PaddingLeft = UDim.new(0, 10)
+    settingsContentPadding.PaddingRight = UDim.new(0, 10)
+    settingsContentPadding.PaddingTop = UDim.new(0, 10)
+    settingsContentPadding.PaddingBottom = UDim.new(0, 10)
+    settingsContentPadding.Parent = settingsContent
     
     self.MenuComponents.SettingsGUI = settingsGui
-    self.MenuComponents.SettingsContent = settingsScroll
+    self.MenuComponents.SettingsContent = settingsContent
     
-    -- Create tabs
-    local tabs = {
-        {Name = "ESP", Callback = function() self:CreateESPSection(settingsScroll) end},
-        {Name = "Aimbot", Callback = function() self:CreateAimbotSection(settingsScroll) end},
-        {Name = "Visual", Callback = function() self:CreateVisualSection(settingsScroll) end},
-        {Name = "Misc", Callback = function() self:CreateMiscSection(settingsScroll) end},
-        {Name = "Menu", Callback = function() self:CreateMenuSettingsSection(settingsScroll) end}
+    -- Create settings tabs
+    local settingsTabs = {
+        {Name = "ESP", Callback = function() self:CreateESPSettings(settingsContent) end},
+        {Name = "Aimbot", Callback = function() self:CreateAimbotSettings(settingsContent) end},
+        {Name = "Misc", Callback = function() self:CreateMiscSettings(settingsContent) end},
+        {Name = "Menu", Callback = function() self:CreateMenuSettings(settingsContent) end}
     }
     
-    local activeTab = nil
+    local activeSettingsTab = nil
     
-    for i, tab in pairs(tabs) do
+    for i, tab in pairs(settingsTabs) do
         local tabButton = Instance.new("TextButton")
-        tabButton.Name = "Tab_" .. tab.Name
+        tabButton.Name = "SettingsTab_" .. tab.Name
         tabButton.Text = tab.Name
         tabButton.TextColor3 = CONFIG.TextColor
         tabButton.Font = CONFIG.Font
         tabButton.TextSize = 14
         tabButton.BackgroundColor3 = CONFIG.SecondaryColor
-        tabButton.BackgroundTransparency = 0.5
-        tabButton.Size = UDim2.new(1, -10, 0, 35)
+        tabButton.BackgroundTransparency = 0.8
+        tabButton.Size = UDim2.new(1, -10, 0, 38)
         tabButton.AutoButtonColor = false
-        tabButton.Parent = tabsList
+        tabButton.Parent = settingsTabsScrolling
         
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, 6)
         corner.Parent = tabButton
         
         tabButton.MouseButton1Click:Connect(function()
-            if activeTab then
-                TweenService:Create(activeTab, TweenInfo.new(0.2), {
-                    BackgroundTransparency = 0.5
+            if activeSettingsTab then
+                TweenService:Create(activeSettingsTab, TweenInfo.new(0.2), {
+                    BackgroundTransparency = 0.8
                 }):Play()
             end
             
-            activeTab = tabButton
+            activeSettingsTab = tabButton
             TweenService:Create(tabButton, TweenInfo.new(0.2), {
-                BackgroundTransparency = 0
+                BackgroundTransparency = 0.2
             }):Play()
             
-            settingsScroll:ClearAllChildren()
+            settingsContent:ClearAllChildren()
             tab.Callback()
         end)
         
         tabButton.TouchTap:Connect(function()
-            if activeTab then
-                TweenService:Create(activeTab, TweenInfo.new(0.2), {
-                    BackgroundTransparency = 0.5
+            if activeSettingsTab then
+                TweenService:Create(activeSettingsTab, TweenInfo.new(0.2), {
+                    BackgroundTransparency = 0.8
                 }):Play()
             end
             
-            activeTab = tabButton
+            activeSettingsTab = tabButton
             TweenService:Create(tabButton, TweenInfo.new(0.2), {
-                BackgroundTransparency = 0
+                BackgroundTransparency = 0.2
             }):Play()
             
-            settingsScroll:ClearAllChildren()
+            settingsContent:ClearAllChildren()
             tab.Callback()
         end)
         
         if i == 1 then
-            activeTab = tabButton
+            activeSettingsTab = tabButton
             TweenService:Create(tabButton, TweenInfo.new(0.2), {
-                BackgroundTransparency = 0
+                BackgroundTransparency = 0.2
             }):Play()
-            settingsScroll:ClearAllChildren()
+            settingsContent:ClearAllChildren()
             tab.Callback()
         end
     end
     
-    -- Button events
     closeSettingsButton.MouseButton1Click:Connect(function()
         settingsGui.Enabled = false
     end)
@@ -1548,7 +1635,7 @@ function ModMenuLib:OpenSettingsMenu()
     settingsGui.Enabled = true
 end
 
-function ModMenuLib:CreateESPSection(container)
+function ModMenuLib:CreateESPSettings(container)
     self:CreateLabel(container, "ESP Settings", 20, true)
     
     local espToggle = self:CreateToggle(container, "Enable ESP", false, function(state)
@@ -1569,16 +1656,6 @@ function ModMenuLib:CreateESPSection(container)
     self:CreateToggle(container, "Tracer ESP", true, function(state)
         if not self.ESPSettings then return end
         self.ESPSettings.TracerESP = state
-    end)
-    
-    self:CreateToggle(container, "Head Dot", true, function(state)
-        if not self.ESPSettings then return end
-        self.ESPSettings.HeadDot = state
-    end)
-    
-    self:CreateToggle(container, "Skeleton ESP", false, function(state)
-        if not self.ESPSettings then return end
-        self.ESPSettings.Skeleton = state
     end)
     
     self:CreateToggle(container, "Show Names", true, function(state)
@@ -1606,227 +1683,84 @@ function ModMenuLib:CreateESPSection(container)
         if not self.ESPSettings then return end
         self.ESPSettings.TargetType = option
     end)
-    
-    self:CreateButton(container, "Refresh ESP", function()
-        -- Force ESP refresh
-        for player, espData in pairs(self.ESPItems) do
-            espData:Destroy()
-        end
-        self.ESPItems = {}
-        self:ShowNotification("ESP Refreshed", Color3.fromRGB(0, 150, 255))
-    end)
 end
 
-function ModMenuLib:CreateAimbotSection(container)
+function ModMenuLib:CreateAimbotSettings(container)
     self:CreateLabel(container, "Aimbot Settings", 20, true)
     
-    local aimbotToggle = self:CreateToggle(container, "Enable Aimbot", false, function(state)
+    self:CreateToggle(container, "Enable Aimbot", false, function(state)
         self.EnabledFeatures.Aimbot = state
-        if state then
-            if not self.AimbotSystem then
-                self.AimbotSystem = self:SetupAimbot({Enabled = true})
-            else
-                self.AimbotSystem.Enabled = true
-            end
-            self:ShowNotification("Aimbot Enabled", Color3.fromRGB(0, 255, 0))
-        else
-            if self.AimbotSystem then
-                self.AimbotSystem.Enabled = false
-            end
-            self:ShowNotification("Aimbot Disabled", Color3.fromRGB(255, 0, 0))
-        end
+        self:ShowNotification(state and "Aimbot Enabled" or "Aimbot Disabled",
+            state and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0))
     end)
     
     self:CreateToggle(container, "Silent Aim", false, function(state)
-        if self.AimbotSystem then
-            self.AimbotSystem.SilentAim = state
-        end
+        self.EnabledFeatures.SilentAim = state
     end)
     
     self:CreateToggle(container, "Auto Shoot", false, function(state)
-        if self.AimbotSystem then
-            self.AimbotSystem.AutoShoot = state
-        end
+        self.EnabledFeatures.AutoShoot = state
     end)
     
-    self:CreateToggle(container, "Visible Check", true, function(state)
-        if self.AimbotSystem then
-            self.AimbotSystem.VisibleCheck = state
-        end
-    end)
-    
-    local boneOptions = {"Head", "UpperTorso", "HumanoidRootPart", "LeftHand", "RightHand"}
+    local boneOptions = {"Head", "UpperTorso", "HumanoidRootPart"}
     self:CreateDropdown(container, "Aim Bone", boneOptions, 1, function(index, option)
-        if self.AimbotSystem then
-            self.AimbotSystem.Bone = option
-        end
+        self.EnabledFeatures.AimbotBone = option
     end)
     
     self:CreateSlider(container, "Aimbot FOV", 10, 300, 100, function(value)
-        if self.AimbotSystem then
-            self.AimbotSystem.FOV = value
-        end
+        self.EnabledFeatures.AimbotFOV = value
     end)
     
     self:CreateSlider(container, "Smoothness", 0.1, 1, 0.3, function(value)
-        if self.AimbotSystem then
-            self.AimbotSystem.Smoothness = value
-        end
-    end)
-    
-    local aimbotTypes = {"Legit", "Rage", "Triggerbot"}
-    self:CreateDropdown(container, "Aimbot Type", aimbotTypes, 1, function(index, option)
-        if self.AimbotSystem then
-            self.AimbotSystem.Type = option
-        end
-    end)
-    
-    local targetOptions = {"Enemies", "Everyone", "Nearest"}
-    self:CreateDropdown(container, "Target Selection", targetOptions, 1, function(index, option)
-        if self.AimbotSystem then
-            self.AimbotSystem.TargetSelection = option
-        end
+        self.EnabledFeatures.AimbotSmoothness = value
     end)
 end
 
-function ModMenuLib:CreateVisualSection(container)
-    self:CreateLabel(container, "Visual Settings", 20, true)
+function ModMenuLib:CreateMiscSettings(container)
+    self:CreateLabel(container, "Misc Settings", 20, true)
     
-    self:CreateToggle(container, "Fullbright", false, function(state)
-        if state then
-            Lighting.GlobalShadows = false
-            Lighting.Brightness = 2
-            Lighting.ClockTime = 12
-            self:ShowNotification("Fullbright Enabled", Color3.fromRGB(255, 255, 150))
-        else
-            Lighting.GlobalShadows = true
-            Lighting.Brightness = 1
-            self:ShowNotification("Fullbright Disabled", Color3.fromRGB(150, 150, 150))
-        end
-    end)
-    
-    self:CreateToggle(container, "Chams", false, function(state)
-        self.EnabledFeatures.Chams = state
-        self:ShowNotification(state and "Chams Enabled" or "Chams Disabled", 
+    self:CreateToggle(container, "Fly", false, function(state)
+        self.EnabledFeatures.Fly = state
+        self:ShowNotification(state and "Fly Enabled" or "Fly Disabled",
             state and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 100, 100))
     end)
     
-    self:CreateToggle(container, "No Fog", false, function(state)
-        if state then
-            Lighting.FogEnd = 100000
-        else
-            Lighting.FogEnd = 1000
-        end
-    end)
-    
-    self:CreateColorPicker(container, "Ambient Color", Lighting.Ambient, function(color)
-        Lighting.Ambient = color
-    end)
-    
-    self:CreateColorPicker(container, "Outdoor Ambient", Lighting.OutdoorAmbient, function(color)
-        Lighting.OutdoorAmbient = color
-    end)
-    
-    self:CreateSlider(container, "Brightness", 0, 5, 1, function(value)
-        Lighting.Brightness = value
-    end)
-    
-    self:CreateSlider(container, "Camera FOV", 70, 120, 70, function(value)
-        workspace.CurrentCamera.FieldOfView = value
-    end)
-    
-    self:CreateSlider(container, "Shadow Softness", 0, 1, 0.5, function(value)
-        Lighting.ShadowSoftness = value
-    end)
-    
-    self:CreateButton(container, "Apply Visuals", function()
-        self:ShowNotification("Visual Settings Applied", Color3.fromRGB(0, 200, 255))
-    end)
-end
-
-function ModMenuLib:CreateMiscSection(container)
-    self:CreateLabel(container, "Miscellaneous", 20, true)
-    
-    self:CreateButton(container, "Teleport to Spawn", function()
-        local spawn = workspace:FindFirstChild("SpawnLocation") or workspace:FindFirstChildOfClass("SpawnLocation")
-        if spawn and LocalPlayer.Character then
-            LocalPlayer.Character:SetPrimaryPartCFrame(spawn.CFrame)
-            self:ShowNotification("Teleported to Spawn", Color3.fromRGB(0, 200, 255))
-        end
-    end)
-    
-    self:CreateButton(container, "Reset Character", function()
-        if LocalPlayer.Character then
-            LocalPlayer.Character:BreakJoints()
-            self:ShowNotification("Character Reset", Color3.fromRGB(255, 150, 0))
-        end
-    end)
-    
-    self:CreateToggle(container, "Anti-AFK", false, function(state)
-        if state then
-            local con = LocalPlayer.Idled:Connect(function()
-                VirtualUser:CaptureController()
-                VirtualUser:ClickButton2(Vector2.new())
-            end)
-            table.insert(self.Connections, con)
-            self:ShowNotification("Anti-AFK Enabled", Color3.fromRGB(0, 255, 0))
-        end
+    self:CreateToggle(container, "NoClip", false, function(state)
+        self.EnabledFeatures.NoClip = state
+        self:ShowNotification(state and "NoClip Enabled" or "NoClip Disabled",
+            state and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 100, 100))
     end)
     
     self:CreateToggle(container, "Auto Respawn", false, function(state)
         self.EnabledFeatures.AutoRespawn = state
-        self:ShowNotification(state and "Auto Respawn Enabled" or "Auto Respawn Disabled",
-            state and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0))
-    end)
-    
-    self:CreateSlider(container, "Walk Speed", 16, 100, 16, function(value)
-        if LocalPlayer.Character then
-            local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
-            if humanoid then
-                humanoid.WalkSpeed = value
-            end
-        end
-    end)
-    
-    self:CreateSlider(container, "Jump Power", 50, 200, 50, function(value)
-        if LocalPlayer.Character then
-            local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
-            if humanoid then
-                humanoid.JumpPower = value
-            end
-        end
     end)
     
     self:CreateSlider(container, "Gravity", 0, 196.2, 196.2, function(value)
         workspace.Gravity = value
     end)
     
-    local flyToggle = self:CreateToggle(container, "Fly", false, function(state)
-        self.EnabledFeatures.Fly = state
-        self:ShowNotification(state and "Fly Enabled" or "Fly Disabled",
-            state and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 100, 100))
+    self:CreateButton(container, "Save Settings", function()
+        self:SaveSettings()
+        self:ShowNotification("Settings Saved", Color3.fromRGB(0, 255, 0))
     end)
     
-    local noclipToggle = self:CreateToggle(container, "NoClip", false, function(state)
-        self.EnabledFeatures.NoClip = state
-        self:ShowNotification(state and "NoClip Enabled" or "NoClip Disabled",
-            state and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 100, 100))
+    self:CreateButton(container, "Load Settings", function()
+        self:LoadSettings()
+        self:ShowNotification("Settings Loaded", Color3.fromRGB(0, 200, 255))
     end)
 end
 
-function ModMenuLib:CreateMenuSettingsSection(container)
+function ModMenuLib:CreateMenuSettings(container)
     self:CreateLabel(container, "Menu Settings", 20, true)
     
     self:CreateColorPicker(container, "Accent Color", CONFIG.AccentColor, function(color)
         CONFIG.AccentColor = color
-        -- Update UI colors
         if self.MenuComponents then
             self.MenuComponents.TitleBar.BackgroundColor3 = color
             self.MenuComponents.MainContainer.UIStroke.Color = color
         end
-        if self.MenuComponents.SettingsGUI then
-            self.MenuComponents.SettingsGUI.SettingsContainer.SettingsTitleBar.BackgroundColor3 = color
-            self.MenuComponents.SettingsGUI.SettingsContainer.UIStroke.Color = color
+        if self.OpenButton then
+            self.OpenButton.BackgroundColor3 = color
         end
         self:ShowNotification("Accent Color Updated", color)
     end)
@@ -1841,31 +1775,14 @@ function ModMenuLib:CreateMenuSettingsSection(container)
         if self.MenuComponents then
             self.MenuComponents.MainContainer.BackgroundTransparency = value
         end
-        if self.MenuComponents.SettingsGUI then
-            self.MenuComponents.SettingsGUI.SettingsContainer.BackgroundTransparency = value
-        end
     end)
     
     self:CreateSlider(container, "UI Scale", 0.8, 1.2, 1, function(value)
         if self.MenuComponents then
-            self.MenuComponents.MainContainer.Size = UDim2.new(0, 500 * value, 0, 350 * value)
-            self.MenuComponents.MainContainer.Position = UDim2.new(0.5, -250 * value, 0.5, -175 * value)
+            local scale = value
+            self.MenuComponents.MainContainer.Size = UDim2.new(0, 500 * scale, 0, 400 * scale)
+            self.MenuComponents.MainContainer.Position = UDim2.new(0.5, -250 * scale, 0.5, -200 * scale)
         end
-    end)
-    
-    self:CreateButton(container, "Save Settings", function()
-        self:SaveSettings()
-        self:ShowNotification("Settings Saved", Color3.fromRGB(0, 255, 0))
-    end)
-    
-    self:CreateButton(container, "Load Settings", function()
-        self:LoadSettings()
-        self:ShowNotification("Settings Loaded", Color3.fromRGB(0, 200, 255))
-    end)
-    
-    self:CreateButton(container, "Reset Settings", function()
-        self:ResetSettings()
-        self:ShowNotification("Settings Reset", Color3.fromRGB(255, 150, 0))
     end)
     
     self:CreateButton(container, "Hide Menu Button", function()
@@ -1875,80 +1792,20 @@ function ModMenuLib:CreateMenuSettingsSection(container)
                 self.OpenButton.Visible and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 100, 100))
         end
     end)
-end
-
-function ModMenuLib:CreateLabel(parent, text, size, isTitle)
-    local label = Instance.new("TextLabel")
-    label.Name = "Label_" .. text
-    label.Text = text
-    label.TextColor3 = CONFIG.TextColor
-    label.Font = isTitle and CONFIG.TitleFont or CONFIG.Font
-    label.TextSize = size or 16
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, -20, 0, size or 30)
-    label.Position = UDim2.new(0, 10, 0, 0)
-    label.Parent = parent
     
-    return label
-end
-
--- Notification system
-function ModMenuLib:ShowNotification(text, color)
-    if not self.Menu then return end
-    
-    local notification = Instance.new("TextLabel")
-    notification.Name = "Notification"
-    notification.Text = text
-    notification.TextColor3 = Color3.fromRGB(255, 255, 255)
-    notification.Font = CONFIG.Font
-    notification.TextSize = 14
-    notification.BackgroundColor3 = color or CONFIG.AccentColor
-    notification.BackgroundTransparency = 0.3
-    notification.Size = UDim2.new(0, 200, 0, 40)
-    notification.Position = UDim2.new(0.5, -100, 1, -50)
-    notification.AnchorPoint = Vector2.new(0.5, 0)
-    notification.Parent = self.Menu
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, CONFIG.CornerRadius)
-    corner.Parent = notification
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(255, 255, 255)
-    stroke.Thickness = 1
-    stroke.Parent = notification
-    
-    -- Animate in
-    notification.Position = UDim2.new(0.5, -100, 1, 10)
-    TweenService:Create(notification, TweenInfo.new(0.3), {
-        Position = UDim2.new(0.5, -100, 1, -50)
-    }):Play()
-    
-    -- Animate out after delay
-    task.delay(3, function()
-        if notification then
-            TweenService:Create(notification, TweenInfo.new(0.3), {
-                Position = UDim2.new(0.5, -100, 1, 10),
-                BackgroundTransparency = 1,
-                TextTransparency = 1
-            }):Play()
-            
-            task.wait(0.3)
-            if notification then
-                notification:Destroy()
-            end
-        end
+    self:CreateButton(container, "Reset All Settings", function()
+        self:ResetSettings()
+        self:ShowNotification("All Settings Reset", Color3.fromRGB(255, 150, 0))
     end)
 end
 
--- Main loop for ESP and other features
+-- Main loop for features
 function ModMenuLib:StartMainLoop()
     local lastUpdate = tick()
     
     local mainConnection = RunService.RenderStepped:Connect(function()
         local now = tick()
-        if now - lastUpdate < 0.033 then return end -- ~30 FPS for better performance
+        if now - lastUpdate < 0.033 then return end
         lastUpdate = now
         
         -- Update ESP if enabled
@@ -1956,7 +1813,13 @@ function ModMenuLib:StartMainLoop()
             self:UpdateESP()
         end
         
-        -- Other feature updates can be added here
+        -- Auto Respawn
+        if self.EnabledFeatures.AutoRespawn and LocalPlayer.Character then
+            local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health <= 0 then
+                LocalPlayer.Character:BreakJoints()
+            end
+        end
     end)
     
     table.insert(self.Connections, mainConnection)
@@ -1972,9 +1835,7 @@ function ModMenuLib:SaveSettings()
         ESPSettings = self.ESPSettings
     }
     
-    -- You can implement actual saving logic here
     self.SavedSettings = settings
-    print("Settings saved")
 end
 
 function ModMenuLib:LoadSettings()
@@ -1984,24 +1845,19 @@ function ModMenuLib:LoadSettings()
         CONFIG.Transparency = self.SavedSettings.Transparency or CONFIG.Transparency
         self.EnabledFeatures = self.SavedSettings.EnabledFeatures or {}
         self.ESPSettings = self.SavedSettings.ESPSettings or {}
-        
-        -- Apply loaded settings
-        if self.EnabledFeatures.ESP then
-            self:ShowNotification("ESP Loaded", Color3.fromRGB(0, 255, 0))
-        end
     end
 end
 
 function ModMenuLib:ResetSettings()
     CONFIG = {
-        MenuColor = Color3.fromRGB(25, 25, 30),
-        AccentColor = Color3.fromRGB(0, 150, 255),
-        TextColor = Color3.fromRGB(240, 240, 240),
-        SecondaryColor = Color3.fromRGB(40, 40, 45),
+        MenuColor = Color3.fromRGB(28, 28, 35),
+        AccentColor = Color3.fromRGB(0, 170, 255),
+        TextColor = Color3.fromRGB(240, 240, 245),
+        SecondaryColor = Color3.fromRGB(40, 40, 48),
         Font = Enum.Font.GothamMedium,
         TitleFont = Enum.Font.GothamBold,
-        Transparency = 0.05,
-        CornerRadius = 8
+        Transparency = 0.08,
+        CornerRadius = 10
     }
     
     self.EnabledFeatures = {}
@@ -2012,24 +1868,25 @@ function ModMenuLib:ResetSettings()
         self.MenuComponents.MainContainer.UIStroke.Color = CONFIG.AccentColor
         self.MenuComponents.MainContainer.BackgroundTransparency = CONFIG.Transparency
     end
+    
+    if self.OpenButton then
+        self.OpenButton.BackgroundColor3 = CONFIG.AccentColor
+    end
 end
 
 -- Cleanup
 function ModMenuLib:DestroyMenu()
-    -- Disconnect all connections
     for _, connection in pairs(self.Connections) do
         if connection then
             connection:Disconnect()
         end
     end
     
-    -- Clear ESP
     for player, espData in pairs(self.ESPItems) do
         espData:Destroy()
     end
     self.ESPItems = {}
     
-    -- Remove floating text connections
     if self.MenuComponents and self.MenuComponents.FloatingTexts then
         for _, textData in pairs(self.MenuComponents.FloatingTexts) do
             if textData.connection then
@@ -2041,12 +1898,10 @@ function ModMenuLib:DestroyMenu()
         end
     end
     
-    -- Remove blur effect
     if Lighting:FindFirstChild("MenuBlur") then
         Lighting.MenuBlur:Destroy()
     end
     
-    -- Remove all GUI elements
     if self.Menu then
         self.Menu:Destroy()
         self.Menu = nil
@@ -2062,23 +1917,22 @@ function ModMenuLib:DestroyMenu()
         self.Folder = nil
     end
     
-    -- Reset variables
     self.Connections = {}
     self.MenuComponents = nil
-    self.AimbotSystem = nil
-    
-    print("Menu destroyed")
+    self.Sections = {}
+    self.CurrentSection = nil
 end
 
 -- Initialize function
 function ModMenuLib:Init(title)
+    self:DestroyMenu()
+    
     -- Create menu
     self:CreateMenu(title or "Modern Mod Menu")
     
     -- Start main loop
     self:StartMainLoop()
     
-    -- Return library for chaining
     return self
 end
 
