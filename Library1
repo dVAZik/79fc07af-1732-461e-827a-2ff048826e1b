@@ -1,5 +1,3 @@
-
-
 local ModMenu = {}
 ModMenu.__index = ModMenu
 
@@ -15,13 +13,16 @@ local Lighting = game:GetService("Lighting")
 -- Константы
 local PLAYER = Players.LocalPlayer
 local IS_MOBILE = UserInputService.TouchEnabled
+local IS_DESKTOP = UserInputService.MouseEnabled
 
 -- Утилиты
 local function Create(className, properties)
     local obj = Instance.new(className)
     for prop, value in pairs(properties) do
         if prop ~= "Parent" then
-            obj[prop] = value
+            if pcall(function() return obj[prop] end) then
+                obj[prop] = value
+            end
         end
     end
     if properties.Parent then
@@ -30,8 +31,9 @@ local function Create(className, properties)
     return obj
 end
 
-local function Tween(obj, properties, duration)
-    local tweenInfo = TweenInfo.new(duration or 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local function SafeTween(obj, properties, duration, easingStyle, easingDirection)
+    if not obj or not obj.Parent then return nil end
+    local tweenInfo = TweenInfo.new(duration or 0.2, easingStyle or Enum.EasingStyle.Quad, easingDirection or Enum.EasingDirection.Out)
     local tween = TweenService:Create(obj, tweenInfo, properties)
     tween:Play()
     return tween
@@ -42,12 +44,24 @@ local function Round(num, decimal)
     return math.floor(num * mult + 0.5) / mult
 end
 
+local function DeepClone(t)
+    local copy = {}
+    for k, v in pairs(t) do
+        if type(v) == "table" then
+            copy[k] = DeepClone(v)
+        else
+            copy[k] = v
+        end
+    end
+    return copy
+end
+
 -- Основной класс
 function ModMenu.new(menuName)
     local self = setmetatable({}, ModMenu)
     
     self.MenuName = menuName or "ModMenu"
-    self.Version = "3.1"
+    self.Version = "3.2"
     self.GUI = nil
     self.Settings = {}
     self.Connections = {}
@@ -56,49 +70,56 @@ function ModMenu.new(menuName)
     self.FloatingTexts = {}
     self.MenuOpen = false
     self.SettingsOpen = false
+    self.Active = false
     
     self.MenuID = "Menu_" .. HttpService:GenerateGUID(false):sub(1, 8)
     
-    self:ForceCleanup()
+    -- Очищаем старые меню только если нет других активных
+    self:CleanupOldMenus()
     self:Initialize()
     
     return self
 end
 
--- Принудительная очистка
-function ModMenu:ForceCleanup()
-    -- Удаляем все старые меню
+-- Очистка старых меню
+function ModMenu:CleanupOldMenus()
+    -- Удаляем только меню этого игрока
+    local playerMenus = {}
     for _, obj in ipairs(CoreGui:GetChildren()) do
-        if obj.Name:find("Menu_") or obj.Name == "ModMenus" then
-            obj:Destroy()
+        if obj.Name:find("Menu_") then
+            table.insert(playerMenus, obj)
+        end
+    end
+    
+    if #playerMenus > 0 then
+        for _, menu in ipairs(playerMenus) do
+            menu:Destroy()
         end
     end
 end
 
 -- Инициализация
 function ModMenu:Initialize()
-    -- Создаем контейнер
-    local container = Create("Folder", {
-        Name = "ModMenus",
-        Parent = CoreGui
-    })
-    
     -- Создаем ScreenGui
     self.GUI = Create("ScreenGui", {
         Name = self.MenuID,
-        Parent = container,
+        Parent = CoreGui,
         DisplayOrder = 9999,
-        ResetOnSpawn = false
+        ResetOnSpawn = false,
+        IgnoreGuiInset = IS_MOBILE
     })
     
-    -- Создаем компоненты
+    -- Создаем компоненты в правильном порядке
     self:CreateMainButton()
-    self:CreateFloatingTexts()
     self:CreateMainMenu()
     self:CreateSettingsWindow()
+    self:CreateFloatingTexts()
     
     self.Active = true
-    self:Notify("Меню загружено! v" .. self.Version)
+    task.spawn(function()
+        task.wait(0.5)
+        self:Notify("Меню загружено! v" .. self.Version)
+    end)
 end
 
 -- Создание главной кнопки
@@ -107,13 +128,14 @@ function ModMenu:CreateMainButton()
         Parent = self.GUI,
         Text = "≡",
         Font = Enum.Font.GothamBold,
-        TextSize = 28,
+        TextSize = IS_MOBILE and 32 or 28,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundColor3 = Color3.fromRGB(40, 40, 50),
         BorderSizePixel = 0,
-        Size = UDim2.new(0, 50, 0, 50),
-        Position = UDim2.new(0, 20, 0.5, -25),
-        ZIndex = 1000
+        Size = IS_MOBILE and UDim2.new(0, 60, 0, 60) or UDim2.new(0, 50, 0, 50),
+        Position = UDim2.new(0, 20, 0.5, IS_MOBILE and -30 or -25),
+        ZIndex = 1000,
+        AutoButtonColor = false
     })
     
     Create("UICorner", {
@@ -121,40 +143,50 @@ function ModMenu:CreateMainButton()
         Parent = self.MainButton
     })
     
+    Create("UIStroke", {
+        Parent = self.MainButton,
+        Color = Color3.fromRGB(100, 150, 255),
+        Thickness = 2
+    })
+    
     -- Перетаскивание
     self:MakeDraggable(self.MainButton)
     
-    -- Клики
-    self.MainButton.MouseButton1Click:Connect(function()
+    -- Обработчики кликов
+    local function OnMainButtonClick()
         self:ToggleMenu()
-    end)
+    end
     
-    self.MainButton.TouchTap:Connect(function()
-        self:ToggleMenu()
-    end)
+    self.MainButton.MouseButton1Click:Connect(OnMainButtonClick)
     
-    -- Эффекты
-    self.MainButton.MouseEnter:Connect(function()
-        Tween(self.MainButton, {BackgroundColor3 = Color3.fromRGB(60, 60, 70)})
-    end)
+    if IS_MOBILE then
+        self.MainButton.TouchTap:Connect(OnMainButtonClick)
+    end
     
-    self.MainButton.MouseLeave:Connect(function()
-        Tween(self.MainButton, {BackgroundColor3 = Color3.fromRGB(40, 40, 50)})
-    end)
+    -- Эффекты при наведении (только для ПК)
+    if IS_DESKTOP then
+        self.MainButton.MouseEnter:Connect(function()
+            SafeTween(self.MainButton, {BackgroundColor3 = Color3.fromRGB(60, 60, 70)})
+        end)
+        
+        self.MainButton.MouseLeave:Connect(function()
+            SafeTween(self.MainButton, {BackgroundColor3 = Color3.fromRGB(40, 40, 50)})
+        end)
+    end
 end
 
 -- Создание плавающих надписей
 function ModMenu:CreateFloatingTexts()
-    for i = 1, 5 do
+    for i = 1, 3 do  -- Уменьшено для оптимизации
         local floatText = Create("TextLabel", {
             Parent = self.GUI,
             Text = "Фатима ♥️",
             Font = Enum.Font.GothamBold,
-            TextSize = 24,
-            TextColor3 = Color3.fromRGB(255, 100 + i * 20, 150 + i * 10),
+            TextSize = IS_MOBILE and 20 or 24,
+            TextColor3 = Color3.fromRGB(255, 100 + i * 30, 150 + i * 15),
             TextTransparency = 0.3,
             BackgroundTransparency = 1,
-            Size = UDim2.new(0, 150, 0, 40),
+            Size = IS_MOBILE and UDim2.new(0, 120, 0, 35) or UDim2.new(0, 150, 0, 40),
             Position = UDim2.new(math.random() * 0.8, 0, math.random() * 0.8, 0),
             ZIndex = 900,
             Visible = false
@@ -166,21 +198,21 @@ function ModMenu:CreateFloatingTexts()
         task.spawn(function()
             local startPos = floatText.Position
             local time = math.random() * 10
-            local speed = 0.3 + math.random() * 0.4
+            local speed = 0.2 + math.random() * 0.3
             
             while floatText and floatText.Parent do
                 if not self.MenuOpen and not self.SettingsOpen then
                     time += RunService.Heartbeat:Wait()
                     
-                    local x = startPos.X.Offset + math.sin(time * speed) * 80
-                    local y = startPos.Y.Offset + math.cos(time * speed * 0.7) * 50
+                    local x = startPos.X.Offset + math.sin(time * speed) * 60
+                    local y = startPos.Y.Offset + math.cos(time * speed * 0.7) * 40
                     
                     floatText.Position = UDim2.new(startPos.X.Scale, x, startPos.Y.Scale, y)
                     
                     -- Мерцание
                     floatText.TextTransparency = 0.2 + math.sin(time * 1.5) * 0.3
                 else
-                    task.wait(0.1)
+                    task.wait(0.2)  -- Увеличено для оптимизации
                 end
             end
         end)
@@ -205,8 +237,8 @@ function ModMenu:CreateMainMenu()
         BackgroundColor3 = Color3.fromRGB(20, 20, 25),
         BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
-        Size = UDim2.new(0, 600, 0, 400),
-        Position = UDim2.new(0.5, -300, 0.5, -200),
+        Size = IS_MOBILE and UDim2.new(0.95, 0, 0.85, 0) or UDim2.new(0, 600, 0, 400),
+        Position = IS_MOBILE and UDim2.new(0.025, 0, 0.075, 0) or UDim2.new(0.5, -300, 0.5, -200),
         Visible = false,
         ZIndex = 100
     })
@@ -216,12 +248,18 @@ function ModMenu:CreateMainMenu()
         Parent = self.MenuFrame
     })
     
+    Create("UIStroke", {
+        Parent = self.MenuFrame,
+        Color = Color3.fromRGB(50, 50, 60),
+        Thickness = 2
+    })
+    
     -- Title bar
     local titleBar = Create("Frame", {
         Parent = self.MenuFrame,
         BackgroundColor3 = Color3.fromRGB(30, 30, 40),
         BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 40)
+        Size = UDim2.new(1, 0, 0, 45)
     })
     
     Create("UICorner", {
@@ -234,7 +272,7 @@ function ModMenu:CreateMainMenu()
         Parent = titleBar,
         Text = self.MenuName .. " v" .. self.Version,
         Font = Enum.Font.GothamBold,
-        TextSize = 18,
+        TextSize = IS_MOBILE and 16 or 18,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
         Size = UDim2.new(0, 200, 1, 0),
@@ -247,11 +285,12 @@ function ModMenu:CreateMainMenu()
         Parent = titleBar,
         Text = "✕",
         Font = Enum.Font.GothamBold,
-        TextSize = 24,
+        TextSize = IS_MOBILE and 22 or 24,
         TextColor3 = Color3.fromRGB(255, 100, 100),
         BackgroundTransparency = 1,
-        Size = UDim2.new(0, 40, 1, 0),
-        Position = UDim2.new(1, -40, 0, 0)
+        Size = UDim2.new(0, 45, 1, 0),
+        Position = UDim2.new(1, -45, 0, 0),
+        AutoButtonColor = false
     })
     
     -- Кнопка настроек
@@ -259,11 +298,12 @@ function ModMenu:CreateMainMenu()
         Parent = titleBar,
         Text = "⚙",
         Font = Enum.Font.GothamBold,
-        TextSize = 18,
+        TextSize = IS_MOBILE and 16 or 18,
         TextColor3 = Color3.fromRGB(100, 150, 255),
         BackgroundTransparency = 1,
-        Size = UDim2.new(0, 40, 1, 0),
-        Position = UDim2.new(1, -80, 0, 0)
+        Size = UDim2.new(0, 45, 1, 0),
+        Position = UDim2.new(1, -90, 0, 0),
+        AutoButtonColor = false
     })
     
     -- Перетаскивание
@@ -273,8 +313,8 @@ function ModMenu:CreateMainMenu()
     local content = Create("Frame", {
         Parent = self.MenuFrame,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, -40),
-        Position = UDim2.new(0, 0, 0, 40)
+        Size = UDim2.new(1, 0, 1, -45),
+        Position = UDim2.new(0, 0, 0, 45)
     })
     
     -- Левая панель (табы)
@@ -284,8 +324,13 @@ function ModMenu:CreateMainMenu()
         BorderSizePixel = 0,
         Size = UDim2.new(0, 150, 1, 0),
         CanvasSize = UDim2.new(0, 0, 0, 0),
-        ScrollBarThickness = 3,
+        ScrollBarThickness = IS_MOBILE and 5 or 3,
         ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255)
+    })
+    
+    Create("UICorner", {
+        CornerRadius = UDim.new(0, 0, 0, 12),
+        Parent = self.LeftPanel
     })
     
     local leftList = Create("UIListLayout", {
@@ -305,7 +350,7 @@ function ModMenu:CreateMainMenu()
         Size = UDim2.new(1, -160, 1, 0),
         Position = UDim2.new(0, 160, 0, 0),
         CanvasSize = UDim2.new(0, 0, 0, 0),
-        ScrollBarThickness = 3,
+        ScrollBarThickness = IS_MOBILE and 5 or 3,
         ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255)
     })
     
@@ -315,23 +360,52 @@ function ModMenu:CreateMainMenu()
         Padding = UDim.new(0, 10)
     })
     
+    Create("UIPadding", {
+        Parent = self.RightPanel,
+        PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 10),
+        PaddingTop = UDim.new(0, 10),
+        PaddingBottom = UDim.new(0, 10)
+    })
+    
     rightList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
         self.RightPanel.CanvasSize = UDim2.new(0, 0, 0, rightList.AbsoluteContentSize.Y + 20)
     end)
     
-    -- Обработчики
-    closeBtn.MouseButton1Click:Connect(function()
+    -- Обработчики кнопок
+    local function OnCloseClick()
         self:ToggleMenu()
-    end)
+    end
     
-    settingsBtn.MouseButton1Click:Connect(function()
+    local function OnSettingsClick()
         self:ToggleSettings()
-    end)
+    end
     
-    -- Адаптивность для мобильных
+    closeBtn.MouseButton1Click:Connect(OnCloseClick)
+    settingsBtn.MouseButton1Click:Connect(OnSettingsClick)
+    
     if IS_MOBILE then
-        self.MenuFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
-        self.MenuFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+        closeBtn.TouchTap:Connect(OnCloseClick)
+        settingsBtn.TouchTap:Connect(OnSettingsClick)
+    end
+    
+    -- Эффекты для кнопок
+    if IS_DESKTOP then
+        closeBtn.MouseEnter:Connect(function()
+            closeBtn.TextColor3 = Color3.fromRGB(255, 150, 150)
+        end)
+        
+        closeBtn.MouseLeave:Connect(function()
+            closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+        end)
+        
+        settingsBtn.MouseEnter:Connect(function()
+            settingsBtn.TextColor3 = Color3.fromRGB(150, 200, 255)
+        end)
+        
+        settingsBtn.MouseLeave:Connect(function()
+            settingsBtn.TextColor3 = Color3.fromRGB(100, 150, 255)
+        end)
     end
     
     -- Добавляем базовые табы
@@ -357,15 +431,16 @@ end
 function ModMenu:AddTab(name, icon)
     -- Кнопка таба
     local tabButton = Create("TextButton", {
+        Name = name .. "Tab",
         Parent = self.LeftPanel,
         Text = "   " .. icon .. " " .. name,
         Font = Enum.Font.Gotham,
-        TextSize = 14,
+        TextSize = IS_MOBILE and 13 or 14,
         TextColor3 = Color3.new(1, 1, 1),
         TextXAlignment = Enum.TextXAlignment.Left,
         BackgroundColor3 = Color3.fromRGB(40, 40, 50),
         BorderSizePixel = 0,
-        Size = UDim2.new(1, -10, 0, 35),
+        Size = UDim2.new(1, -10, 0, IS_MOBILE and 40 or 35),
         LayoutOrder = #self.LeftPanel:GetChildren(),
         AutoButtonColor = false
     })
@@ -377,6 +452,7 @@ function ModMenu:AddTab(name, icon)
     
     -- Контент таба
     local contentFrame = Create("Frame", {
+        Name = name .. "Content",
         Parent = self.RightPanel,
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 0),
@@ -406,7 +482,7 @@ function ModMenu:AddTab(name, icon)
         -- Сбрасываем все табы
         for _, child in ipairs(self.LeftPanel:GetChildren()) do
             if child:IsA("TextButton") then
-                child.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+                SafeTween(child, {BackgroundColor3 = Color3.fromRGB(40, 40, 50)})
             end
         end
         
@@ -418,26 +494,31 @@ function ModMenu:AddTab(name, icon)
         end
         
         -- Активируем выбранный
-        tabButton.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+        SafeTween(tabButton, {BackgroundColor3 = Color3.fromRGB(100, 150, 255)})
         contentFrame.Visible = true
         self.ActiveTab = name
     end
     
     tabButton.MouseButton1Click:Connect(OnTabClick)
-    tabButton.TouchTap:Connect(OnTabClick)
     
-    -- Эффекты при наведении
-    tabButton.MouseEnter:Connect(function()
-        if self.ActiveTab ~= name then
-            Tween(tabButton, {BackgroundColor3 = Color3.fromRGB(50, 50, 60)})
-        end
-    end)
+    if IS_MOBILE then
+        tabButton.TouchTap:Connect(OnTabClick)
+    end
     
-    tabButton.MouseLeave:Connect(function()
-        if self.ActiveTab ~= name then
-            Tween(tabButton, {BackgroundColor3 = Color3.fromRGB(40, 40, 50)})
-        end
-    end)
+    -- Эффекты при наведении (только для ПК)
+    if IS_DESKTOP then
+        tabButton.MouseEnter:Connect(function()
+            if self.ActiveTab ~= name then
+                SafeTween(tabButton, {BackgroundColor3 = Color3.fromRGB(50, 50, 60)})
+            end
+        end)
+        
+        tabButton.MouseLeave:Connect(function()
+            if self.ActiveTab ~= name then
+                SafeTween(tabButton, {BackgroundColor3 = Color3.fromRGB(40, 40, 50)})
+            end
+        end)
+    end
     
     return contentFrame
 end
@@ -449,8 +530,8 @@ function ModMenu:CreateSettingsWindow()
         BackgroundColor3 = Color3.fromRGB(20, 20, 25),
         BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
-        Size = UDim2.new(0, 700, 0, 500),
-        Position = UDim2.new(0.5, -350, 0.5, -250),
+        Size = IS_MOBILE and UDim2.new(0.95, 0, 0.9, 0) or UDim2.new(0, 700, 0, 500),
+        Position = IS_MOBILE and UDim2.new(0.025, 0, 0.05, 0) or UDim2.new(0.5, -350, 0.5, -250),
         Visible = false,
         ZIndex = 200
     })
@@ -460,12 +541,18 @@ function ModMenu:CreateSettingsWindow()
         Parent = self.SettingsFrame
     })
     
+    Create("UIStroke", {
+        Parent = self.SettingsFrame,
+        Color = Color3.fromRGB(50, 50, 60),
+        Thickness = 2
+    })
+    
     -- Title bar
     local titleBar = Create("Frame", {
         Parent = self.SettingsFrame,
         BackgroundColor3 = Color3.fromRGB(30, 30, 40),
         BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 40)
+        Size = UDim2.new(1, 0, 0, 45)
     })
     
     Create("UICorner", {
@@ -477,7 +564,7 @@ function ModMenu:CreateSettingsWindow()
         Parent = titleBar,
         Text = "Настройки",
         Font = Enum.Font.GothamBold,
-        TextSize = 18,
+        TextSize = IS_MOBILE and 16 or 18,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
         Size = UDim2.new(0, 200, 1, 0),
@@ -489,11 +576,12 @@ function ModMenu:CreateSettingsWindow()
         Parent = titleBar,
         Text = "✕",
         Font = Enum.Font.GothamBold,
-        TextSize = 24,
+        TextSize = IS_MOBILE and 22 or 24,
         TextColor3 = Color3.fromRGB(255, 100, 100),
         BackgroundTransparency = 1,
-        Size = UDim2.new(0, 40, 1, 0),
-        Position = UDim2.new(1, -40, 0, 0)
+        Size = UDim2.new(0, 45, 1, 0),
+        Position = UDim2.new(1, -45, 0, 0),
+        AutoButtonColor = false
     })
     
     -- Перетаскивание
@@ -503,11 +591,19 @@ function ModMenu:CreateSettingsWindow()
     local content = Create("ScrollingFrame", {
         Parent = self.SettingsFrame,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, -40),
-        Position = UDim2.new(0, 0, 0, 40),
+        Size = UDim2.new(1, 0, 1, -45),
+        Position = UDim2.new(0, 0, 0, 45),
         CanvasSize = UDim2.new(0, 0, 0, 0),
-        ScrollBarThickness = 3,
+        ScrollBarThickness = IS_MOBILE and 5 or 3,
         ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255)
+    })
+    
+    Create("UIPadding", {
+        Parent = content,
+        PaddingLeft = UDim.new(0, 15),
+        PaddingRight = UDim.new(0, 15),
+        PaddingTop = UDim.new(0, 15),
+        PaddingBottom = UDim.new(0, 15)
     })
     
     local list = Create("UIListLayout", {
@@ -520,23 +616,30 @@ function ModMenu:CreateSettingsWindow()
         content.CanvasSize = UDim2.new(0, 0, 0, list.AbsoluteContentSize.Y + 20)
     end)
     
+    -- Обработчик закрытия
+    local function OnCloseClick()
+        self:ToggleSettings()
+    end
+    
+    closeBtn.MouseButton1Click:Connect(OnCloseClick)
+    
+    if IS_MOBILE then
+        closeBtn.TouchTap:Connect(OnCloseClick)
+    end
+    
+    -- Эффекты для кнопки закрытия
+    if IS_DESKTOP then
+        closeBtn.MouseEnter:Connect(function()
+            closeBtn.TextColor3 = Color3.fromRGB(255, 150, 150)
+        end)
+        
+        closeBtn.MouseLeave:Connect(function()
+            closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+        end)
+    end
+    
     -- Создаем секции
     self:CreateSettingsSections(content)
-    
-    -- Обработчик закрытия
-    closeBtn.MouseButton1Click:Connect(function()
-        self:ToggleSettings()
-    end)
-    
-    closeBtn.TouchTap:Connect(function()
-        self:ToggleSettings()
-    end)
-    
-    -- Адаптивность
-    if IS_MOBILE then
-        self.SettingsFrame.Size = UDim2.new(0.95, 0, 0.9, 0)
-        self.SettingsFrame.Position = UDim2.new(0.025, 0, 0.05, 0)
-    end
 end
 
 -- Создание секций настроек
@@ -544,17 +647,18 @@ function ModMenu:CreateSettingsSections(container)
     -- Цвета меню
     local colorsSection = self:CreateSection("Цвета меню", container)
     self:ColorPicker(colorsSection, "Основной цвет", Color3.fromRGB(100, 150, 255), function(color)
-        self:Notify("Цвет изменен")
+        self:Notify("Основной цвет изменен")
     end)
     
     self:Slider(colorsSection, "Прозрачность", 0, 100, 5, 1, function(value)
-        self.MenuFrame.BackgroundTransparency = value / 100
-        self.SettingsFrame.BackgroundTransparency = value / 100
+        local transparency = value / 100
+        self.MenuFrame.BackgroundTransparency = transparency
+        self.SettingsFrame.BackgroundTransparency = transparency
     end)
     
     -- Игрок
     local playerSection = self:CreateSection("Игрок", container)
-    self:Toggle(playerSection, "Бессмертие", false, function(value)
+    self.ImmortalityToggle = self:Toggle(playerSection, "Бессмертие", false, function(value)
         if PLAYER.Character then
             local humanoid = PLAYER.Character:FindFirstChild("Humanoid")
             if humanoid then
@@ -564,7 +668,7 @@ function ModMenu:CreateSettingsSections(container)
         self:Notify("Бессмертие: " .. (value and "ВКЛ" or "ВЫКЛ"))
     end)
     
-    self:Slider(playerSection, "Скорость", 16, 500, 16, 1, function(value)
+    self.SpeedSlider = self:Slider(playerSection, "Скорость", 16, 500, 16, 1, function(value)
         if PLAYER.Character then
             local humanoid = PLAYER.Character:FindFirstChild("Humanoid")
             if humanoid then
@@ -578,7 +682,7 @@ function ModMenu:CreateSettingsSections(container)
     self:Toggle(visualSection, "Полное освещение", false, function(value)
         Lighting.GlobalShadows = not value
         Lighting.ClockTime = value and 14 or 12
-        self:Notify("Освещение: " .. (value and "ВКЛ" or "ВЫКЛ"))
+        self:Notify("Полное освещение: " .. (value and "ВКЛ" or "ВЫКЛ"))
     end)
     
     self:Slider(visualSection, "Яркость", 0, 10, 1, 0.1, function(value)
@@ -595,9 +699,9 @@ function ModMenu:CreateSettingsSections(container)
     end
     
     if #playerList > 0 then
-        self:Dropdown(playersSection, "Выберите игрока", playerList, playerList[1], function(value)
+        self.PlayerDropdown = self:Dropdown(playersSection, "Выберите игрока", playerList, playerList[1], function(value)
             self.SelectedPlayer = value
-            self:Notify("Выбран: " .. value)
+            self:Notify("Выбран игрок: " .. value)
         end)
     else
         Create("TextLabel", {
@@ -615,9 +719,9 @@ function ModMenu:CreateSettingsSections(container)
     -- Предметы
     local itemsSection = self:CreateSection("Предметы", container)
     local items = {"Меч", "Щит", "Зелье", "Ключ", "Сундук"}
-    self:Dropdown(itemsSection, "Выберите предмет", items, items[1], function(value)
+    self.ItemDropdown = self:Dropdown(itemsSection, "Выберите предмет", items, items[1], function(value)
         self.SelectedItem = value
-        self:Notify("Выбран: " .. value)
+        self:Notify("Выбран предмет: " .. value)
     end)
 end
 
@@ -629,13 +733,19 @@ function ModMenu:CreateSection(title, parent)
         Parent = parent,
         BackgroundColor3 = Color3.fromRGB(30, 30, 35),
         BackgroundTransparency = 0.1,
-        Size = UDim2.new(1, -20, 0, 0),
+        Size = UDim2.new(1, 0, 0, 0),
         LayoutOrder = #parent:GetChildren()
     })
     
     Create("UICorner", {
         CornerRadius = UDim.new(0, 8),
         Parent = section
+    })
+    
+    Create("UIStroke", {
+        Parent = section,
+        Color = Color3.fromRGB(50, 50, 60),
+        Thickness = 1
     })
     
     Create("UIPadding", {
@@ -650,10 +760,10 @@ function ModMenu:CreateSection(title, parent)
         Parent = section,
         Text = title,
         Font = Enum.Font.GothamBold,
-        TextSize = 16,
+        TextSize = IS_MOBILE and 15 or 16,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 25),
+        Size = UDim2.new(1, 0, 0, IS_MOBILE and 28 or 25),
         TextXAlignment = Enum.TextXAlignment.Left
     })
     
@@ -664,7 +774,7 @@ function ModMenu:CreateSection(title, parent)
     })
     
     list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        section.Size = UDim2.new(1, -20, 0, list.AbsoluteContentSize.Y + 35)
+        section.Size = UDim2.new(1, 0, 0, list.AbsoluteContentSize.Y + 35)
     end)
     
     return section
@@ -676,11 +786,11 @@ function ModMenu:Btn(parent, text, callback)
         Parent = parent,
         Text = text,
         Font = Enum.Font.Gotham,
-        TextSize = 14,
+        TextSize = IS_MOBILE and 14 or 14,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundColor3 = Color3.fromRGB(100, 150, 255),
         BorderSizePixel = 0,
-        Size = UDim2.new(1, 0, 0, 35),
+        Size = UDim2.new(1, 0, 0, IS_MOBILE and 40 or 35),
         LayoutOrder = #parent:GetChildren(),
         AutoButtonColor = false
     })
@@ -690,15 +800,22 @@ function ModMenu:Btn(parent, text, callback)
         Parent = button
     })
     
+    Create("UIStroke", {
+        Parent = button,
+        Color = Color3.fromRGB(80, 130, 235),
+        Thickness = 1
+    })
+    
     -- Ripple эффект
-    local function CreateRipple()
+    local function CreateRipple(input)
         local ripple = Create("Frame", {
             Parent = button,
             BackgroundColor3 = Color3.new(1, 1, 1),
             BackgroundTransparency = 0.7,
             Size = UDim2.new(0, 0, 0, 0),
-            Position = UDim2.new(0.5, 0, 0.5, 0),
-            AnchorPoint = Vector2.new(0.5, 0.5)
+            Position = IS_MOBILE and UDim2.new(0, input.Position.X - button.AbsolutePosition.X, 0, input.Position.Y - button.AbsolutePosition.Y) or UDim2.new(0.5, 0, 0.5, 0),
+            AnchorPoint = IS_MOBILE and Vector2.new(0, 0) or Vector2.new(0.5, 0.5),
+            ZIndex = 100
         })
         
         Create("UICorner", {
@@ -706,46 +823,57 @@ function ModMenu:Btn(parent, text, callback)
             Parent = ripple
         })
         
-        Tween(ripple, {Size = UDim2.new(2, 0, 2, 0), BackgroundTransparency = 1}, 0.5)
+        SafeTween(ripple, {Size = UDim2.new(2, 0, 2, 0), BackgroundTransparency = 1}, 0.5)
         
         task.spawn(function()
             task.wait(0.5)
-            ripple:Destroy()
+            if ripple and ripple.Parent then
+                ripple:Destroy()
+            end
         end)
     end
     
     -- Обработчик
     local function OnClick()
-        CreateRipple()
         if callback then
             local success, err = pcall(callback)
             if not success then
                 warn("Ошибка в кнопке: " .. tostring(err))
+                self:Notify("Ошибка выполнения", 2)
             end
         end
     end
     
-    button.MouseButton1Click:Connect(OnClick)
-    button.TouchTap:Connect(OnClick)
+    local function OnInputBegan(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            CreateRipple(input)
+            OnClick()
+        end
+    end
     
-    -- Эффекты
-    button.MouseEnter:Connect(function()
-        Tween(button, {BackgroundColor3 = Color3.fromRGB(120, 170, 255)})
-    end)
+    button.InputBegan:Connect(OnInputBegan)
     
-    button.MouseLeave:Connect(function()
-        Tween(button, {BackgroundColor3 = Color3.fromRGB(100, 150, 255)})
-    end)
+    -- Эффекты при наведении (только для ПК)
+    if IS_DESKTOP then
+        button.MouseEnter:Connect(function()
+            SafeTween(button, {BackgroundColor3 = Color3.fromRGB(120, 170, 255)})
+        end)
+        
+        button.MouseLeave:Connect(function()
+            SafeTween(button, {BackgroundColor3 = Color3.fromRGB(100, 150, 255)})
+        end)
+    end
     
     return button
 end
 
--- Переключатель (УПРОЩЕННЫЙ И РАБОЧИЙ)
+-- Переключатель (ИСПРАВЛЕННЫЙ)
 function ModMenu:Toggle(parent, text, state, callback)
     local toggleContainer = Create("Frame", {
         Parent = parent,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 30),
+        Size = UDim2.new(1, 0, 0, IS_MOBILE and 35 or 30),
         LayoutOrder = #parent:GetChildren()
     })
     
@@ -753,7 +881,7 @@ function ModMenu:Toggle(parent, text, state, callback)
         Parent = toggleContainer,
         Text = text,
         Font = Enum.Font.Gotham,
-        TextSize = 14,
+        TextSize = IS_MOBILE and 14 or 14,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
         Size = UDim2.new(0.7, 0, 1, 0),
@@ -765,8 +893,8 @@ function ModMenu:Toggle(parent, text, state, callback)
         Text = "",
         BackgroundColor3 = state and Color3.fromRGB(100, 150, 255) or Color3.fromRGB(60, 60, 70),
         BorderSizePixel = 0,
-        Size = UDim2.new(0, 50, 0, 25),
-        Position = UDim2.new(1, -50, 0.5, -12.5),
+        Size = UDim2.new(0, IS_MOBILE and 55 : 50, 0, IS_MOBILE and 30 : 25),
+        Position = UDim2.new(1, IS_MOBILE and -55 : -50, 0.5, IS_MOBILE and -15 : -12.5),
         AutoButtonColor = false
     })
     
@@ -775,11 +903,18 @@ function ModMenu:Toggle(parent, text, state, callback)
         Parent = toggleButton
     })
     
+    Create("UIStroke", {
+        Parent = toggleButton,
+        Color = Color3.fromRGB(40, 40, 50),
+        Thickness = 1
+    })
+    
     local dot = Create("Frame", {
         Parent = toggleButton,
         BackgroundColor3 = Color3.new(1, 1, 1),
-        Size = UDim2.new(0, 19, 0, 19),
-        Position = state and UDim2.new(1, -22, 0.5, -9.5) or UDim2.new(0, 3, 0.5, -9.5)
+        Size = UDim2.new(0, IS_MOBILE and 24 : 19, 0, IS_MOBILE and 24 : 19),
+        Position = state and UDim2.new(1, IS_MOBILE and -27 : -22, 0.5, IS_MOBILE and -12 : -9.5) or UDim2.new(0, IS_MOBILE and 3 : 3, 0.5, IS_MOBILE and -12 : -9.5),
+        AnchorPoint = state and Vector2.new(1, 0.5) or Vector2.new(0, 0.5)
     })
     
     Create("UICorner", {
@@ -792,52 +927,62 @@ function ModMenu:Toggle(parent, text, state, callback)
         state = not state
         
         if state then
-            Tween(dot, {Position = UDim2.new(1, -22, 0.5, -9.5)})
-            Tween(toggleButton, {BackgroundColor3 = Color3.fromRGB(100, 150, 255)})
+            SafeTween(dot, {Position = UDim2.new(1, IS_MOBILE and -27 : -22, 0.5, IS_MOBILE and -12 : -9.5)})
+            SafeTween(toggleButton, {BackgroundColor3 = Color3.fromRGB(100, 150, 255)})
         else
-            Tween(dot, {Position = UDim2.new(0, 3, 0.5, -9.5)})
-            Tween(toggleButton, {BackgroundColor3 = Color3.fromRGB(60, 60, 70)})
+            SafeTween(dot, {Position = UDim2.new(0, IS_MOBILE and 3 : 3, 0.5, IS_MOBILE and -12 : -9.5)})
+            SafeTween(toggleButton, {BackgroundColor3 = Color3.fromRGB(60, 60, 70)})
         end
         
         if callback then
             local success, err = pcall(callback, state)
             if not success then
                 warn("Ошибка в переключателе: " .. tostring(err))
+                self:Notify("Ошибка в переключателе", 2)
             end
         end
     end
     
     -- Обработчики
-    toggleButton.MouseButton1Click:Connect(ToggleState)
+    local function OnToggleClick()
+        ToggleState()
+    end
     
-    toggleButton.TouchTap:Connect(ToggleState)
-    label.TouchTap:Connect(ToggleState)
+    toggleButton.MouseButton1Click:Connect(OnToggleClick)
+    label.MouseButton1Click:Connect(OnToggleClick)
     
-    -- Эффекты
-    toggleButton.MouseEnter:Connect(function()
-        if state then
-            Tween(toggleButton, {BackgroundColor3 = Color3.fromRGB(120, 170, 255)})
-        else
-            Tween(toggleButton, {BackgroundColor3 = Color3.fromRGB(80, 80, 90)})
-        end
-    end)
+    if IS_MOBILE then
+        toggleButton.TouchTap:Connect(OnToggleClick)
+        label.TouchTap:Connect(OnToggleClick)
+    end
     
-    toggleButton.MouseLeave:Connect(function()
-        if state then
-            Tween(toggleButton, {BackgroundColor3 = Color3.fromRGB(100, 150, 255)})
-        else
-            Tween(toggleButton, {BackgroundColor3 = Color3.fromRGB(60, 60, 70)})
-        end
-    end)
+    -- Эффекты при наведении (только для ПК)
+    if IS_DESKTOP then
+        toggleButton.MouseEnter:Connect(function()
+            if state then
+                SafeTween(toggleButton, {BackgroundColor3 = Color3.fromRGB(120, 170, 255)})
+            else
+                SafeTween(toggleButton, {BackgroundColor3 = Color3.fromRGB(80, 80, 90)})
+            end
+        end)
+        
+        toggleButton.MouseLeave:Connect(function()
+            if state then
+                SafeTween(toggleButton, {BackgroundColor3 = Color3.fromRGB(100, 150, 255)})
+            else
+                SafeTween(toggleButton, {BackgroundColor3 = Color3.fromRGB(60, 60, 70)})
+            end
+        end)
+    end
     
     return {
         Update = function(value)
             state = value
             if state then
-                dot.Position = UDim2.new(1, -22, 0.5, -9.5)
+                dot.Position = UDim2.new(1, IS_MOBILE and -27 : -22, 0.5, IS_MOBILE and -12 : -9.5)
                 toggleButton.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
             else
-                dot.Position = UDim2.new(0, 3, 0.5, -9.5)
+                dot.Position = UDim2.new(0, IS_MOBILE and 3 : 3, 0.5, IS_MOBILE and -12 : -9.5)
                 toggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
             end
         end,
@@ -845,26 +990,26 @@ function ModMenu:Toggle(parent, text, state, callback)
     }
 end
 
--- Слайдер (ПРОСТОЙ И РАБОЧИЙ)
+-- Слайдер (ИСПРАВЛЕННЫЙ - правильное отжатие)
 function ModMenu:Slider(parent, text, min, max, value, step, callback)
     local sliderContainer = Create("Frame", {
         Parent = parent,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 50),
+        Size = UDim2.new(1, 0, 0, IS_MOBILE and 60 : 50),
         LayoutOrder = #parent:GetChildren()
     })
     
     local top = Create("Frame", {
         Parent = sliderContainer,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 20)
+        Size = UDim2.new(1, 0, 0, IS_MOBILE and 25 : 20)
     })
     
     Create("TextLabel", {
         Parent = top,
         Text = text,
         Font = Enum.Font.Gotham,
-        TextSize = 14,
+        TextSize = IS_MOBILE and 14 : 14,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
         Size = UDim2.new(0.7, 0, 1, 0),
@@ -875,7 +1020,7 @@ function ModMenu:Slider(parent, text, min, max, value, step, callback)
         Parent = top,
         Text = tostring(value),
         Font = Enum.Font.Gotham,
-        TextSize = 14,
+        TextSize = IS_MOBILE and 14 : 14,
         TextColor3 = Color3.fromRGB(100, 150, 255),
         BackgroundTransparency = 1,
         Size = UDim2.new(0.3, 0, 1, 0),
@@ -886,13 +1031,19 @@ function ModMenu:Slider(parent, text, min, max, value, step, callback)
     local track = Create("Frame", {
         Parent = sliderContainer,
         BackgroundColor3 = Color3.fromRGB(60, 60, 70),
-        Size = UDim2.new(1, 0, 0, 6),
-        Position = UDim2.new(0, 0, 1, -16)
+        Size = UDim2.new(1, 0, 0, IS_MOBILE and 8 : 6),
+        Position = UDim2.new(0, 0, 1, IS_MOBILE and -20 : -16)
     })
     
     Create("UICorner", {
         CornerRadius = UDim.new(1, 0),
         Parent = track
+    })
+    
+    Create("UIStroke", {
+        Parent = track,
+        Color = Color3.fromRGB(40, 40, 50),
+        Thickness = 1
     })
     
     local fill = Create("Frame", {
@@ -909,13 +1060,20 @@ function ModMenu:Slider(parent, text, min, max, value, step, callback)
     local thumb = Create("Frame", {
         Parent = track,
         BackgroundColor3 = Color3.new(1, 1, 1),
-        Size = UDim2.new(0, 16, 0, 16),
-        Position = UDim2.new((value - min) / (max - min), -8, 0.5, -8)
+        Size = UDim2.new(0, IS_MOBILE and 20 : 16, 0, IS_MOBILE and 20 : 16),
+        Position = UDim2.new((value - min) / (max - min), IS_MOBILE and -10 : -8, 0.5, IS_MOBILE and -10 : -8),
+        ZIndex = 2
     })
     
     Create("UICorner", {
         CornerRadius = UDim.new(1, 0),
         Parent = thumb
+    })
+    
+    Create("UIStroke", {
+        Parent = thumb,
+        Color = Color3.fromRGB(80, 130, 235),
+        Thickness = 2
     })
     
     -- Функция обновления
@@ -930,25 +1088,32 @@ function ModMenu:Slider(parent, text, min, max, value, step, callback)
         
         local percent = (value - min) / (max - min)
         fill.Size = UDim2.new(percent, 0, 1, 0)
-        thumb.Position = UDim2.new(percent, -8, 0.5, -8)
+        thumb.Position = UDim2.new(percent, IS_MOBILE and -10 : -8, 0.5, IS_MOBILE and -10 : -8)
         
         if callback then
             local success, err = pcall(callback, value)
             if not success then
                 warn("Ошибка в слайдере: " .. tostring(err))
+                self:Notify("Ошибка в слайдере", 2)
             end
         end
     end
     
-    -- Перетаскивание
+    -- Состояние перетаскивания
     local dragging = false
     
     local function UpdateFromInput(input)
-        local mousePos = input.Position
+        local inputPos
+        if input.UserInputType == Enum.UserInputType.Touch then
+            inputPos = input.Position
+        else
+            inputPos = input.Position
+        end
+        
         local trackPos = track.AbsolutePosition
         local trackSize = track.AbsoluteSize
         
-        local relativeX = (mousePos.X - trackPos.X) / trackSize.X
+        local relativeX = (inputPos.X - trackPos.X) / trackSize.X
         relativeX = math.clamp(relativeX, 0, 1)
         
         local newValue = min + relativeX * (max - min)
@@ -961,23 +1126,40 @@ function ModMenu:Slider(parent, text, min, max, value, step, callback)
            input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             UpdateFromInput(input)
+            
+            -- Эффект при перетаскивании
+            SafeTween(thumb, {Size = UDim2.new(0, IS_MOBILE and 24 : 20, 0, IS_MOBILE and 24 : 20)})
+            SafeTween(thumb, {Position = UDim2.new((value - min) / (max - min), IS_MOBILE and -12 : -10, 0.5, IS_MOBILE and -12 : -10)})
         end
     end
     
-    -- Конец перетаскивания
+    -- Конец перетаскивания (ИСПРАВЛЕНО)
     local function EndDrag(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
+        if (input.UserInputType == Enum.UserInputType.MouseButton1 or 
+            input.UserInputType == Enum.UserInputType.Touch) and dragging then
             dragging = false
+            
+            -- Возвращаем размер
+            SafeTween(thumb, {Size = UDim2.new(0, IS_MOBILE and 20 : 16, 0, IS_MOBILE and 20 : 16)})
+            SafeTween(thumb, {Position = UDim2.new((value - min) / (max - min), IS_MOBILE and -10 : -8, 0.5, IS_MOBILE and -10 : -8)})
         end
     end
     
-    -- Обработчики
+    -- Обработчики для трека
     track.InputBegan:Connect(StartDrag)
-    track.InputEnded:Connect(EndDrag)
     thumb.InputBegan:Connect(StartDrag)
     
-    -- Глобальное отслеживание мыши
+    -- Обработчики для конца перетаскивания
+    local function OnInputEnded(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            EndDrag(input)
+        end
+    end
+    
+    UserInputService.InputEnded:Connect(OnInputEnded)
+    
+    -- Глобальное отслеживание движения
     local mouseMoveConnection = UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or 
            input.UserInputType == Enum.UserInputType.Touch) then
@@ -988,10 +1170,11 @@ function ModMenu:Slider(parent, text, min, max, value, step, callback)
     table.insert(self.Connections, mouseMoveConnection)
     
     -- Touch для мобильных
-    track.TouchTap:Connect(function()
-        local touchPos = UserInputService:GetMouseLocation()
-        UpdateFromInput({Position = touchPos})
-    end)
+    if IS_MOBILE then
+        track.TouchTap:Connect(function(input)
+            UpdateFromInput(input)
+        end)
+    end
     
     return {
         Update = UpdateValue,
@@ -999,21 +1182,21 @@ function ModMenu:Slider(parent, text, min, max, value, step, callback)
     }
 end
 
--- Выпадающий список (ПРОСТОЙ И РАБОЧИЙ)
+-- Выпадающий список (ИСПРАВЛЕННЫЙ - правильное отображение)
 function ModMenu:Dropdown(parent, text, options, defaultValue, callback)
     local dropdownContainer = Create("Frame", {
         Parent = parent,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 30),
+        Size = UDim2.new(1, 0, 0, IS_MOBILE and 40 : 30),
         LayoutOrder = #parent:GetChildren(),
-        ClipsDescendants = true
+        ClipsDescendants = false
     })
     
     Create("TextLabel", {
         Parent = dropdownContainer,
         Text = text,
         Font = Enum.Font.Gotham,
-        TextSize = 14,
+        TextSize = IS_MOBILE and 14 : 14,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
         Size = UDim2.new(0.7, 0, 1, 0),
@@ -1024,13 +1207,14 @@ function ModMenu:Dropdown(parent, text, options, defaultValue, callback)
         Parent = dropdownContainer,
         Text = defaultValue or (options[1] or "Выберите..."),
         Font = Enum.Font.Gotham,
-        TextSize = 14,
+        TextSize = IS_MOBILE and 13 : 14,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundColor3 = Color3.fromRGB(60, 60, 70),
         BorderSizePixel = 0,
         Size = UDim2.new(0.3, 0, 1, 0),
         Position = UDim2.new(0.7, 0, 0, 0),
-        AutoButtonColor = false
+        AutoButtonColor = false,
+        ZIndex = 10
     })
     
     Create("UICorner", {
@@ -1038,17 +1222,35 @@ function ModMenu:Dropdown(parent, text, options, defaultValue, callback)
         Parent = button
     })
     
+    Create("UIStroke", {
+        Parent = button,
+        Color = Color3.fromRGB(40, 40, 50),
+        Thickness = 1
+    })
+    
     local dropdownFrame = Create("ScrollingFrame", {
-        Parent = dropdownContainer,
+        Parent = self.GUI,  -- Важно: родитель - GUI, а не container
         BackgroundColor3 = Color3.fromRGB(40, 40, 50),
         BorderSizePixel = 0,
         Size = UDim2.new(0.3, 0, 0, 0),
-        Position = UDim2.new(0.7, 0, 1, 5),
+        Position = UDim2.new(0, 0, 0, 0),
         CanvasSize = UDim2.new(0, 0, 0, 0),
-        ScrollBarThickness = 3,
+        ScrollBarThickness = IS_MOBILE and 5 : 3,
         ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255),
         Visible = false,
-        ZIndex = 1000
+        ZIndex = 10000,
+        ClipsDescendants = true
+    })
+    
+    Create("UICorner", {
+        CornerRadius = UDim.new(0, 4),
+        Parent = dropdownFrame
+    })
+    
+    Create("UIStroke", {
+        Parent = dropdownFrame,
+        Color = Color3.fromRGB(60, 60, 70),
+        Thickness = 1
     })
     
     local listLayout = Create("UIListLayout", {
@@ -1066,13 +1268,14 @@ function ModMenu:Dropdown(parent, text, options, defaultValue, callback)
             Parent = dropdownFrame,
             Text = option,
             Font = Enum.Font.Gotham,
-            TextSize = 12,
+            TextSize = IS_MOBILE and 12 : 12,
             TextColor3 = Color3.new(1, 1, 1),
             BackgroundColor3 = Color3.fromRGB(50, 50, 60),
             BorderSizePixel = 0,
-            Size = UDim2.new(1, 0, 0, 25),
+            Size = UDim2.new(1, 0, 0, IS_MOBILE and 30 : 25),
             LayoutOrder = i,
-            AutoButtonColor = false
+            AutoButtonColor = false,
+            ZIndex = 10001
         })
         
         Create("UICorner", {
@@ -1086,59 +1289,81 @@ function ModMenu:Dropdown(parent, text, options, defaultValue, callback)
                 local success, err = pcall(callback, option)
                 if not success then
                     warn("Ошибка в dropdown: " .. tostring(err))
+                    self:Notify("Ошибка в выборе", 2)
                 end
             end
             dropdownFrame.Visible = false
         end)
         
-        -- Эффекты
-        optionButton.MouseEnter:Connect(function()
-            optionButton.BackgroundColor3 = Color3.fromRGB(70, 70, 80)
-        end)
-        
-        optionButton.MouseLeave:Connect(function()
-            optionButton.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-        end)
+        -- Эффекты (только для ПК)
+        if IS_DESKTOP then
+            optionButton.MouseEnter:Connect(function()
+                optionButton.BackgroundColor3 = Color3.fromRGB(70, 70, 80)
+            end)
+            
+            optionButton.MouseLeave:Connect(function()
+                optionButton.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+            end)
+        end
     end
     
     -- Функция переключения
     local function ToggleDropdown()
         dropdownFrame.Visible = not dropdownFrame.Visible
+        
         if dropdownFrame.Visible then
-            local height = math.min(listLayout.AbsoluteContentSize.Y, 150)
-            dropdownFrame.Size = UDim2.new(0.3, 0, 0, height)
+            -- Позиционируем dropdown под кнопкой
+            local buttonPos = button.AbsolutePosition
+            local buttonSize = button.AbsoluteSize
+            
+            dropdownFrame.Position = UDim2.new(0, buttonPos.X, 0, buttonPos.Y + buttonSize.Y + 5)
+            
+            -- Устанавливаем ширину равной кнопке
+            dropdownFrame.Size = UDim2.new(0, buttonSize.X, 0, math.min(listLayout.AbsoluteContentSize.Y, 150))
         end
     end
     
     button.MouseButton1Click:Connect(ToggleDropdown)
-    button.TouchTap:Connect(ToggleDropdown)
+    
+    if IS_MOBILE then
+        button.TouchTap:Connect(ToggleDropdown)
+    end
     
     -- Закрытие при клике вне
     local closeConnection = UserInputService.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            if dropdownFrame.Visible then
-                local mousePos = input.Position
-                local framePos = dropdownFrame.AbsolutePosition
-                local frameSize = dropdownFrame.AbsoluteSize
-                
-                if mousePos.X < framePos.X or mousePos.X > framePos.X + frameSize.X or
-                   mousePos.Y < framePos.Y or mousePos.Y > framePos.Y + frameSize.Y then
-                    dropdownFrame.Visible = false
-                end
+        if dropdownFrame.Visible and (input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch) then
+            
+            local mousePos = input.Position
+            local framePos = dropdownFrame.AbsolutePosition
+            local frameSize = dropdownFrame.AbsoluteSize
+            
+            -- Проверяем, не кликнули ли на саму кнопку
+            local buttonPos = button.AbsolutePosition
+            local buttonSize = button.AbsoluteSize
+            
+            local isButtonClick = mousePos.X >= buttonPos.X and mousePos.X <= buttonPos.X + buttonSize.X and
+                                 mousePos.Y >= buttonPos.Y and mousePos.Y <= buttonPos.Y + buttonSize.Y
+            
+            if not isButtonClick and (mousePos.X < framePos.X or mousePos.X > framePos.X + frameSize.X or
+               mousePos.Y < framePos.Y or mousePos.Y > framePos.Y + frameSize.Y) then
+                dropdownFrame.Visible = false
             end
         end
     end)
     
     table.insert(self.Connections, closeConnection)
     
-    -- Эффекты для кнопки
-    button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
-    end)
-    
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-    end)
+    -- Эффекты для кнопки (только для ПК)
+    if IS_DESKTOP then
+        button.MouseEnter:Connect(function()
+            button.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+        end)
+        
+        button.MouseLeave:Connect(function()
+            button.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+        end)
+    end
     
     return {
         SetValue = function(value)
@@ -1151,12 +1376,12 @@ function ModMenu:Dropdown(parent, text, options, defaultValue, callback)
     }
 end
 
--- Палитра цветов (ПРОСТАЯ И РАБОЧАЯ)
+-- Палитра цветов (ИСПРАВЛЕННАЯ - правильное отображение)
 function ModMenu:ColorPicker(parent, text, defaultColor, callback)
     local pickerContainer = Create("Frame", {
         Parent = parent,
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 30),
+        Size = UDim2.new(1, 0, 0, IS_MOBILE and 40 : 30),
         LayoutOrder = #parent:GetChildren()
     })
     
@@ -1164,7 +1389,7 @@ function ModMenu:ColorPicker(parent, text, defaultColor, callback)
         Parent = pickerContainer,
         Text = text,
         Font = Enum.Font.Gotham,
-        TextSize = 14,
+        TextSize = IS_MOBILE and 14 : 14,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
         Size = UDim2.new(0.7, 0, 1, 0),
@@ -1176,9 +1401,10 @@ function ModMenu:ColorPicker(parent, text, defaultColor, callback)
         Text = "",
         BackgroundColor3 = defaultColor,
         BorderSizePixel = 0,
-        Size = UDim2.new(0, 40, 0, 25),
-        Position = UDim2.new(0.7, 0, 0.5, -12.5),
-        AutoButtonColor = false
+        Size = UDim2.new(0, IS_MOBILE and 45 : 40, 0, IS_MOBILE and 30 : 25),
+        Position = UDim2.new(0.7, 0, 0.5, IS_MOBILE and -15 : -12.5),
+        AutoButtonColor = false,
+        ZIndex = 10
     })
     
     Create("UICorner", {
@@ -1186,19 +1412,31 @@ function ModMenu:ColorPicker(parent, text, defaultColor, callback)
         Parent = previewButton
     })
     
+    Create("UIStroke", {
+        Parent = previewButton,
+        Color = Color3.fromRGB(40, 40, 50),
+        Thickness = 2
+    })
+    
     local pickerFrame = Create("Frame", {
-        Parent = pickerContainer,
+        Parent = self.GUI,  -- Важно: родитель - GUI, а не container
         BackgroundColor3 = Color3.fromRGB(40, 40, 50),
         BorderSizePixel = 0,
-        Size = UDim2.new(0, 160, 0, 100),
-        Position = UDim2.new(0.7, 45, 0.5, -50),
+        Size = UDim2.new(0, 170, 0, 110),
+        Position = UDim2.new(0, 0, 0, 0),
         Visible = false,
-        ZIndex = 1000
+        ZIndex = 10000
     })
     
     Create("UICorner", {
         CornerRadius = UDim.new(0, 6),
         Parent = pickerFrame
+    })
+    
+    Create("UIStroke", {
+        Parent = pickerFrame,
+        Color = Color3.fromRGB(60, 60, 70),
+        Thickness = 2
     })
     
     -- Простая сетка цветов
@@ -1213,7 +1451,8 @@ function ModMenu:ColorPicker(parent, text, defaultColor, callback)
         Color3.fromRGB(255, 50, 200),  -- Розовый
         Color3.fromRGB(255, 255, 255), -- Белый
         Color3.fromRGB(200, 200, 200), -- Серый
-        Color3.new(0.1, 0.1, 0.1)      -- Черный
+        Color3.new(0.1, 0.1, 0.1),     -- Черный
+        Color3.fromRGB(100, 150, 255)  -- Основной синий
     }
     
     for i = 1, #colors do
@@ -1222,14 +1461,21 @@ function ModMenu:ColorPicker(parent, text, defaultColor, callback)
             Text = "",
             BackgroundColor3 = colors[i],
             BorderSizePixel = 0,
-            Size = UDim2.new(0, 30, 0, 30),
+            Size = UDim2.new(0, 35, 0, 35),
             Position = UDim2.new(0, ((i-1) % 4) * 40 + 5, 0, math.floor((i-1)/4) * 35 + 5),
-            AutoButtonColor = false
+            AutoButtonColor = false,
+            ZIndex = 10001
         })
         
         Create("UICorner", {
             CornerRadius = UDim.new(0, 4),
             Parent = colorButton
+        })
+        
+        Create("UIStroke", {
+            Parent = colorButton,
+            Color = Color3.fromRGB(20, 20, 20),
+            Thickness = 1
         })
         
         colorButton.MouseButton1Click:Connect(function()
@@ -1238,6 +1484,7 @@ function ModMenu:ColorPicker(parent, text, defaultColor, callback)
                 local success, err = pcall(callback, colors[i])
                 if not success then
                     warn("Ошибка в color picker: " .. tostring(err))
+                    self:Notify("Ошибка выбора цвета", 2)
                 end
             end
             pickerFrame.Visible = false
@@ -1247,23 +1494,41 @@ function ModMenu:ColorPicker(parent, text, defaultColor, callback)
     -- Переключение видимости
     local function TogglePicker()
         pickerFrame.Visible = not pickerFrame.Visible
+        
+        if pickerFrame.Visible then
+            -- Позиционируем picker рядом с кнопкой
+            local buttonPos = previewButton.AbsolutePosition
+            local buttonSize = previewButton.AbsoluteSize
+            
+            pickerFrame.Position = UDim2.new(0, buttonPos.X + buttonSize.X + 10, 0, buttonPos.Y)
+        end
     end
     
     previewButton.MouseButton1Click:Connect(TogglePicker)
-    previewButton.TouchTap:Connect(TogglePicker)
+    
+    if IS_MOBILE then
+        previewButton.TouchTap:Connect(TogglePicker)
+    end
     
     -- Закрытие при клике вне
     local closeConnection = UserInputService.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            if pickerFrame.Visible then
-                local mousePos = input.Position
-                local framePos = pickerFrame.AbsolutePosition
-                local frameSize = pickerFrame.AbsoluteSize
-                
-                if mousePos.X < framePos.X or mousePos.X > framePos.X + frameSize.X or
-                   mousePos.Y < framePos.Y or mousePos.Y > framePos.Y + frameSize.Y then
-                    pickerFrame.Visible = false
-                end
+        if pickerFrame.Visible and (input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch) then
+            
+            local mousePos = input.Position
+            local framePos = pickerFrame.AbsolutePosition
+            local frameSize = pickerFrame.AbsoluteSize
+            
+            -- Проверяем, не кликнули ли на саму кнопку
+            local buttonPos = previewButton.AbsolutePosition
+            local buttonSize = previewButton.AbsoluteSize
+            
+            local isButtonClick = mousePos.X >= buttonPos.X and mousePos.X <= buttonPos.X + buttonSize.X and
+                                 mousePos.Y >= buttonPos.Y and mousePos.Y <= buttonPos.Y + buttonSize.Y
+            
+            if not isButtonClick and (mousePos.X < framePos.X or mousePos.X > framePos.X + frameSize.X or
+               mousePos.Y < framePos.Y or mousePos.Y > framePos.Y + frameSize.Y) then
+                pickerFrame.Visible = false
             end
         end
     end)
@@ -1288,14 +1553,34 @@ function ModMenu:MakeDraggable(frame, handle)
     local dragging = false
     local dragStart, startPos
     
-    handle.InputBegan:Connect(function(input)
+    local function StartDrag(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or 
            input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
             startPos = frame.Position
+            
+            -- Эффект при перетаскивании
+            if frame:FindFirstChild("UIStroke") then
+                SafeTween(frame.UIStroke, {Color = Color3.fromRGB(100, 150, 255)})
+            end
         end
-    end)
+    end
+    
+    local function EndDrag(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+            
+            -- Возвращаем цвет обводки
+            if frame:FindFirstChild("UIStroke") then
+                SafeTween(frame.UIStroke, {Color = Color3.fromRGB(50, 50, 60)})
+            end
+        end
+    end
+    
+    handle.InputBegan:Connect(StartDrag)
+    UserInputService.InputEnded:Connect(EndDrag)
     
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or 
@@ -1305,13 +1590,6 @@ function ModMenu:MakeDraggable(frame, handle)
                 startPos.X.Scale, startPos.X.Offset + delta.X,
                 startPos.Y.Scale, startPos.Y.Offset + delta.Y
             )
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
         end
     end)
 end
@@ -1326,17 +1604,15 @@ function ModMenu:ToggleMenu()
     
     if self.MenuOpen then
         self.MainButton.Text = "✕"
-        self.MainButton.BackgroundTransparency = 0.5
-    else
-        self.MainButton.Text = "≡"
-        self.MainButton.BackgroundTransparency = 0
+        SafeTween(self.MainButton, {BackgroundTransparency = 0.5})
         
         -- Закрываем настройки если открыты
         if self.SettingsOpen then
-            self.SettingsOpen = false
-            self.SettingsFrame.Visible = false
-            self:UpdateFloatingTexts()
+            self:ToggleSettings()
         end
+    else
+        self.MainButton.Text = "≡"
+        SafeTween(self.MainButton, {BackgroundTransparency = 0})
     end
 end
 
@@ -1347,7 +1623,10 @@ function ModMenu:ToggleSettings()
     self:UpdateFloatingTexts()
     
     if self.SettingsOpen then
-        self:Notify("Настройки открыты", 1)
+        -- Закрываем меню если открыто
+        if self.MenuOpen then
+            self:ToggleMenu()
+        end
     end
 end
 
@@ -1358,8 +1637,8 @@ function ModMenu:Notify(text, duration)
         Parent = self.GUI,
         BackgroundColor3 = Color3.fromRGB(30, 30, 40),
         BackgroundTransparency = 0.1,
-        Size = UDim2.new(0, 300, 0, 60),
-        Position = UDim2.new(1, -320, 1, -80),
+        Size = UDim2.new(0, IS_MOBILE and 280 : 300, 0, IS_MOBILE and 70 : 60),
+        Position = UDim2.new(1, IS_MOBILE and 300 : 300, 1, IS_MOBILE and -90 : -80),
         ZIndex = 10000
     })
     
@@ -1368,14 +1647,20 @@ function ModMenu:Notify(text, duration)
         Parent = notification
     })
     
+    Create("UIStroke", {
+        Parent = notification,
+        Color = Color3.fromRGB(100, 150, 255),
+        Thickness = 1
+    })
+    
     Create("TextLabel", {
         Parent = notification,
         Text = "Уведомление",
         Font = Enum.Font.GothamBold,
-        TextSize = 14,
+        TextSize = IS_MOBILE and 13 : 14,
         TextColor3 = Color3.fromRGB(100, 150, 255),
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, -20, 0, 20),
+        Size = UDim2.new(1, -20, 0, IS_MOBILE and 22 : 20),
         Position = UDim2.new(0, 10, 0, 5),
         TextXAlignment = Enum.TextXAlignment.Left
     })
@@ -1384,25 +1669,28 @@ function ModMenu:Notify(text, duration)
         Parent = notification,
         Text = text,
         Font = Enum.Font.Gotham,
-        TextSize = 12,
+        TextSize = IS_MOBILE and 12 : 12,
         TextColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, -20, 1, -30),
-        Position = UDim2.new(0, 10, 0, 25),
+        Size = UDim2.new(1, -20, 1, IS_MOBILE and -27 : -25),
+        Position = UDim2.new(0, 10, 0, IS_MOBILE and 27 : 25),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextWrapped = true
     })
     
-    -- Анимация
-    notification.Position = UDim2.new(1, 300, 1, -80)
-    Tween(notification, {Position = UDim2.new(1, -320, 1, -80)})
+    -- Анимация появления
+    SafeTween(notification, {Position = UDim2.new(1, IS_MOBILE and -300 : -320, 1, IS_MOBILE and -90 : -80)})
     
-    -- Удаление
+    -- Автоматическое удаление
     task.spawn(function()
         task.wait(duration)
-        Tween(notification, {Position = UDim2.new(1, 300, 1, -80)})
-        task.wait(0.3)
-        notification:Destroy()
+        if notification and notification.Parent then
+            SafeTween(notification, {Position = UDim2.new(1, IS_MOBILE and 300 : 300, 1, IS_MOBILE and -90 : -80)})
+            task.wait(0.3)
+            if notification and notification.Parent then
+                notification:Destroy()
+            end
+        end
     end)
 end
 
@@ -1433,15 +1721,20 @@ function ModMenu:AddDemoContent()
             self:Notify("Значение: " .. value, 1)
         end)
         
-        -- Простой dropdown
         self:Dropdown(homeTab, "Демо выбор", {"Вариант 1", "Вариант 2", "Вариант 3"}, "Вариант 1", function(value)
             self:Notify("Выбрано: " .. value, 2)
+        end)
+        
+        self:ColorPicker(homeTab, "Демо цвет", Color3.fromRGB(255, 100, 100), function(color)
+            self:Notify("Цвет изменен", 2)
         end)
     end
 end
 
 -- API методы
 function ModMenu:Destroy()
+    if not self.Active then return end
+    
     -- Отключаем все соединения
     for _, connection in ipairs(self.Connections) do
         if type(connection) == "userdata" and connection.Disconnect then
@@ -1449,17 +1742,18 @@ function ModMenu:Destroy()
         end
     end
     
+    self.Connections = {}
+    
     -- Уничтожаем GUI
     if self.GUI and self.GUI.Parent then
         self.GUI:Destroy()
     end
     
     self.Active = false
-    self:Notify("Меню закрыто", 2)
 end
 
 function ModMenu:IsActive()
-    return self.Active
+    return self.Active == true
 end
 
 -- Экспорт библиотеки
@@ -1467,20 +1761,27 @@ local Library = {}
 
 function Library.new(menuName)
     local menu = ModMenu.new(menuName)
-    menu:AddDemoContent()
+    
+    task.spawn(function()
+        task.wait(1)
+        menu:AddDemoContent()
+    end)
+    
     return menu
 end
 
 -- Утилиты
 Library.Create = Create
-Library.Tween = Tween
+Library.Tween = SafeTween
 Library.Round = Round
+Library.DeepClone = DeepClone
 
 -- Автоматическое сообщение
 task.spawn(function()
     task.wait(1)
-    print("✅ Mod Menu Library v3.1 загружена!")
-    print("👩‍💻 Автор: Фатима ♥️")
+    print("✅ Mod Menu Library v3.2 загружена!")
+    print("📱 Поддержка: ПК и Мобильные устройства")
+    print("🔧 Исправлены: Slider, Dropdown, ColorPicker, обработчики кнопок")
 end)
 
 return Library
