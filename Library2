@@ -1,0 +1,736 @@
+--[[
+    Nova UI Library v1.0
+    Minimalistic & Elegant Mod Menu Framework for Roblox
+    Author: Nova Team
+    License: MIT
+--]]
+
+local Nova = {}
+Nova.__index = Nova
+
+-- Services
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+-- Configuration
+local DEFAULT_CONFIG = {
+    AccentColor = Color3.fromRGB(0, 170, 255),
+    BackgroundTransparency = 0.05,
+    Theme = "Dark",
+    Keybind = Enum.KeyCode.RightShift
+}
+
+local themes = {
+    Dark = {
+        Background = Color3.fromRGB(25, 25, 30),
+        Surface = Color3.fromRGB(35, 35, 40),
+        Text = Color3.fromRGB(240, 240, 240),
+        SubText = Color3.fromRGB(180, 180, 180),
+        Border = Color3.fromRGB(60, 60, 65)
+    },
+    Light = {
+        Background = Color3.fromRGB(245, 245, 245),
+        Surface = Color3.fromRGB(255, 255, 255),
+        Text = Color3.fromRGB(30, 30, 30),
+        SubText = Color3.fromRGB(100, 100, 100),
+        Border = Color3.fromRGB(220, 220, 225)
+    }
+}
+
+-- Utility Functions
+local function create(class, props)
+    local obj = Instance.new(class)
+    for prop, value in pairs(props) do
+        if prop ~= "Parent" then
+            obj[prop] = value
+        end
+    end
+    obj.Parent = props.Parent
+    return obj
+end
+
+local function tween(obj, props, duration, style)
+    local tweenInfo = TweenInfo.new(duration or 0.2, style or Enum.EasingStyle.Quad)
+    local tween = TweenService:Create(obj, tweenInfo, props)
+    tween:Play()
+    return tween
+end
+
+local function generateUniqueName(baseName)
+    return string.format("%s_%s", baseName, math.random(10000, 99999))
+end
+
+-- Main Library Constructor
+function Nova.new(menuName)
+    menuName = menuName or "NovaMenu"
+    
+    -- Cleanup existing menu with same name
+    for _, child in ipairs(CoreGui:GetChildren()) do
+        if child.Name:match("^" .. menuName .. "_%d+$") then
+            child:Destroy()
+        end
+    end
+
+    local self = setmetatable({}, Nova)
+    
+    self.MenuName = generateUniqueName(menuName)
+    self.Sections = {}
+    self.CurrentSection = nil
+    self.Widgets = {}
+    self.Config = table.clone(DEFAULT_CONFIG)
+    self.Tools = {}
+    self.IsMobile = UserInputService.TouchEnabled
+    
+    self:BuildUI()
+    self:SetupInput()
+    self:LoadConfig()
+    
+    return self
+end
+
+-- UI Construction
+function Nova:BuildUI()
+    -- Main ScreenGui
+    self.ScreenGui = create("ScreenGui", {
+        Name = self.MenuName,
+        Parent = CoreGui,
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Global
+    })
+
+    -- Mobile Toggle Button
+    if self.IsMobile then
+        self.MobileToggle = create("ImageButton", {
+            Name = "MobileToggle",
+            Parent = self.ScreenGui,
+            AnchorPoint = Vector2.new(1, 0.5),
+            Position = UDim2.new(1, -20, 0.5, 0),
+            Size = UDim2.new(0, 50, 0, 50),
+            BackgroundColor3 = self.Config.AccentColor,
+            Image = "rbxassetid://10734947690",
+            AutoButtonColor = false
+        })
+        
+        create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = self.MobileToggle})
+        
+        self.MobileToggle.MouseButton1Click:Connect(function()
+            self:ToggleMenu()
+        end)
+    end
+
+    -- Main Frame
+    self.MainFrame = create("Frame", {
+        Name = "MainFrame",
+        Parent = self.ScreenGui,
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(0, 600, 0, 400),
+        BackgroundColor3 = themes.Dark.Background,
+        BackgroundTransparency = self.Config.BackgroundTransparency,
+        Visible = false
+    })
+    
+    create("UICorner", {CornerRadius = UDim.new(0, 8), Parent = self.MainFrame})
+    create("UIStroke", {
+        Parent = self.MainFrame,
+        Color = themes.Dark.Border,
+        Thickness = 1,
+        Transparency = 0.5
+    })
+
+    -- Top Bar with Tabs
+    self.TopBar = create("Frame", {
+        Name = "TopBar",
+        Parent = self.MainFrame,
+        Size = UDim2.new(1, 0, 0, 40),
+        BackgroundColor3 = themes.Dark.Surface,
+        BorderSizePixel = 0
+    })
+    
+    create("UICorner", {
+        CornerRadius = UDim.new(0, 8),
+        Parent = self.TopBar
+    })
+
+    self.TabList = create("ScrollingFrame", {
+        Name = "TabList",
+        Parent = self.TopBar,
+        Size = UDim2.new(1, -40, 1, 0),
+        BackgroundTransparency = 1,
+        ScrollBarThickness = 0,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.X
+    })
+    
+    create("UIListLayout", {
+        Parent = self.TabList,
+        FillDirection = Enum.FillDirection.Horizontal,
+        Padding = UDim.new(0, 5)
+    })
+
+    -- Content Area
+    self.ContentFrame = create("ScrollingFrame", {
+        Name = "ContentFrame",
+        Parent = self.MainFrame,
+        Position = UDim2.new(0, 0, 0, 45),
+        Size = UDim2.new(1, 0, 1, -45),
+        BackgroundTransparency = 1,
+        ScrollBarThickness = 4,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y
+    })
+    
+    create("UIListLayout", {
+        Parent = self.ContentFrame,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 10)
+    })
+
+    -- Close Button
+    self.CloseButton = create("TextButton", {
+        Name = "CloseButton",
+        Parent = self.MainFrame,
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -10, 0, 10),
+        Size = UDim2.new(0, 20, 0, 20),
+        BackgroundTransparency = 1,
+        Text = "X",
+        TextColor3 = themes.Dark.SubText,
+        Font = Enum.Font.GothamBold
+    })
+    
+    self.CloseButton.MouseButton1Click:Connect(function()
+        self:ToggleMenu()
+    end)
+end
+
+-- Input Handling
+function Nova:SetupInput()
+    if not self.IsMobile then
+        UserInputService.InputBegan:Connect(function(input, processed)
+            if not processed and input.KeyCode == self.Config.Keybind then
+                self:ToggleMenu()
+            end
+        end)
+    end
+end
+
+-- Menu Control
+function Nova:ToggleMenu()
+    self.MainFrame.Visible = not self.MainFrame.Visible
+    
+    if self.MainFrame.Visible then
+        self.MainFrame.Position = UDim2.new(0.5, 0, 0.5, -50)
+        self.MainFrame.BackgroundTransparency = 1
+        tween(self.MainFrame, {
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            BackgroundTransparency = self.Config.BackgroundTransparency
+        }, 0.3, Enum.EasingStyle.Back)
+    end
+end
+
+-- Section Management
+function Nova:Section(name)
+    local sectionId = #self.Sections + 1
+    
+    -- Create Tab Button
+    local tabButton = create("TextButton", {
+        Name = name .. "Tab",
+        Parent = self.TabList,
+        Size = UDim2.new(0, 80, 1, -10),
+        BackgroundColor3 = themes.Dark.Surface,
+        AutoButtonColor = false,
+        Text = name,
+        TextColor3 = themes.Dark.Text,
+        Font = Enum.Font.GothamMedium
+    })
+    
+    create("UICorner", {CornerRadius = UDim.new(0, 6), Parent = tabButton})
+    
+    -- Create Section Content
+    local sectionFrame = create("Frame", {
+        Name = name .. "Section",
+        Parent = self.ContentFrame,
+        Size = UDim2.new(1, -20, 0, 0),
+        BackgroundTransparency = 1,
+        Visible = sectionId == 1
+    })
+    
+    create("UIListLayout", {
+        Parent = sectionFrame,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 15)
+    })
+
+    if sectionId == 1 then
+        self.CurrentSection = sectionFrame
+        tabButton.BackgroundColor3 = self.Config.AccentColor
+    end
+
+    tabButton.MouseButton1Click:Connect(function()
+        if self.CurrentSection then
+            self.CurrentSection.Visible = false
+        end
+        
+        for _, btn in ipairs(self.TabList:GetChildren()) do
+            if btn:IsA("TextButton") then
+                tween(btn, {BackgroundColor3 = themes.Dark.Surface})
+            end
+        end
+        
+        sectionFrame.Visible = true
+        self.CurrentSection = sectionFrame
+        tween(tabButton, {BackgroundColor3 = self.Config.AccentColor})
+    end)
+
+    table.insert(self.Sections, sectionFrame)
+    
+    local sectionAPI = {}
+    
+    -- Widget Creators
+    function sectionAPI:Button(name, callback)
+        local button = create("TextButton", {
+            Name = name,
+            Parent = self.CurrentSection,
+            Size = UDim2.new(1, 0, 0, 40),
+            BackgroundColor3 = themes.Dark.Surface,
+            AutoButtonColor = false,
+            Text = name,
+            TextColor3 = themes.Dark.Text,
+            Font = Enum.Font.GothamMedium,
+            TextSize = 14
+        })
+        
+        create("UICorner", {CornerRadius = UDim.new(0, 6), Parent = button})
+        create("UIStroke", {
+            Parent = button,
+            Color = themes.Dark.Border,
+            Thickness = 1
+        })
+
+        local originalColor = button.BackgroundColor3
+        
+        button.MouseEnter:Connect(function()
+            tween(button, {BackgroundColor3 = originalColor:Lerp(self.Config.AccentColor, 0.3)})
+        end)
+        
+        button.MouseLeave:Connect(function()
+            tween(button, {BackgroundColor3 = originalColor})
+        end)
+        
+        button.MouseButton1Click:Connect(function()
+            if callback then
+                callback()
+            end
+        end)
+        
+        return button
+    end
+    
+    function sectionAPI:Toggle(name, default, callback)
+        local toggle = create("TextButton", {
+            Name = name,
+            Parent = self.CurrentSection,
+            Size = UDim2.new(1, 0, 0, 30),
+            BackgroundTransparency = 1,
+            Text = "",
+            AutoButtonColor = false
+        })
+        
+        local label = create("TextLabel", {
+            Parent = toggle,
+            AnchorPoint = Vector2.new(0, 0.5),
+            Position = UDim2.new(0, 0, 0.5, 0),
+            Size = UDim2.new(0.7, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = name,
+            TextColor3 = themes.Dark.Text,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextSize = 14
+        })
+        
+        local toggleFrame = create("Frame", {
+            Parent = toggle,
+            AnchorPoint = Vector2.new(1, 0.5),
+            Position = UDim2.new(1, 0, 0.5, 0),
+            Size = UDim2.new(0, 50, 0, 25),
+            BackgroundColor3 = themes.Dark.Surface
+        })
+        
+        create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = toggleFrame})
+        
+        local toggleCircle = create("Frame", {
+            Parent = toggleFrame,
+            AnchorPoint = Vector2.new(0, 0.5),
+            Position = UDim2.new(0, 3, 0.5, 0),
+            Size = UDim2.new(0, 19, 0, 19),
+            BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+        })
+        
+        create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = toggleCircle})
+        
+        local state = default or false
+        
+        local function updateToggle()
+            if state then
+                tween(toggleFrame, {BackgroundColor3 = self.Config.AccentColor})
+                tween(toggleCircle, {
+                    Position = UDim2.new(1, -22, 0.5, 0),
+                    BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                })
+            else
+                tween(toggleFrame, {BackgroundColor3 = themes.Dark.Surface})
+                tween(toggleCircle, {
+                    Position = UDim2.new(0, 3, 0.5, 0),
+                    BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+                })
+            end
+        end
+        
+        updateToggle()
+        
+        toggle.MouseButton1Click:Connect(function()
+            state = not state
+            updateToggle()
+            if callback then
+                callback(state)
+            end
+        end)
+        
+        return {
+            Set = function(value)
+                state = value
+                updateToggle()
+            end,
+            Get = function()
+                return state
+            end
+        }
+    end
+    
+    function sectionAPI:Slider(name, min, max, default, callback)
+        local container = create("Frame", {
+            Name = name,
+            Parent = self.CurrentSection,
+            Size = UDim2.new(1, 0, 0, 60),
+            BackgroundTransparency = 1
+        })
+        
+        local label = create("TextLabel", {
+            Parent = container,
+            Size = UDim2.new(1, 0, 0, 20),
+            BackgroundTransparency = 1,
+            Text = string.format("%s: %d", name, default or min),
+            TextColor3 = themes.Dark.Text,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextSize = 14
+        })
+        
+        local sliderTrack = create("Frame", {
+            Parent = container,
+            Position = UDim2.new(0, 0, 0, 25),
+            Size = UDim2.new(1, 0, 0, 10),
+            BackgroundColor3 = themes.Dark.Surface
+        })
+        
+        create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = sliderTrack})
+        
+        local sliderFill = create("Frame", {
+            Parent = sliderTrack,
+            Size = UDim2.new(0, 0, 1, 0),
+            BackgroundColor3 = self.Config.AccentColor
+        })
+        
+        create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = sliderFill})
+        
+        local sliderButton = create("TextButton", {
+            Parent = sliderTrack,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0, 0, 0.5, 0),
+            Size = UDim2.new(0, 20, 0, 20),
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            AutoButtonColor = false,
+            Text = ""
+        })
+        
+        create("UICorner", {CornerRadius = UDim.new(1, 0), Parent = sliderButton})
+        
+        local value = default or min
+        local isDragging = false
+        
+        local function updateSlider(mouseX)
+            local relativeX = math.clamp(mouseX - sliderTrack.AbsolutePosition.X, 0, sliderTrack.AbsoluteSize.X)
+            local percentage = relativeX / sliderTrack.AbsoluteSize.X
+            value = math.floor(min + (max - min) * percentage)
+            
+            sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+            sliderButton.Position = UDim2.new(percentage, 0, 0.5, 0)
+            label.Text = string.format("%s: %d", name, value)
+            
+            if callback then
+                callback(value)
+            end
+        end
+        
+        sliderButton.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                isDragging = true
+            end
+        end)
+        
+        sliderButton.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                isDragging = false
+            end
+        end)
+        
+        UserInputService.InputChanged:Connect(function(input)
+            if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                updateSlider(input.Position.X)
+            end
+        end)
+        
+        updateSlider(sliderTrack.AbsolutePosition.X + (sliderTrack.AbsoluteSize.X * ((value - min) / (max - min))))
+        
+        return {
+            Set = function(newValue)
+                value = math.clamp(newValue, min, max)
+                local percentage = (value - min) / (max - min)
+                sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+                sliderButton.Position = UDim2.new(percentage, 0, 0.5, 0)
+                label.Text = string.format("%s: %d", name, value)
+            end,
+            Get = function()
+                return value
+            end
+        }
+    end
+    
+    function sectionAPI:Dropdown(name, options, callback)
+        local container = create("Frame", {
+            Name = name,
+            Parent = self.CurrentSection,
+            Size = UDim2.new(1, 0, 0, 40),
+            BackgroundTransparency = 1
+        })
+        
+        local label = create("TextLabel", {
+            Parent = container,
+            Size = UDim2.new(0.3, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = name,
+            TextColor3 = themes.Dark.Text,
+            Font = Enum.Font.GothamMedium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextSize = 14
+        })
+        
+        local dropdownButton = create("TextButton", {
+            Parent = container,
+            AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.new(1, 0, 0, 0),
+            Size = UDim2.new(0.7, 0, 1, 0),
+            BackgroundColor3 = themes.Dark.Surface,
+            AutoButtonColor = false,
+            Text = "Select...",
+            TextColor3 = themes.Dark.SubText,
+            Font = Enum.Font.GothamMedium,
+            TextSize = 14
+        })
+        
+        create("UICorner", {CornerRadius = UDim.new(0, 6), Parent = dropdownButton})
+        
+        local dropdownFrame = create("ScrollingFrame", {
+            Parent = dropdownButton,
+            Position = UDim2.new(0, 0, 1, 5),
+            Size = UDim2.new(1, 0, 0, 150),
+            BackgroundColor3 = themes.Dark.Surface,
+            ScrollBarThickness = 4,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            Visible = false,
+            ZIndex = 10
+        })
+        
+        create("UICorner", {CornerRadius = UDim.new(0, 6), Parent = dropdownFrame})
+        
+        create("UIListLayout", {
+            Parent = dropdownFrame,
+            SortOrder = Enum.SortOrder.LayoutOrder
+        })
+        
+        local selectedOption = nil
+        
+        local function updateOptions()
+            for _, child in ipairs(dropdownFrame:GetChildren()) do
+                if child:IsA("TextButton") then
+                    child:Destroy()
+                end
+            end
+            
+            for _, option in ipairs(options) do
+                local optionButton = create("TextButton", {
+                    Parent = dropdownFrame,
+                    Size = UDim2.new(1, -10, 0, 30),
+                    BackgroundColor3 = themes.Dark.Surface,
+                    AutoButtonColor = false,
+                    Text = tostring(option),
+                    TextColor3 = themes.Dark.Text,
+                    Font = Enum.Font.Gotham,
+                    TextSize = 13,
+                    LayoutOrder = _
+                })
+                
+                create("UICorner", {CornerRadius = UDim.new(0, 4), Parent = optionButton})
+                
+                optionButton.MouseEnter:Connect(function()
+                    tween(optionButton, {BackgroundColor3 = self.Config.AccentColor})
+                end)
+                
+                optionButton.MouseLeave:Connect(function()
+                    tween(optionButton, {BackgroundColor3 = themes.Dark.Surface})
+                end)
+                
+                optionButton.MouseButton1Click:Connect(function()
+                    selectedOption = option
+                    dropdownButton.Text = tostring(option)
+                    dropdownFrame.Visible = false
+                    
+                    if callback then
+                        callback(option)
+                    end
+                end)
+            end
+        end
+        
+        dropdownButton.MouseButton1Click:Connect(function()
+            dropdownFrame.Visible = not dropdownFrame.Visible
+        end)
+        
+        updateOptions()
+        
+        return {
+            SetOptions = function(newOptions)
+                options = newOptions
+                updateOptions()
+            end,
+            Set = function(option)
+                selectedOption = option
+                dropdownButton.Text = tostring(option)
+            end,
+            Get = function()
+                return selectedOption
+            end
+        }
+    end
+    
+    function sectionAPI:Colorpicker(name, defaultColor, callback)
+        -- Implementation similar to dropdown but with color grid
+        -- Returns color picker object
+    end
+    
+    return sectionAPI
+end
+
+-- Settings Section (Built-in)
+function Nova:SetupSettings()
+    local settings = self:Section("Settings")
+    
+    -- UI Theme
+    local themeDropdown = settings:Dropdown("Theme", {"Dark", "Light"}, function(theme)
+        self.Config.Theme = theme
+        self:ApplyTheme()
+        self:SaveConfig()
+    end)
+    themeDropdown.Set(self.Config.Theme)
+    
+    -- Accent Color
+    settings:Slider("Accent R", 0, 255, math.floor(self.Config.AccentColor.R * 255), function(r)
+        self.Config.AccentColor = Color3.fromRGB(r, self.Config.AccentColor.G * 255, self.Config.AccentColor.B * 255)
+        self:ApplyTheme()
+        self:SaveConfig()
+    end)
+    
+    -- Keybind
+    local keybindButton = settings:Button("Keybind: " .. tostring(self.Config.Keybind), function()
+        -- Keybind listener implementation
+    end)
+    
+    -- Reset
+    settings:Button("Reset to Defaults", function()
+        self.Config = table.clone(DEFAULT_CONFIG)
+        self:ApplyTheme()
+        self:SaveConfig()
+    end})
+    
+    -- Info
+    settings:Button("Nova UI v1.0", function()
+        print("Nova UI Library by Nova Team")
+    end)
+end
+
+-- Tool Integration API
+function Nova:AddTool(name, toolModule)
+    self.Tools[name] = toolModule
+end
+
+function Nova:GetTool(name)
+    return self.Tools[name]
+end
+
+-- Configuration Management
+function Nova:LoadConfig()
+    -- Implement saving/loading via DataStore or HttpService
+    -- For now using defaults
+    self:ApplyTheme()
+end
+
+function Nova:SaveConfig()
+    -- Save configuration implementation
+end
+
+function Nova:ApplyTheme()
+    local theme = themes[self.Config.Theme] or themes.Dark
+    
+    -- Apply theme to all UI elements
+    -- Implementation details...
+end
+
+-- Optional: Built-in Developer Tools
+function Nova:IntegrateRemoteSpy()
+    -- Basic RemoteEvent listener
+    local remoteSpy = {
+        Logs = {},
+        Active = false
+    }
+    
+    local originalFireServer
+    originalFireServer = hookfunction(Instance.new("RemoteEvent").FireServer, function(self, ...)
+        if remoteSpy.Active then
+            table.insert(remoteSpy.Logs, {
+                Time = os.time(),
+                Remote = self.Name,
+                Args = {...}
+            })
+            print("[RemoteSpy]", self.Name, ...)
+        end
+        return originalFireServer(self, ...)
+    end)
+    
+    self:AddTool("RemoteSpy", remoteSpy)
+end
+
+-- Cleanup
+function Nova:Destroy()
+    self.ScreenGui:Destroy()
+    for k in pairs(self) do
+        self[k] = nil
+    end
+end
+
+return Nova
