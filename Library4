@@ -1,6 +1,6 @@
 --[[
-    Nova UI Library v1.1
-    Robust & Production-Ready Mod Menu Framework for Roblox
+    Nova UI Library v1.2
+    Stable & Production-Ready Mod Menu Framework for Roblox
     Author: Nova Team
     License: MIT
 --]]
@@ -15,8 +15,8 @@ local HttpService = game:GetService("HttpService")
 
 -- Library Table
 local Nova = {
-    Version = "1.1",
-    Debug = true
+    Version = "1.2",
+    Debug = false
 }
 
 Nova.__index = Nova
@@ -47,47 +47,36 @@ local themes = {
 }
 
 -- Utility Functions
-local function safeCreate(class, props)
-    local success, obj = pcall(function()
-        local instance = Instance.new(class)
-        for prop, value in pairs(props) do
-            if prop ~= "Parent" then
-                if pcall(function()
-                    instance[prop] = value
-                end) == false and Nova.Debug then
-                    warn("[Nova UI] Failed to set property:", prop, "for", class)
-                end
-            end
+local function create(class, props)
+    local obj = Instance.new(class)
+    for prop, value in pairs(props) do
+        if prop ~= "Parent" and prop ~= "Children" then
+            pcall(function()
+                obj[prop] = value
+            end)
         end
-        return instance
-    end)
-    
-    if success and obj then
-        if props.Parent then
-            obj.Parent = props.Parent
-        end
-        return obj
-    else
-        if Nova.Debug then
-            warn("[Nova UI] Failed to create:", class)
-        end
-        return nil
     end
+    
+    if props.Parent then
+        obj.Parent = props.Parent
+    end
+    
+    if props.Children then
+        for _, child in ipairs(props.Children) do
+            child.Parent = obj
+        end
+    end
+    
+    return obj
 end
 
 local function tween(obj, props, duration, style)
-    local success, result = pcall(function()
-        local tweenInfo = TweenInfo.new(duration or 0.2, style or Enum.EasingStyle.Quad)
-        local tween = TweenService:Create(obj, tweenInfo, props)
-        tween:Play()
-        return tween
-    end)
+    if not obj or not props then return end
     
-    if not success and Nova.Debug then
-        warn("[Nova UI] Tween failed:", result)
-    end
-    
-    return result
+    local tweenInfo = TweenInfo.new(duration or 0.2, style or Enum.EasingStyle.Quad)
+    local tweenObj = TweenService:Create(obj, tweenInfo, props)
+    tweenObj:Play()
+    return tweenObj
 end
 
 local function generateUniqueName(baseName)
@@ -118,16 +107,17 @@ function Nova.new(menuName)
     self.Tools = {}
     self.IsMobile = UserInputService.TouchEnabled
     self.Open = false
+    self.Connections = {}
     
-    -- Build UI
+    -- Initialize
     local success, err = pcall(function()
         self:BuildUI()
         self:SetupInput()
-        self:LoadConfig()
+        self:ApplyTheme()
     end)
     
     if not success then
-        warn("[Nova UI] Failed to initialize:", err)
+        warn("[Nova UI] Initialization error:", err)
         return nil
     end
     
@@ -137,21 +127,17 @@ end
 -- UI Construction
 function Nova:BuildUI()
     -- Main ScreenGui
-    self.ScreenGui = safeCreate("ScreenGui", {
+    self.ScreenGui = create("ScreenGui", {
         Name = self.MenuName,
         Parent = CoreGui,
         ResetOnSpawn = false,
         ZIndexBehavior = Enum.ZIndexBehavior.Global,
         DisplayOrder = 999
     })
-    
-    if not self.ScreenGui then
-        error("Failed to create ScreenGui")
-    end
 
-    -- Mobile Toggle Button (only on mobile)
+    -- Mobile Toggle Button
     if self.IsMobile then
-        self.MobileToggle = safeCreate("ImageButton", {
+        self.MobileToggle = create("ImageButton", {
             Name = "MobileToggle",
             Parent = self.ScreenGui,
             AnchorPoint = Vector2.new(1, 0.5),
@@ -160,23 +146,22 @@ function Nova:BuildUI()
             BackgroundColor3 = self.Config.AccentColor,
             Image = "rbxassetid://10734947690",
             ImageColor3 = Color3.new(1, 1, 1),
-            AutoButtonColor = false
+            AutoButtonColor = false,
+            Visible = false
         })
         
-        if self.MobileToggle then
-            safeCreate("UICorner", {
-                CornerRadius = UDim.new(1, 0),
-                Parent = self.MobileToggle
-            })
-            
-            self.MobileToggle.MouseButton1Click:Connect(function()
-                self:ToggleMenu()
-            end)
-        end
+        local corner = create("UICorner", {
+            CornerRadius = UDim.new(1, 0)
+        })
+        corner.Parent = self.MobileToggle
+        
+        self.MobileToggle.MouseButton1Click:Connect(function()
+            self:ToggleMenu()
+        end)
     end
 
-    -- Main Frame (initially hidden)
-    self.MainFrame = safeCreate("Frame", {
+    -- Main Frame
+    self.MainFrame = create("Frame", {
         Name = "MainFrame",
         Parent = self.ScreenGui,
         AnchorPoint = Vector2.new(0.5, 0.5),
@@ -188,24 +173,20 @@ function Nova:BuildUI()
         ClipsDescendants = true
     })
     
-    if not self.MainFrame then
-        error("Failed to create MainFrame")
-    end
-    
-    safeCreate("UICorner", {
-        CornerRadius = UDim.new(0, 8),
-        Parent = self.MainFrame
+    local mainCorner = create("UICorner", {
+        CornerRadius = UDim.new(0, 8)
     })
+    mainCorner.Parent = self.MainFrame
     
-    safeCreate("UIStroke", {
-        Parent = self.MainFrame,
+    local mainStroke = create("UIStroke", {
         Color = themes.Dark.Border,
         Thickness = 1,
         Transparency = 0.5
     })
+    mainStroke.Parent = self.MainFrame
 
-    -- Top Bar with Tabs
-    self.TopBar = safeCreate("Frame", {
+    -- Top Bar
+    self.TopBar = create("Frame", {
         Name = "TopBar",
         Parent = self.MainFrame,
         Size = UDim2.new(1, 0, 0, 40),
@@ -213,12 +194,13 @@ function Nova:BuildUI()
         BorderSizePixel = 0
     })
     
-    safeCreate("UICorner", {
-        CornerRadius = UDim.new(0, 8),
-        Parent = self.TopBar
+    local topCorner = create("UICorner", {
+        CornerRadius = UDim.new(0, 8)
     })
+    topCorner.Parent = self.TopBar
 
-    self.TabList = safeCreate("ScrollingFrame", {
+    -- Tab List
+    self.TabList = create("ScrollingFrame", {
         Name = "TabList",
         Parent = self.TopBar,
         Size = UDim2.new(1, -40, 1, 0),
@@ -228,14 +210,14 @@ function Nova:BuildUI()
         AutomaticCanvasSize = Enum.AutomaticSize.X
     })
     
-    safeCreate("UIListLayout", {
-        Parent = self.TabList,
+    local tabListLayout = create("UIListLayout", {
         FillDirection = Enum.FillDirection.Horizontal,
         Padding = UDim.new(0, 5)
     })
+    tabListLayout.Parent = self.TabList
 
-    -- Content Area
-    self.ContentFrame = safeCreate("ScrollingFrame", {
+    -- Content Frame
+    self.ContentFrame = create("ScrollingFrame", {
         Name = "ContentFrame",
         Parent = self.MainFrame,
         Position = UDim2.new(0, 0, 0, 45),
@@ -247,52 +229,49 @@ function Nova:BuildUI()
         ScrollingDirection = Enum.ScrollingDirection.Y
     })
     
-    safeCreate("UIPadding", {
-        Parent = self.ContentFrame,
+    local contentPadding = create("UIPadding", {
         PaddingLeft = UDim.new(0, 10),
         PaddingRight = UDim.new(0, 10),
         PaddingTop = UDim.new(0, 10),
         PaddingBottom = UDim.new(0, 10)
     })
+    contentPadding.Parent = self.ContentFrame
     
-    safeCreate("UIListLayout", {
-        Parent = self.ContentFrame,
+    local contentLayout = create("UIListLayout", {
         SortOrder = Enum.SortOrder.LayoutOrder,
         Padding = UDim.new(0, 10)
     })
+    contentLayout.Parent = self.ContentFrame
 
     -- Close Button
-    self.CloseButton = safeCreate("TextButton", {
+    self.CloseButton = create("TextButton", {
         Name = "CloseButton",
         Parent = self.MainFrame,
         AnchorPoint = Vector2.new(1, 0),
         Position = UDim2.new(1, -10, 0, 10),
         Size = UDim2.new(0, 20, 0, 20),
         BackgroundTransparency = 1,
-        Text = "X",
+        Text = "×",
         TextColor3 = themes.Dark.SubText,
-        TextSize = 16,
+        TextSize = 18,
         Font = Enum.Font.GothamBold,
         AutoButtonColor = false
     })
     
-    if self.CloseButton then
-        self.CloseButton.MouseButton1Click:Connect(function()
-            self:ToggleMenu()
-        end)
-    end
+    self.CloseButton.MouseButton1Click:Connect(function()
+        self:ToggleMenu()
+    end)
 end
 
 -- Input Handling
 function Nova:SetupInput()
     if not self.IsMobile then
-        local connection
-        connection = UserInputService.InputBegan:Connect(function(input, processed)
+        local connection = UserInputService.InputBegan:Connect(function(input, processed)
             if not processed and input.KeyCode == self.Config.Keybind then
                 self:ToggleMenu()
             end
         end)
-        table.insert(self.Widgets, connection)
+        table.insert(self.Connections, connection)
     end
 end
 
@@ -311,7 +290,7 @@ function Nova:ToggleMenu()
         }, 0.3, Enum.EasingStyle.Back)
         
         if self.MobileToggle then
-            tween(self.MobileToggle, {BackgroundTransparency = 1}, 0.2)
+            self.MobileToggle.Visible = false
         end
     else
         tween(self.MainFrame, {
@@ -323,7 +302,7 @@ function Nova:ToggleMenu()
         self.MainFrame.Visible = false
         
         if self.MobileToggle then
-            tween(self.MobileToggle, {BackgroundTransparency = 0}, 0.2)
+            self.MobileToggle.Visible = true
         end
     end
 end
@@ -333,7 +312,7 @@ function Nova:Section(name)
     local sectionId = #self.Sections + 1
     
     -- Create Tab Button
-    local tabButton = safeCreate("TextButton", {
+    local tabButton = create("TextButton", {
         Name = name .. "Tab",
         Parent = self.TabList,
         Size = UDim2.new(0, 80, 1, -10),
@@ -345,48 +324,48 @@ function Nova:Section(name)
         TextSize = 14
     })
     
-    safeCreate("UICorner", {
-        CornerRadius = UDim.new(0, 6),
-        Parent = tabButton
-    })
+    create("UICorner", {
+        CornerRadius = UDim.new(0, 6)
+    }).Parent = tabButton
     
-    -- Create Section Content
-    local sectionFrame = safeCreate("Frame", {
+    -- Create Section Frame
+    local sectionFrame = create("Frame", {
         Name = name .. "Section",
         Parent = self.ContentFrame,
         Size = UDim2.new(1, -20, 0, 0),
         BackgroundTransparency = 1,
-        Visible = sectionId == 1,
-        LayoutOrder = sectionId
+        Visible = sectionId == 1
     })
     
-    safeCreate("UIListLayout", {
-        Parent = sectionFrame,
+    local sectionLayout = create("UIListLayout", {
         SortOrder = Enum.SortOrder.LayoutOrder,
         Padding = UDim.new(0, 15)
     })
+    sectionLayout.Parent = sectionFrame
     
-    safeCreate("UIPadding", {
-        Parent = sectionFrame,
+    create("UIPadding", {
         PaddingBottom = UDim.new(0, 10)
-    })
+    }).Parent = sectionFrame
 
     if sectionId == 1 then
         self.CurrentSection = sectionFrame
         tabButton.BackgroundColor3 = self.Config.AccentColor
     end
 
+    -- Tab click handler
     tabButton.MouseButton1Click:Connect(function()
         if self.CurrentSection then
             self.CurrentSection.Visible = false
         end
         
+        -- Reset all tabs
         for _, btn in ipairs(self.TabList:GetChildren()) do
             if btn:IsA("TextButton") then
                 tween(btn, {BackgroundColor3 = themes.Dark.Surface})
             end
         end
         
+        -- Activate selected tab
         sectionFrame.Visible = true
         self.CurrentSection = sectionFrame
         tween(tabButton, {BackgroundColor3 = self.Config.AccentColor})
@@ -394,35 +373,33 @@ function Nova:Section(name)
 
     table.insert(self.Sections, sectionFrame)
     
+    -- Section API
     local sectionAPI = {}
     
-    -- Button Widget
-    function sectionAPI:Button(name, callback)
-        local button = safeCreate("TextButton", {
-            Name = name,
+    -- Button
+    function sectionAPI:Button(text, callback)
+        if not self.CurrentSection then return end
+        
+        local button = create("TextButton", {
+            Name = text,
             Parent = self.CurrentSection,
             Size = UDim2.new(1, 0, 0, 40),
             BackgroundColor3 = themes.Dark.Surface,
             AutoButtonColor = false,
-            Text = name,
+            Text = text,
             TextColor3 = themes.Dark.Text,
             Font = Enum.Font.GothamMedium,
-            TextSize = 14,
-            LayoutOrder = #self.CurrentSection:GetChildren()
+            TextSize = 14
         })
         
-        if not button then return nil end
+        create("UICorner", {
+            CornerRadius = UDim.new(0, 6)
+        }).Parent = button
         
-        safeCreate("UICorner", {
-            CornerRadius = UDim.new(0, 6),
-            Parent = button
-        })
-        
-        safeCreate("UIStroke", {
-            Parent = button,
+        create("UIStroke", {
             Color = themes.Dark.Border,
             Thickness = 1
-        })
+        }).Parent = button
 
         local originalColor = button.BackgroundColor3
         
@@ -443,32 +420,31 @@ function Nova:Section(name)
         return button
     end
     
-    -- Toggle Widget
-    function sectionAPI:Toggle(name, default, callback)
-        local container = safeCreate("Frame", {
-            Name = name,
+    -- Toggle
+    function sectionAPI:Toggle(text, default, callback)
+        if not self.CurrentSection then return end
+        
+        local container = create("Frame", {
+            Name = text,
             Parent = self.CurrentSection,
-            Size = UDim2.new(1, 0, 0, 30),
-            BackgroundTransparency = 1,
-            LayoutOrder = #self.CurrentSection:GetChildren()
+            Size = UDim2.new(1, 0, 0, 35),
+            BackgroundTransparency = 1
         })
         
-        if not container then return nil end
-        
-        local label = safeCreate("TextLabel", {
+        local label = create("TextLabel", {
             Parent = container,
             AnchorPoint = Vector2.new(0, 0.5),
             Position = UDim2.new(0, 0, 0.5, 0),
             Size = UDim2.new(0.7, 0, 1, 0),
             BackgroundTransparency = 1,
-            Text = name,
+            Text = text,
             TextColor3 = themes.Dark.Text,
             Font = Enum.Font.GothamMedium,
             TextXAlignment = Enum.TextXAlignment.Left,
             TextSize = 14
         })
         
-        local toggleButton = safeCreate("TextButton", {
+        local toggleButton = create("TextButton", {
             Parent = container,
             AnchorPoint = Vector2.new(1, 0.5),
             Position = UDim2.new(1, 0, 0.5, 0),
@@ -478,12 +454,11 @@ function Nova:Section(name)
             Text = ""
         })
         
-        safeCreate("UICorner", {
-            CornerRadius = UDim.new(1, 0),
-            Parent = toggleButton
-        })
+        create("UICorner", {
+            CornerRadius = UDim.new(1, 0)
+        }).Parent = toggleButton
         
-        local toggleCircle = safeCreate("Frame", {
+        local toggleCircle = create("Frame", {
             Parent = toggleButton,
             AnchorPoint = Vector2.new(0, 0.5),
             Position = UDim2.new(0, 3, 0.5, 0),
@@ -491,10 +466,9 @@ function Nova:Section(name)
             BackgroundColor3 = Color3.fromRGB(200, 200, 200)
         })
         
-        safeCreate("UICorner", {
-            CornerRadius = UDim.new(1, 0),
-            Parent = toggleCircle
-        })
+        create("UICorner", {
+            CornerRadius = UDim.new(1, 0)
+        }).Parent = toggleCircle
         
         local state = default or false
         
@@ -503,7 +477,7 @@ function Nova:Section(name)
                 tween(toggleButton, {BackgroundColor3 = self.Config.AccentColor})
                 tween(toggleCircle, {
                     Position = UDim2.new(1, -22, 0.5, 0),
-                    BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                    BackgroundColor3 = Color3.new(1, 1, 1)
                 })
             else
                 tween(toggleButton, {BackgroundColor3 = themes.Dark.Surface})
@@ -531,6 +505,7 @@ function Nova:Section(name)
                 state = value
                 updateToggle()
             end
+            return self
         end
         
         function toggleObj:Get()
@@ -540,109 +515,104 @@ function Nova:Section(name)
         return toggleObj
     end
     
-    -- Slider Widget
-    function sectionAPI:Slider(name, min, max, default, callback)
-        local container = safeCreate("Frame", {
-            Name = name,
+    -- Slider
+    function sectionAPI:Slider(text, min, max, default, callback)
+        if not self.CurrentSection then return end
+        
+        local container = create("Frame", {
+            Name = text,
             Parent = self.CurrentSection,
             Size = UDim2.new(1, 0, 0, 60),
-            BackgroundTransparency = 1,
-            LayoutOrder = #self.CurrentSection:GetChildren()
+            BackgroundTransparency = 1
         })
         
-        if not container then return nil end
-        
-        local label = safeCreate("TextLabel", {
+        local label = create("TextLabel", {
             Parent = container,
             Size = UDim2.new(1, 0, 0, 20),
             BackgroundTransparency = 1,
-            Text = string.format("%s: %d", name, default or min),
+            Text = string.format("%s: %d", text, default or min),
             TextColor3 = themes.Dark.Text,
             Font = Enum.Font.GothamMedium,
             TextXAlignment = Enum.TextXAlignment.Left,
             TextSize = 14
         })
         
-        local sliderTrack = safeCreate("Frame", {
+        local sliderTrack = create("Frame", {
             Parent = container,
             Position = UDim2.new(0, 0, 0, 25),
             Size = UDim2.new(1, 0, 0, 10),
             BackgroundColor3 = themes.Dark.Surface
         })
         
-        safeCreate("UICorner", {
-            CornerRadius = UDim.new(1, 0),
-            Parent = sliderTrack
-        })
+        create("UICorner", {
+            CornerRadius = UDim.new(1, 0)
+        }).Parent = sliderTrack
         
-        local sliderFill = safeCreate("Frame", {
+        local sliderFill = create("Frame", {
             Parent = sliderTrack,
             Size = UDim2.new(0, 0, 1, 0),
             BackgroundColor3 = self.Config.AccentColor
         })
         
-        safeCreate("UICorner", {
-            CornerRadius = UDim.new(1, 0),
-            Parent = sliderFill
-        })
+        create("UICorner", {
+            CornerRadius = UDim.new(1, 0)
+        }).Parent = sliderFill
         
-        local sliderButton = safeCreate("TextButton", {
+        local sliderButton = create("TextButton", {
             Parent = sliderTrack,
             AnchorPoint = Vector2.new(0.5, 0.5),
             Position = UDim2.new(0, 0, 0.5, 0),
             Size = UDim2.new(0, 20, 0, 20),
-            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundColor3 = Color3.new(1, 1, 1),
             AutoButtonColor = false,
             Text = ""
         })
         
-        safeCreate("UICorner", {
-            CornerRadius = UDim.new(1, 0),
-            Parent = sliderButton
-        })
+        create("UICorner", {
+            CornerRadius = UDim.new(1, 0)
+        }).Parent = sliderButton
         
         local value = math.clamp(default or min, min, max)
-        local isDragging = false
+        local dragging = false
         
         local function updateSlider(mouseX)
-            local absolutePosition = sliderTrack.AbsolutePosition
-            local absoluteSize = sliderTrack.AbsoluteSize
+            local absPos = sliderTrack.AbsolutePosition
+            local absSize = sliderTrack.AbsoluteSize
             
-            if absolutePosition and absoluteSize then
-                local relativeX = math.clamp(mouseX - absolutePosition.X, 0, absoluteSize.X)
-                local percentage = relativeX / absoluteSize.X
-                value = math.floor(min + (max - min) * percentage)
-                
-                sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
-                sliderButton.Position = UDim2.new(percentage, 0, 0.5, 0)
-                label.Text = string.format("%s: %d", name, value)
-                
-                if callback then
-                    pcall(callback, value)
-                end
+            if not absPos or not absSize then return end
+            
+            local relativeX = math.clamp(mouseX - absPos.X, 0, absSize.X)
+            local percentage = relativeX / absSize.X
+            value = math.floor(min + (max - min) * percentage)
+            
+            sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+            sliderButton.Position = UDim2.new(percentage, 0, 0.5, 0)
+            label.Text = string.format("%s: %d", text, value)
+            
+            if callback then
+                pcall(callback, value)
             end
         end
         
         sliderButton.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                isDragging = true
+                dragging = true
             end
         end)
         
         sliderButton.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                isDragging = false
+                dragging = false
             end
         end)
         
-        local connection
-        connection = UserInputService.InputChanged:Connect(function(input)
-            if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local connection = UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
                 updateSlider(input.Position.X)
             end
         end)
         
-        table.insert(self.Widgets, connection)
+        table.insert(self.Connections, connection)
         
         -- Set initial value
         local initialPercentage = (value - min) / (max - min)
@@ -656,7 +626,8 @@ function Nova:Section(name)
             local percentage = (value - min) / (max - min)
             sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
             sliderButton.Position = UDim2.new(percentage, 0, 0.5, 0)
-            label.Text = string.format("%s: %d", name, value)
+            label.Text = string.format("%s: %d", text, value)
+            return self
         end
         
         function sliderObj:Get()
@@ -666,30 +637,29 @@ function Nova:Section(name)
         return sliderObj
     end
     
-    -- Dropdown Widget
-    function sectionAPI:Dropdown(name, options, callback)
-        local container = safeCreate("Frame", {
-            Name = name,
+    -- Dropdown
+    function sectionAPI:Dropdown(text, options, callback)
+        if not self.CurrentSection then return end
+        
+        local container = create("Frame", {
+            Name = text,
             Parent = self.CurrentSection,
             Size = UDim2.new(1, 0, 0, 40),
-            BackgroundTransparency = 1,
-            LayoutOrder = #self.CurrentSection:GetChildren()
+            BackgroundTransparency = 1
         })
         
-        if not container then return nil end
-        
-        local label = safeCreate("TextLabel", {
+        local label = create("TextLabel", {
             Parent = container,
             Size = UDim2.new(0.3, 0, 1, 0),
             BackgroundTransparency = 1,
-            Text = name,
+            Text = text,
             TextColor3 = themes.Dark.Text,
             Font = Enum.Font.GothamMedium,
             TextXAlignment = Enum.TextXAlignment.Left,
             TextSize = 14
         })
         
-        local dropdownButton = safeCreate("TextButton", {
+        local dropdownButton = create("TextButton", {
             Parent = container,
             AnchorPoint = Vector2.new(1, 0),
             Position = UDim2.new(1, 0, 0, 0),
@@ -702,35 +672,32 @@ function Nova:Section(name)
             TextSize = 14
         })
         
-        safeCreate("UICorner", {
-            CornerRadius = UDim.new(0, 6),
-            Parent = dropdownButton
-        })
+        create("UICorner", {
+            CornerRadius = UDim.new(0, 6)
+        }).Parent = dropdownButton
         
-        local dropdownFrame = safeCreate("ScrollingFrame", {
-            Parent = dropdownButton,
-            Position = UDim2.new(0, 0, 1, 5),
-            Size = UDim2.new(1, 0, 0, 150),
+        local dropdownFrame = create("ScrollingFrame", {
+            Parent = self.ScreenGui,
+            Position = UDim2.new(0, 0, 0, 0),
+            Size = UDim2.new(0, 200, 0, 150),
             BackgroundColor3 = themes.Dark.Surface,
             ScrollBarThickness = 4,
             CanvasSize = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
             Visible = false,
-            ZIndex = 10,
+            ZIndex = 100,
             BorderSizePixel = 0
         })
         
-        safeCreate("UICorner", {
-            CornerRadius = UDim.new(0, 6),
-            Parent = dropdownFrame
-        })
+        create("UICorner", {
+            CornerRadius = UDim.new(0, 6)
+        }).Parent = dropdownFrame
         
-        safeCreate("UIListLayout", {
-            Parent = dropdownFrame,
+        create("UIListLayout", {
             SortOrder = Enum.SortOrder.LayoutOrder
-        })
+        }).Parent = dropdownFrame
         
-        local selectedOption = nil
+        local selected = nil
         
         local function updateOptions()
             for _, child in ipairs(dropdownFrame:GetChildren()) do
@@ -739,23 +706,23 @@ function Nova:Section(name)
                 end
             end
             
-            for _, option in ipairs(options) do
-                local optionButton = safeCreate("TextButton", {
+            for i, option in ipairs(options) do
+                local optionText = tostring(option)
+                local optionButton = create("TextButton", {
                     Parent = dropdownFrame,
                     Size = UDim2.new(1, -10, 0, 30),
+                    Position = UDim2.new(0, 5, 0, (i-1)*35 + 5),
                     BackgroundColor3 = themes.Dark.Surface,
                     AutoButtonColor = false,
-                    Text = tostring(option),
+                    Text = optionText,
                     TextColor3 = themes.Dark.Text,
                     Font = Enum.Font.Gotham,
-                    TextSize = 13,
-                    LayoutOrder = _
+                    TextSize = 13
                 })
                 
-                safeCreate("UICorner", {
-                    CornerRadius = UDim.new(0, 4),
-                    Parent = optionButton
-                })
+                create("UICorner", {
+                    CornerRadius = UDim.new(0, 4)
+                }).Parent = optionButton
                 
                 optionButton.MouseEnter:Connect(function()
                     tween(optionButton, {BackgroundColor3 = self.Config.AccentColor})
@@ -766,8 +733,8 @@ function Nova:Section(name)
                 end)
                 
                 optionButton.MouseButton1Click:Connect(function()
-                    selectedOption = option
-                    dropdownButton.Text = tostring(option)
+                    selected = option
+                    dropdownButton.Text = optionText
                     dropdownFrame.Visible = false
                     
                     if callback then
@@ -778,6 +745,17 @@ function Nova:Section(name)
         end
         
         dropdownButton.MouseButton1Click:Connect(function()
+            if not dropdownFrame.Visible then
+                local buttonPos = dropdownButton.AbsolutePosition
+                local buttonSize = dropdownButton.AbsoluteSize
+                
+                dropdownFrame.Position = UDim2.new(
+                    0, buttonPos.X,
+                    0, buttonPos.Y + buttonSize.Y + 5
+                )
+                dropdownFrame.Size = UDim2.new(0, buttonSize.X, 0, 150)
+            end
+            
             dropdownFrame.Visible = not dropdownFrame.Visible
         end)
         
@@ -790,44 +768,45 @@ function Nova:Section(name)
                 options = newOptions
                 updateOptions()
             end
+            return self
         end
         
         function dropdownObj:Set(option)
-            selectedOption = option
+            selected = option
             dropdownButton.Text = tostring(option)
+            return self
         end
         
         function dropdownObj:Get()
-            return selectedOption
+            return selected
         end
         
         return dropdownObj
     end
     
-    -- Simple Textbox
-    function sectionAPI:Textbox(name, placeholder, callback)
-        local container = safeCreate("Frame", {
-            Name = name,
+    -- Textbox
+    function sectionAPI:Textbox(text, placeholder, callback)
+        if not self.CurrentSection then return end
+        
+        local container = create("Frame", {
+            Name = text,
             Parent = self.CurrentSection,
             Size = UDim2.new(1, 0, 0, 40),
-            BackgroundTransparency = 1,
-            LayoutOrder = #self.CurrentSection:GetChildren()
+            BackgroundTransparency = 1
         })
         
-        if not container then return nil end
-        
-        local label = safeCreate("TextLabel", {
+        local label = create("TextLabel", {
             Parent = container,
             Size = UDim2.new(0.3, 0, 1, 0),
             BackgroundTransparency = 1,
-            Text = name,
+            Text = text,
             TextColor3 = themes.Dark.Text,
             Font = Enum.Font.GothamMedium,
             TextXAlignment = Enum.TextXAlignment.Left,
             TextSize = 14
         })
         
-        local textbox = safeCreate("TextBox", {
+        local textbox = create("TextBox", {
             Parent = container,
             AnchorPoint = Vector2.new(1, 0),
             Position = UDim2.new(1, 0, 0, 0),
@@ -841,20 +820,18 @@ function Nova:Section(name)
             ClearTextOnFocus = false
         })
         
-        safeCreate("UICorner", {
-            CornerRadius = UDim.new(0, 6),
-            Parent = textbox
-        })
+        create("UICorner", {
+            CornerRadius = UDim.new(0, 6)
+        }).Parent = textbox
         
-        safeCreate("UIStroke", {
-            Parent = textbox,
+        create("UIStroke", {
             Color = themes.Dark.Border,
             Thickness = 1
-        })
+        }).Parent = textbox
         
         if callback then
-            textbox.FocusLost:Connect(function()
-                pcall(callback, textbox.Text)
+            textbox.FocusLost:Connect(function(enterPressed)
+                pcall(callback, textbox.Text, enterPressed)
             end)
         end
         
@@ -868,64 +845,97 @@ end
 function Nova:SetupSettings()
     local settings = self:Section("Settings")
     
-    -- Theme Dropdown
+    if not settings then return end
+    
+    -- Theme
     local themeDropdown = settings:Dropdown("Theme", {"Dark", "Light"}, function(theme)
         self.Config.Theme = theme
         self:ApplyTheme()
-        self:SaveConfig()
     end)
     
     if themeDropdown then
         themeDropdown:Set(self.Config.Theme)
     end
     
-    -- Accent Color Slider
-    settings:Slider("Accent R", 0, 255, math.floor(self.Config.AccentColor.R * 255), function(r)
-        self.Config.AccentColor = Color3.fromRGB(r, 
-            math.floor(self.Config.AccentColor.G * 255), 
-            math.floor(self.Config.AccentColor.B * 255))
+    -- Accent Color
+    local rSlider = settings:Slider("Accent R", 0, 255, math.floor(self.Config.AccentColor.R * 255), function(r)
+        self.Config.AccentColor = Color3.fromRGB(
+            r,
+            math.floor(self.Config.AccentColor.G * 255),
+            math.floor(self.Config.AccentColor.B * 255)
+        )
         self:ApplyTheme()
-        self:SaveConfig()
     end)
     
-    -- Keybind Button
-    settings:Button("Keybind: " .. tostring(self.Config.Keybind.Name), function()
-        print("Press any key to set new keybind...")
-        -- Keybind setting logic would go here
+    -- Transparency
+    settings:Slider("Transparency", 0, 100, math.floor((1 - self.Config.BackgroundTransparency) * 100), function(value)
+        self.Config.BackgroundTransparency = 1 - (value / 100)
+        self.MainFrame.BackgroundTransparency = self.Config.BackgroundTransparency
     end)
     
-    -- Reset Button
-    settings:Button("Reset to Defaults", function()
+    -- Keybind
+    settings:Button("Keybind: " .. self.Config.Keybind.Name, function()
+        print("Current keybind:", self.Config.Keybind.Name)
+        print("To change: edit DEFAULT_CONFIG.Keybind in the script")
+    end)
+    
+    -- Reset
+    settings:Button("Reset Settings", function()
         self.Config = table.clone(DEFAULT_CONFIG)
         self:ApplyTheme()
-        self:SaveConfig()
-        print("Settings reset to defaults")
+        print("Settings reset")
     end)
     
-    -- Info Button
+    -- Info
     settings:Button("Nova UI v" .. self.Version, function()
-        print("Nova UI Library v" .. self.Version .. " by Nova Team")
+        print("Nova UI Library v" .. self.Version)
+        print("Created by Nova Team")
     end)
 end
 
--- Configuration Management
-function Nova:LoadConfig()
-    -- In a real implementation, you would load from DataStore or file
-    -- For now, just apply default theme
-    self:ApplyTheme()
-end
-
-function Nova:SaveConfig()
-    -- Save configuration implementation
-    if Nova.Debug then
-        print("[Nova UI] Config saved")
+-- Console System
+function Nova:CreateConsole(title, getLogsFunction)
+    local console = self:Section(title)
+    
+    if not console then return end
+    
+    -- Search bar
+    console:Textbox("Search", "Filter logs...", function(text)
+        -- Search functionality placeholder
+    end)
+    
+    -- Log display
+    local logs = getLogsFunction and getLogsFunction() or {
+        "HTTP 404",
+        "Stack Begin",
+        "Script 'LocalScript', Line 2051",
+        "Stack End",
+        "",
+        "RAXALeamRtdbaIQxLwqketj453: attempt to index nil with 'GetChildren'",
+        "Stack Begin",
+        "Script 'LocalScript', Line 453 - function Toggle",
+        "Script 'LocalScript', Line 13",
+        "Stack End"
+    }
+    
+    for i, log in ipairs(logs) do
+        if log ~= "" then
+            console:Button(log:sub(1, 50) .. (log:len() > 50 and "..." or ""), function()
+                print("Full log:", log)
+            end)
+        end
     end
+    
+    -- Clear button
+    console:Button("Clear Console", function()
+        print("Console cleared")
+    end)
 end
 
+-- Theme Application
 function Nova:ApplyTheme()
     local theme = themes[self.Config.Theme] or themes.Dark
     
-    -- Apply theme colors to main elements
     if self.MainFrame then
         self.MainFrame.BackgroundColor3 = theme.Background
     end
@@ -934,42 +944,35 @@ function Nova:ApplyTheme()
         self.TopBar.BackgroundColor3 = theme.Surface
     end
     
-    -- More theme application logic...
-end
-
--- Console System (based on your image)
-function Nova:CreateConsole(title, getLogsFunction)
-    local console = self:Section(title)
-    
-    -- Search bar
-    console:Textbox("Search", "Search logs...", function(text)
-        -- Filter logs based on search text
-    end)
-    
-    -- Log display area (simplified)
-    local logs = getLogsFunction and getLogsFunction() or {}
-    for _, log in ipairs(logs) do
-        console:Button(log, function()
-            -- Show log details
-        end)
+    if self.CloseButton then
+        self.CloseButton.TextColor3 = theme.SubText
     end
     
-    -- Clear button
-    console:Button("Clear", function()
-        -- Clear logs
-    end)
+    -- Update all tab buttons
+    if self.TabList then
+        for _, btn in ipairs(self.TabList:GetChildren()) do
+            if btn:IsA("TextButton") then
+                if btn == self.CurrentSection and btn.Name:match("Tab$") then
+                    btn.BackgroundColor3 = self.Config.AccentColor
+                else
+                    btn.BackgroundColor3 = theme.Surface
+                end
+                btn.TextColor3 = theme.Text
+            end
+        end
+    end
 end
 
 -- Cleanup
 function Nova:Destroy()
-    if self.ScreenGui then
-        self.ScreenGui:Destroy()
+    for _, conn in ipairs(self.Connections) do
+        if typeof(conn) == "RBXScriptConnection" then
+            conn:Disconnect()
+        end
     end
     
-    for _, connection in ipairs(self.Widgets) do
-        if typeof(connection) == "RBXScriptConnection" then
-            connection:Disconnect()
-        end
+    if self.ScreenGui then
+        self.ScreenGui:Destroy()
     end
     
     for k in pairs(self) do
