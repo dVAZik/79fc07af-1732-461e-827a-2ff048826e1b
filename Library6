@@ -1629,8 +1629,8 @@ function Nova:Section(name, icon)
                 end
             }
             
-            table.insert(containerWidgets, buttonObj)
-            table.insert(WidgetInstances, buttonWidget)
+            table.insert(Nova.containerWidgets, buttonObj)
+            table.insert(Nova.WidgetInstances, buttonWidget)
             return buttonObj
         end
         
@@ -1732,8 +1732,8 @@ function Nova:Section(name, icon)
                 end
             }
             
-            table.insert(containerWidgets, toggleObj)
-            table.insert(WidgetInstances, toggleButton)
+            table.insert(Nova.containerWidgets, toggleObj)
+            table.insert(Nova.WidgetInstances, toggleButton)
             return toggleObj
         end
         
@@ -2141,7 +2141,7 @@ function Nova:Section(name, icon)
                 end
             end)
             
-            table.insert(self.Connections, dropdownConn)
+            table.insert(Nova.Connections, dropdownConn)
             updateList()
             
             local dropdownObj = {
@@ -2171,8 +2171,8 @@ function Nova:Section(name, icon)
                 end
             }
             
-            table.insert(containerWidgets, dropdownObj)
-            table.insert(self.WidgetInstances, dropdownButton)
+            table.insert(Nova.containerWidgets, dropdownObj)
+            table.insert(Nova.WidgetInstances, dropdownButton)
             return dropdownObj
         end
         
@@ -2251,8 +2251,8 @@ function Nova:Section(name, icon)
                 end
             }
             
-            table.insert(containerWidgets, textboxObj)
-            table.insert(self.WidgetInstances, textbox)
+            table.insert(Nova.containerWidgets, textboxObj)
+            table.insert(Nova.WidgetInstances, textbox)
             return textboxObj
         end
         
@@ -2440,7 +2440,7 @@ function Nova:Section(name, icon)
         end
         
         -- Store container widgets reference in section data
-        table.insert(sectionData.ContainerWidgets, containerWidgets)
+        table.insert(sectionData.ContainerWidgets, Nova.containerWidgets)
         
         return containerAPI
     end
