@@ -707,7 +707,7 @@ function Nova:Section(name, icon)
                 Size = UDim2.new(1, 0, 0, 40),
                 BackgroundTransparency = 1,
                 Text = title,
-                TextColor3 = self.CurrentTheme.AccentColor,
+                TextColor3 = Color3.new(1,1,1),
                 Font = Enum.Font.GothamBold,
                 TextSize = 20,
                 TextXAlignment = Enum.TextXAlignment.Left
