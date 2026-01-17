@@ -1,9 +1,9 @@
 --[[
-    Nova UI Library v5.1 - Ultimate New Year Edition
+    Nova UI Library v5.2 - Ultimate Premium Edition
     Premium Mod Menu Framework for Roblox
     Author: Nova Team
     License: MIT
-    Design: Luxury Premium with Enhanced New Year Theme
+    Design: Luxury Premium with Enhanced Features
     Optimized for PC & Mobile
 --]]
 
@@ -14,6 +14,8 @@ local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
 
 -- Cache frequently used enums
 local EasingStyle = Enum.EasingStyle
@@ -24,15 +26,21 @@ local KeyCode = Enum.KeyCode
 
 -- Library Table
 local Nova = {
-    Version = "5.1",
+    Version = "5.2",
     Debug = false,
     Themes = {},
-    ActiveMenus = {}
+    ActiveMenus = {},
+    Connections = {},
+    WidgetInstances = {},
+    EnabledFeatures = {},
+    ESPSettings = {},
+    ESPItems = {},
+    FloatingTexts = {}
 }
 
 Nova.__index = Nova
 
--- Enhanced New Year Colors
+-- Enhanced Colors Palette
 local NEW_YEAR_COLORS = {
     Gold = Color3.fromRGB(255, 215, 0),
     Silver = Color3.fromRGB(192, 192, 192),
@@ -44,10 +52,13 @@ local NEW_YEAR_COLORS = {
     DarkBlue = Color3.fromRGB(20, 25, 40),
     Cyan = Color3.fromRGB(0, 255, 255),
     Pink = Color3.fromRGB(255, 105, 180),
-    Orange = Color3.fromRGB(255, 140, 0)
+    Orange = Color3.fromRGB(255, 140, 0),
+    DarkPurple = Color3.fromRGB(28, 28, 35),
+    LightBlue = Color3.fromRGB(0, 170, 255),
+    LightGray = Color3.fromRGB(240, 240, 245)
 }
 
--- Premium New Year Themes
+-- Premium Themes
 Nova.Themes = {
     GoldenNewYear = {
         Name = "Golden New Year",
@@ -71,6 +82,28 @@ Nova.Themes = {
             ColorSequenceKeypoint.new(1, NEW_YEAR_COLORS.Gold)
         })
     },
+    ModernElegant = {
+        Name = "Modern Elegant",
+        AccentColor = NEW_YEAR_COLORS.LightBlue,
+        SecondaryColor = NEW_YEAR_COLORS.DarkPurple,
+        Background = Color3.fromRGB(20, 20, 28),
+        Surface = Color3.fromRGB(28, 28, 35),
+        Surface2 = Color3.fromRGB(40, 40, 48),
+        Text = NEW_YEAR_COLORS.LightGray,
+        SubText = Color3.fromRGB(180, 180, 200),
+        Border = NEW_YEAR_COLORS.LightBlue,
+        Hover = Color3.fromRGB(50, 50, 58),
+        Shadow = Color3.new(0, 0, 0),
+        Glow = Color3.fromRGB(0, 170, 255, 0.12),
+        Success = NEW_YEAR_COLORS.Green,
+        Warning = NEW_YEAR_COLORS.Red,
+        Info = NEW_YEAR_COLORS.Cyan,
+        Gradient = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, NEW_YEAR_COLORS.LightBlue),
+            ColorSequenceKeypoint.new(0.5, NEW_YEAR_COLORS.Cyan),
+            ColorSequenceKeypoint.new(1, NEW_YEAR_COLORS.LightBlue)
+        })
+    },
     WinterWonderland = {
         Name = "Winter Wonderland",
         AccentColor = NEW_YEAR_COLORS.Cyan,
@@ -92,28 +125,6 @@ Nova.Themes = {
             ColorSequenceKeypoint.new(0.5, NEW_YEAR_COLORS.Blue),
             ColorSequenceKeypoint.new(1, NEW_YEAR_COLORS.Cyan)
         })
-    },
-    MidnightCelebration = {
-        Name = "Midnight Celebration",
-        AccentColor = NEW_YEAR_COLORS.Purple,
-        SecondaryColor = NEW_YEAR_COLORS.Pink,
-        Background = Color3.fromRGB(18, 10, 28),
-        Surface = Color3.fromRGB(35, 20, 50),
-        Surface2 = Color3.fromRGB(50, 28, 70),
-        Text = Color3.fromRGB(255, 240, 250),
-        SubText = Color3.fromRGB(190, 160, 200),
-        Border = NEW_YEAR_COLORS.Purple,
-        Hover = Color3.fromRGB(60, 35, 80),
-        Shadow = Color3.new(0, 0, 0),
-        Glow = Color3.fromRGB(155, 89, 182, 0.12),
-        Success = Color3.fromRGB(0, 255, 157),
-        Warning = Color3.fromRGB(255, 87, 51),
-        Info = NEW_YEAR_COLORS.Pink,
-        Gradient = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, NEW_YEAR_COLORS.Purple),
-            ColorSequenceKeypoint.new(0.5, NEW_YEAR_COLORS.Pink),
-            ColorSequenceKeypoint.new(1, NEW_YEAR_COLORS.Purple)
-        })
     }
 }
 
@@ -128,7 +139,14 @@ local DEFAULT_CONFIG = {
     SoundEffects = false,
     RoundedCorners = true,
     ShadowEffect = true,
-    EnableGradients = true
+    EnableGradients = true,
+    EnableNotifications = true,
+    EnableRippleEffects = true,
+    EnableFloatingText = true,
+    MenuWidth = 780,
+    MenuHeight = 660,
+    MobileWidth = 360,
+    MobileHeight = 540
 }
 
 -- Utility Functions
@@ -136,7 +154,7 @@ local function SafeCreate(class, props)
     local obj = Instance.new(class)
     
     for prop, value in pairs(props) do
-        if prop ~= "Parent" and prop ~= "Children" and prop ~= "LayoutOrder" then
+        if prop ~= "Parent" and prop ~= "Children" and prop ~= "LayoutOrder" and prop ~= "ZIndex" then
             local success, err = pcall(function()
                 obj[prop] = value
             end)
@@ -160,6 +178,10 @@ local function SafeCreate(class, props)
     
     if props.LayoutOrder then
         obj.LayoutOrder = props.LayoutOrder
+    end
+    
+    if props.ZIndex then
+        obj.ZIndex = props.ZIndex
     end
     
     return obj
@@ -190,6 +212,176 @@ local function IsMobile()
     return UserInputService.TouchEnabled
 end
 
+-- Ripple Effect (from Library8_1)
+local function CreateRippleEffect(button, color)
+    if not button then return end
+    
+    local ripple = Instance.new("Frame")
+    ripple.Name = "Ripple"
+    ripple.BackgroundColor3 = color or Color3.fromRGB(255, 255, 255)
+    ripple.BackgroundTransparency = 0.8
+    ripple.Size = UDim2.new(0, 0, 0, 0)
+    ripple.Position = UDim2.new(0.5, 0, 0.5, 0)
+    ripple.AnchorPoint = Vector2.new(0.5, 0.5)
+    ripple.ZIndex = 10
+    ripple.Parent = button
+    
+    local mousePos = UserInputService:GetMouseLocation()
+    local buttonPos = button.AbsolutePosition
+    local relativePos = Vector2.new(mousePos.X - buttonPos.X, mousePos.Y - buttonPos.Y)
+    
+    ripple.Position = UDim2.new(0, relativePos.X, 0, relativePos.Y)
+    
+    local tween = TweenService:Create(ripple, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.new(2, 0, 2, 0),
+        BackgroundTransparency = 1
+    })
+    
+    tween:Play()
+    tween.Completed:Connect(function()
+        ripple:Destroy()
+    end)
+end
+
+-- Create draggable window (from Library8_1)
+local function CreateDraggable(frame, handle)
+    local dragging = false
+    local dragInput, dragStart, startPos
+    
+    local function Update(input)
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+    
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input == dragInput) then
+            Update(input)
+        end
+    end)
+end
+
+-- Floating text effect (from Library8_1)
+local function CreateFloatingText(parent, text, position, index)
+    local label = Instance.new("TextLabel")
+    label.Name = "FloatingText_" .. index
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextTransparency = 0.85
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 24
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.new(0, 150, 0, 40)
+    label.Position = position
+    label.ZIndex = 0
+    label.Parent = parent
+    
+    local patterns = {
+        {speedX = 0.02, speedY = 0.015, radiusX = 80, radiusY = 60, offsetX = 0, offsetY = 0},
+        {speedX = -0.025, speedY = 0.018, radiusX = 90, radiusY = 70, offsetX = math.pi/3, offsetY = math.pi/4},
+        {speedX = 0.018, speedY = -0.022, radiusX = 70, radiusY = 80, offsetX = math.pi/2, offsetY = math.pi/3},
+        {speedX = -0.015, speedY = -0.02, radiusX = 85, radiusY = 65, offsetX = math.pi, offsetY = math.pi/2},
+        {speedX = 0.03, speedY = 0.025, radiusX = 100, radiusY = 80, offsetX = math.pi/4, offsetY = math.pi/6}
+    }
+    
+    local pattern = patterns[index] or patterns[1]
+    local time = 0
+    local centerX, centerY
+    
+    local connection = RunService.RenderStepped:Connect(function(delta)
+        if not label or not label.Parent then
+            connection:Disconnect()
+            return
+        end
+        
+        time = time + delta
+        
+        if not centerX then
+            centerX = label.AbsolutePosition.X + label.AbsoluteSize.X/2
+            centerY = label.AbsolutePosition.Y + label.AbsoluteSize.Y/2
+        end
+        
+        local x = centerX + math.cos(time * pattern.speedX + pattern.offsetX) * pattern.radiusX
+        local y = centerY + math.sin(time * pattern.speedY + pattern.offsetY) * pattern.radiusY
+        
+        label.Position = UDim2.new(0, x, 0, y)
+        label.TextTransparency = 0.7 + math.sin(time * 2) * 0.2
+        label.Rotation = math.sin(time * 1.5) * 3
+    end)
+    
+    return {label = label, connection = connection}
+end
+
+-- Notification system (improved from Library8_1)
+function Nova:ShowNotification(text, color, duration)
+    if not self.Config.EnableNotifications or not self.ScreenGui then return end
+    
+    local notification = SafeCreate("TextLabel", {
+        Name = "Notification",
+        Parent = self.ScreenGui,
+        Text = text,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        Font = Font.GothamMedium,
+        TextSize = 14,
+        BackgroundColor3 = color or self.CurrentTheme.AccentColor,
+        BackgroundTransparency = 0.3,
+        Size = UDim2.new(0, 200, 0, 40),
+        Position = UDim2.new(0.5, -100, 1, -50),
+        AnchorPoint = Vector2.new(0.5, 0),
+        ZIndex = 9999
+    })
+    
+    SafeCreate("UICorner", {
+        CornerRadius = UDim.new(0, 10),
+        Parent = notification
+    })
+    
+    SafeCreate("UIStroke", {
+        Color = Color3.fromRGB(255, 255, 255),
+        Thickness = 1,
+        Parent = notification
+    })
+    
+    notification.Position = UDim2.new(0.5, -100, 1, 10)
+    CreateTween(notification, {
+        Position = UDim2.new(0.5, -100, 1, -50)
+    }, 0.3)
+    
+    task.delay(duration or 3, function()
+        if notification then
+            CreateTween(notification, {
+                Position = UDim2.new(0.5, -100, 1, 10),
+                BackgroundTransparency = 1,
+                TextTransparency = 1
+            }, 0.3)
+            
+            task.wait(0.3)
+            if notification then
+                notification:Destroy()
+            end
+        end
+    end)
+end
+
 -- Main Constructor
 function Nova.new(menuName, config)
     menuName = menuName or "NovaUI"
@@ -213,6 +405,10 @@ function Nova.new(menuName, config)
     self.Connections = {}
     self.WidgetInstances = {}
     self.SnowParticles = {}
+    self.FloatingTexts = {}
+    self.EnabledFeatures = {}
+    self.ESPSettings = {}
+    self.ESPItems = {}
     
     -- Initialize
     local success, err = pcall(function()
@@ -231,6 +427,12 @@ function Nova.new(menuName, config)
         if self.Config.ShadowEffect then
             self:CreateShadowEffect()
         end
+        
+        if self.Config.EnableFloatingText then
+            self:CreateFloatingTexts()
+        end
+        
+        self:SetupBackgroundBlur()
     end)
     
     if not success then
@@ -239,11 +441,11 @@ function Nova.new(menuName, config)
     end
     
     table.insert(Nova.ActiveMenus, self)
-    print("[Nova UI] Ultimate New Year menu created:", self.MenuName)
+    print("[Nova UI] Ultimate Premium menu created:", self.MenuName)
     return self
 end
 
--- Enhanced UI Initialization (компактнее)
+-- Enhanced UI Initialization
 function Nova:InitializeUI()
     -- Main ScreenGui
     self.ScreenGui = SafeCreate("ScreenGui", {
@@ -256,8 +458,8 @@ function Nova:InitializeUI()
     })
     
     -- Calculate sizes based on device
-    local width = self.IsMobile and 360 or 780
-    local height = self.IsMobile and 540 or 660
+    local width = self.IsMobile and self.Config.MobileWidth or self.Config.MenuWidth
+    local height = self.IsMobile and self.Config.MobileHeight or self.Config.MenuHeight
     
     -- Main Container
     self.Container = SafeCreate("Frame", {
@@ -270,6 +472,9 @@ function Nova:InitializeUI()
         Visible = false,
         Active = true
     })
+    
+    -- Make draggable
+    CreateDraggable(self.Container, self.Container)
     
     -- Background
     self.Background = SafeCreate("Frame", {
@@ -290,7 +495,7 @@ function Nova:InitializeUI()
     
     SafeCreate("UIStroke", {
         Color = self.CurrentTheme.AccentColor,
-        Thickness = 1.5,
+        Thickness = 2,
         Transparency = 0.4,
         Parent = self.Background
     })
@@ -305,7 +510,7 @@ function Nova:InitializeUI()
         })
     end
     
-    -- Luxury Header (компактнее)
+    -- Luxury Header
     self.Header = SafeCreate("Frame", {
         Name = "Header",
         Parent = self.Background,
@@ -316,7 +521,7 @@ function Nova:InitializeUI()
     
     if self.Config.RoundedCorners then
         local headerCorner = SafeCreate("UICorner", {
-            CornerRadius = UDim.new(0, 20),
+            CornerRadius = UDim.new(0, 20, 0, 0),
             Parent = self.Header
         })
     end
@@ -357,7 +562,7 @@ function Nova:InitializeUI()
         Position = UDim2.new(0, 75, 0.5, -8),
         Size = UDim2.new(0.4, 0, 0, 30),
         BackgroundTransparency = 1,
-        Text = "NOVA 2025",
+        Text = "NOVA PREMIUM",
         TextColor3 = self.CurrentTheme.Text,
         Font = Font.GothamBold,
         TextSize = 22,
@@ -376,6 +581,30 @@ function Nova:InitializeUI()
         TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Left
     })
+    
+    -- Settings button
+    self.SettingsButton = SafeCreate("TextButton", {
+        Name = "SettingsButton",
+        Parent = self.Header,
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, -80, 0.5, 0),
+        Size = UDim2.new(0, 36, 0, 36),
+        BackgroundColor3 = self.CurrentTheme.Surface2,
+        AutoButtonColor = false,
+        Text = "⚙",
+        TextColor3 = self.CurrentTheme.Text,
+        Font = Font.GothamBold,
+        TextSize = 18
+    })
+    
+    SafeCreate("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = self.SettingsButton
+    })
+    
+    self.SettingsButton.MouseButton1Click:Connect(function()
+        self:OpenSettingsMenu()
+    end)
     
     -- Enhanced Close Button
     self.CloseButton = SafeCreate("TextButton", {
@@ -421,7 +650,7 @@ function Nova:InitializeUI()
         
         if self.Config.RoundedCorners then
             SafeCreate("UICorner", {
-                CornerRadius = UDim.new(0, 20),
+                CornerRadius = UDim.new(0, 0, 0, 20),
                 Parent = self.Sidebar
             })
         end
@@ -431,7 +660,8 @@ function Nova:InitializeUI()
             Parent = self.Sidebar,
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
-            ScrollBarThickness = 0,
+            ScrollBarThickness = 3,
+            ScrollBarImageColor3 = self.CurrentTheme.AccentColor,
             CanvasSize = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y
         })
@@ -486,36 +716,72 @@ function Nova:InitializeUI()
         Parent = self.ContentScroller
     })
     
-    -- FAB for mobile
-    if self.IsMobile then
-        self.FAB = SafeCreate("ImageButton", {
-            Name = "FAB",
-            Parent = self.ScreenGui,
-            AnchorPoint = Vector2.new(1, 1),
-            Position = UDim2.new(1, -25, 1, -25),
-            Size = UDim2.new(0, 60, 0, 60),
-            BackgroundColor3 = self.CurrentTheme.AccentColor,
-            Image = "rbxassetid://10734947690",
-            ImageColor3 = Color3.new(1, 1, 1),
-            AutoButtonColor = false,
-            ZIndex = 1000
-        })
+    -- Create open button in StarterGui (like Library8_1)
+    self.OpenButton = SafeCreate("TextButton", {
+        Name = "OpenMenuButton",
+        Parent = StarterGui,
+        Text = "☰",
+        TextColor3 = self.CurrentTheme.Text,
+        Font = Font.GothamBold,
+        TextSize = 24,
+        BackgroundColor3 = self.CurrentTheme.AccentColor,
+        Size = UDim2.new(0, 50, 0, 50),
+        Position = UDim2.new(0, 20, 0.5, -25),
+        ZIndex = 10000,
+        AutoButtonColor = false,
+        Active = true
+    })
+    
+    SafeCreate("UICorner", {
+        CornerRadius = UDim.new(1, 0),
+        Parent = self.OpenButton
+    })
+    
+    SafeCreate("UIStroke", {
+        Color = Color3.fromRGB(255, 255, 255),
+        Thickness = 2,
+        Parent = self.OpenButton
+    })
+    
+    CreateDraggable(self.OpenButton, self.OpenButton)
+    
+    self.OpenButton.MouseButton1Click:Connect(function()
+        self:Toggle()
+    end)
+    
+    self.OpenButton.TouchTap:Connect(function()
+        self:Toggle()
+    end)
+end
+
+-- Setup background blur
+function Nova:SetupBackgroundBlur()
+    if self.Config.BlurEnabled then
+        local blur = Instance.new("BlurEffect")
+        blur.Name = "MenuBlur"
+        blur.Size = 5
+        blur.Enabled = false
+        blur.Parent = Lighting
         
-        SafeCreate("UICorner", {
-            CornerRadius = UDim.new(1, 0),
-            Parent = self.FAB
-        })
-        
-        SafeCreate("UIStroke", {
-            Color = Color3.new(1, 1, 1),
-            Thickness = 2,
-            Transparency = 0.2,
-            Parent = self.FAB
-        })
-        
-        self.FAB.MouseButton1Click:Connect(function()
-            self:Toggle()
-        end)
+        self.BlurEffect = blur
+    end
+end
+
+-- Floating texts (from Library8_1)
+function Nova:CreateFloatingTexts()
+    if not self.Config.EnableFloatingText then return end
+    
+    local positions = {
+        UDim2.new(0, 30, 0, 30),
+        UDim2.new(1, -180, 0, 30),
+        UDim2.new(0, 30, 1, -70),
+        UDim2.new(1, -180, 1, -70),
+        UDim2.new(0.5, -75, 0.5, -20)
+    }
+    
+    for i, pos in ipairs(positions) do
+        local textData = CreateFloatingText(self.Background, "NOVA", pos, i)
+        table.insert(self.FloatingTexts, textData)
     end
 end
 
@@ -674,6 +940,10 @@ function Nova:Toggle()
         self.Container.Position = UDim2.new(0.5, 0, 0.5, -60)
         self.Container.BackgroundTransparency = 1
         
+        if self.BlurEffect then
+            self.BlurEffect.Enabled = true
+        end
+        
         CreateTween(self.Container, {
             Position = UDim2.new(0.5, 0, 0.5, 0),
             BackgroundTransparency = 0
@@ -683,12 +953,10 @@ function Nova:Toggle()
             BackgroundTransparency = self.Config.BackgroundTransparency
         }, 0.5)
         
-        if self.FAB then
-            CreateTween(self.FAB, {
-                ImageTransparency = 0.7,
-                BackgroundTransparency = 0.7
-            }, 0.25)
-        end
+        CreateTween(self.OpenButton, {
+            BackgroundTransparency = 0.5,
+            TextTransparency = 0.5
+        }, 0.3)
         
         -- Animate logo
         if self.Config.Animations then
@@ -704,6 +972,10 @@ function Nova:Toggle()
         end
     else
         -- Hide menu
+        if self.BlurEffect then
+            self.BlurEffect.Enabled = false
+        end
+        
         CreateTween(self.Container, {
             Position = UDim2.new(0.5, 0, 0.5, -60),
             BackgroundTransparency = 1
@@ -713,16 +985,333 @@ function Nova:Toggle()
             BackgroundTransparency = 1
         }, 0.35)
         
-        if self.FAB then
-            CreateTween(self.FAB, {
-                ImageTransparency = 0,
-                BackgroundTransparency = 0
-            }, 0.25)
-        end
+        CreateTween(self.OpenButton, {
+            BackgroundTransparency = 0,
+            TextTransparency = 0
+        }, 0.25)
         
         task.wait(0.35)
         self.Container.Visible = false
     end
+end
+
+-- Settings Menu (new function)
+function Nova:OpenSettingsMenu()
+    if self.SettingsGUI then
+        self.SettingsGUI.Enabled = not self.SettingsGUI.Enabled
+        return
+    end
+    
+    -- Create settings GUI
+    local settingsGui = SafeCreate("ScreenGui", {
+        Name = self.MenuName .. "_Settings",
+        Parent = CoreGui,
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Global,
+        DisplayOrder = 9997
+    })
+    
+    local settingsContainer = SafeCreate("Frame", {
+        Name = "SettingsContainer",
+        Parent = settingsGui,
+        BackgroundColor3 = self.CurrentTheme.Surface,
+        BackgroundTransparency = self.Config.BackgroundTransparency,
+        Size = UDim2.new(0, 550, 0, 400),
+        Position = UDim2.new(0.5, -275, 0.5, -200)
+    })
+    
+    SafeCreate("UICorner", {
+        CornerRadius = UDim.new(0, 20),
+        Parent = settingsContainer
+    })
+    
+    SafeCreate("UIStroke", {
+        Color = self.CurrentTheme.AccentColor,
+        Thickness = 2,
+        Parent = settingsContainer
+    })
+    
+    -- Settings title bar
+    local settingsTitleBar = SafeCreate("Frame", {
+        Name = "SettingsTitleBar",
+        BackgroundColor3 = self.CurrentTheme.AccentColor,
+        Size = UDim2.new(1, 0, 0, 40),
+        Position = UDim2.new(0, 0, 0, 0),
+        Parent = settingsContainer
+    })
+    
+    SafeCreate("UICorner", {
+        CornerRadius = UDim.new(0, 20, 0, 0),
+        Parent = settingsTitleBar
+    })
+    
+    local titleLabel = SafeCreate("TextLabel", {
+        Name = "Title",
+        Text = "Settings",
+        TextColor3 = self.CurrentTheme.Text,
+        Font = Font.GothamBold,
+        TextSize = 18,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.8, 0, 1, 0),
+        Position = UDim2.new(0, 15, 0, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = settingsTitleBar
+    })
+    
+    local closeSettingsButton = SafeCreate("TextButton", {
+        Name = "CloseSettings",
+        Text = "×",
+        TextColor3 = self.CurrentTheme.Text,
+        Font = Font.GothamBold,
+        TextSize = 26,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 40, 1, 0),
+        Position = UDim2.new(1, -40, 0, 0),
+        Parent = settingsTitleBar
+    })
+    
+    -- Settings content
+    local settingsContent = SafeCreate("ScrollingFrame", {
+        Name = "SettingsContent",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -40, 1, -60),
+        Position = UDim2.new(0, 20, 0, 50),
+        ScrollingDirection = Enum.ScrollingDirection.Y,
+        ScrollBarThickness = 3,
+        Parent = settingsContainer
+    })
+    
+    local settingsContentLayout = SafeCreate("UIListLayout", {
+        Padding = UDim.new(0, 10),
+        Parent = settingsContent
+    })
+    
+    local settingsContentPadding = SafeCreate("UIPadding", {
+        PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 10),
+        PaddingTop = UDim.new(0, 10),
+        PaddingBottom = UDim.new(0, 10),
+        Parent = settingsContent
+    })
+    
+    self.SettingsGUI = settingsGui
+    self.SettingsGUI.Enabled = true
+    
+    -- Create settings options
+    self:CreateSettingsContent(settingsContent)
+    
+    closeSettingsButton.MouseButton1Click:Connect(function()
+        settingsGui.Enabled = false
+    end)
+    
+    closeSettingsButton.TouchTap:Connect(function()
+        settingsGui.Enabled = false
+    end)
+    
+    CreateDraggable(settingsContainer, settingsTitleBar)
+end
+
+function Nova:CreateSettingsContent(container)
+    local theme = self.CurrentTheme
+    
+    -- Theme selector
+    local themeLabel = SafeCreate("TextLabel", {
+        Text = "Theme",
+        TextColor3 = theme.Text,
+        Font = Font.GothamMedium,
+        TextSize = 16,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 25),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = container
+    })
+    
+    local themeButtonsFrame = SafeCreate("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 40),
+        Parent = container
+    })
+    
+    local themeNames = {"GoldenNewYear", "ModernElegant", "WinterWonderland"}
+    
+    for i, themeName in ipairs(themeNames) do
+        local themeBtn = SafeCreate("TextButton", {
+            Text = Nova.Themes[themeName].Name,
+            TextColor3 = theme.Text,
+            Font = Font.Gotham,
+            TextSize = 12,
+            BackgroundColor3 = Nova.Themes[themeName].AccentColor,
+            Size = UDim2.new(0.3, -5, 1, 0),
+            Position = UDim2.new((i-1) * 0.33, 0, 0, 0),
+            AutoButtonColor = false,
+            Parent = themeButtonsFrame
+        })
+        
+        SafeCreate("UICorner", {
+            CornerRadius = UDim.new(0, 8),
+            Parent = themeBtn
+        })
+        
+        themeBtn.MouseButton1Click:Connect(function()
+            self.Config.Theme = themeName
+            self.CurrentTheme = Nova.Themes[themeName]
+            self:ApplyTheme()
+            self:ShowNotification("Theme changed to " .. Nova.Themes[themeName].Name, theme.AccentColor)
+        end)
+    end
+    
+    -- Toggle settings
+    local function CreateSettingToggle(text, configKey, default)
+        local toggleFrame = SafeCreate("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 36),
+            Parent = container
+        })
+        
+        local label = SafeCreate("TextLabel", {
+            Text = text,
+            TextColor3 = theme.Text,
+            Font = Font.Gotham,
+            TextSize = 14,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0.7, 0, 1, 0),
+            Position = UDim2.new(0, 0, 0, 0),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = toggleFrame
+        })
+        
+        local toggleButton = SafeCreate("TextButton", {
+            Text = "",
+            BackgroundColor3 = self.Config[configKey] and theme.AccentColor or theme.Surface2,
+            Size = UDim2.new(0, 48, 0, 26),
+            Position = UDim2.new(1, -48, 0.5, -13),
+            AutoButtonColor = false,
+            Parent = toggleFrame
+        })
+        
+        SafeCreate("UICorner", {
+            CornerRadius = UDim.new(1, 0),
+            Parent = toggleButton
+        })
+        
+        local toggleCircle = SafeCreate("Frame", {
+            BackgroundColor3 = Color3.new(1, 1, 1),
+            Size = UDim2.new(0, 20, 0, 20),
+            Position = self.Config[configKey] and UDim2.new(1, -24, 0.5, -10) or UDim2.new(0, 4, 0.5, -10),
+            Parent = toggleButton
+        })
+        
+        SafeCreate("UICorner", {
+            CornerRadius = UDim.new(1, 0),
+            Parent = toggleCircle
+        })
+        
+        toggleButton.MouseButton1Click:Connect(function()
+            self.Config[configKey] = not self.Config[configKey]
+            
+            if configKey == "Animations" and self.Config.Animations then
+                CreateTween(toggleButton, {BackgroundColor3 = theme.AccentColor})
+                CreateTween(toggleCircle, {Position = UDim2.new(1, -24, 0.5, -10)})
+            else
+                CreateTween(toggleButton, {BackgroundColor3 = self.Config[configKey] and theme.AccentColor or theme.Surface2})
+                CreateTween(toggleCircle, {Position = self.Config[configKey] and UDim2.new(1, -24, 0.5, -10) or UDim2.new(0, 4, 0.5, -10)})
+            end
+            
+            self:ShowNotification(text .. " " .. (self.Config[configKey] and "Enabled" or "Disabled"), 
+                self.Config[configKey] and theme.Success or theme.Warning)
+        end)
+    end
+    
+    CreateSettingToggle("Animations", "Animations", true)
+    CreateSettingToggle("Glow Effect", "GlowEffect", true)
+    CreateSettingToggle("Snow Effect", "SnowEffect", true)
+    CreateSettingToggle("Shadow Effect", "ShadowEffect", true)
+    CreateSettingToggle("Notifications", "EnableNotifications", true)
+    CreateSettingToggle("Ripple Effects", "EnableRippleEffects", true)
+    CreateSettingToggle("Floating Text", "EnableFloatingText", true)
+    
+    -- Keybind setting
+    local keybindFrame = SafeCreate("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 36),
+        Parent = container
+    })
+    
+    SafeCreate("TextLabel", {
+        Text = "Toggle Keybind",
+        TextColor3 = theme.Text,
+        Font = Font.Gotham,
+        TextSize = 14,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.7, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = keybindFrame
+    })
+    
+    local keybindButton = SafeCreate("TextButton", {
+        Text = tostring(self.Config.Keybind):gsub("Enum.KeyCode.", ""),
+        TextColor3 = theme.Text,
+        Font = Font.Gotham,
+        TextSize = 12,
+        BackgroundColor3 = theme.Surface2,
+        Size = UDim2.new(0.25, 0, 0.7, 0),
+        Position = UDim2.new(0.75, 0, 0.15, 0),
+        AutoButtonColor = false,
+        Parent = keybindFrame
+    })
+    
+    SafeCreate("UICorner", {
+        CornerRadius = UDim.new(0, 6),
+        Parent = keybindButton
+    })
+    
+    local listening = false
+    keybindButton.MouseButton1Click:Connect(function()
+        if not listening then
+            listening = true
+            keybindButton.Text = "Press any key..."
+            keybindButton.BackgroundColor3 = theme.AccentColor
+            
+            local conn
+            conn = UserInputService.InputBegan:Connect(function(input)
+                if input.KeyCode ~= Enum.KeyCode.Unknown then
+                    self.Config.Keybind = input.KeyCode
+                    keybindButton.Text = tostring(input.KeyCode):gsub("Enum.KeyCode.", "")
+                    keybindButton.BackgroundColor3 = theme.Surface2
+                    listening = false
+                    conn:Disconnect()
+                    self:ShowNotification("Keybind set to " .. keybindButton.Text, theme.Success)
+                end
+            end)
+        end
+    end)
+    
+    -- Reset button
+    local resetButton = SafeCreate("TextButton", {
+        Text = "Reset All Settings",
+        TextColor3 = Color3.new(1, 1, 1),
+        Font = Font.GothamMedium,
+        TextSize = 14,
+        BackgroundColor3 = theme.Warning,
+        Size = UDim2.new(1, 0, 0, 40),
+        AutoButtonColor = false,
+        Parent = container
+    })
+    
+    SafeCreate("UICorner", {
+        CornerRadius = UDim.new(0, 10),
+        Parent = resetButton
+    })
+    
+    resetButton.MouseButton1Click:Connect(function()
+        for k, v in pairs(DEFAULT_CONFIG) do
+            self.Config[k] = v
+        end
+        self.CurrentTheme = Nova.Themes[self.Config.Theme]
+        self:ApplyTheme()
+        self:ShowNotification("Settings reset to default", theme.Info)
+    end)
 end
 
 -- Section Creation
@@ -949,9 +1538,9 @@ function Nova:Section(name, icon)
         end
         
         local containerAPI = {}
-        local containerWidgets = {} -- Локальная таблица для виджетов этого контейнера
+        local containerWidgets = {}
         
-        -- Button Widget (ИСПРАВЛЕНО - нет table.insert в self.WidgetInstances)
+        -- Button Widget (improved with ripple effect)
         function containerAPI:Button(text, callback, icon, color)
             local buttonFrame = SafeCreate("Frame", {
                 Parent = container,
@@ -997,8 +1586,12 @@ function Nova:Section(name, icon)
                 }, 0.15)
             end)
             
-            -- Click animation
+            -- Click animation with ripple
             buttonWidget.MouseButton1Click:Connect(function()
+                if self.Config.EnableRippleEffects then
+                    CreateRippleEffect(buttonWidget, theme.AccentColor)
+                end
+                
                 CreateTween(buttonWidget, {
                     BackgroundColor3 = theme.AccentColor,
                     TextColor3 = Color3.new(1, 1, 1),
@@ -1037,11 +1630,11 @@ function Nova:Section(name, icon)
             }
             
             table.insert(containerWidgets, buttonObj)
-            table.insert(self.WidgetInstances, buttonWidget) -- Теперь self ссылается на Nova
+            table.insert(self.WidgetInstances, buttonWidget)
             return buttonObj
         end
         
-        -- Toggle Widget (ИСПРАВЛЕНО)
+        -- Toggle Widget
         function containerAPI:Toggle(text, default, callback, icon)
             local toggleFrame = SafeCreate("Frame", {
                 Parent = container,
@@ -1144,7 +1737,7 @@ function Nova:Section(name, icon)
             return toggleObj
         end
         
-        -- Slider Widget (ИСПРАВЛЕНО)
+        -- Slider Widget
         function containerAPI:Slider(text, min, max, default, callback, precision, icon)
             precision = precision or 0
             
@@ -1345,7 +1938,7 @@ function Nova:Section(name, icon)
             return sliderObj
         end
         
-        -- Dropdown Widget (ИСПРАВЛЕНО - основная ошибка была здесь)
+        -- Dropdown Widget (FIXED)
         function containerAPI:Dropdown(text, options, default, callback, icon)
             local dropdownFrame = SafeCreate("Frame", {
                 Parent = container,
@@ -1447,7 +2040,8 @@ function Nova:Section(name, icon)
                         TextColor3 = theme.Text,
                         Font = Font.Gotham,
                         TextSize = 13,
-                        LayoutOrder = i
+                        LayoutOrder = i,
+                        ZIndex = 1001
                     })
                     
                     SafeCreate("UICorner", {
@@ -1582,7 +2176,7 @@ function Nova:Section(name, icon)
             return dropdownObj
         end
         
-        -- Textbox Widget (ИСПРАВЛЕНО)
+        -- Textbox Widget
         function containerAPI:Textbox(text, placeholder, callback, defaultValue, icon)
             local textboxFrame = SafeCreate("Frame", {
                 Parent = container,
@@ -1703,6 +2297,148 @@ function Nova:Section(name, icon)
             return divider
         end
         
+        -- Color Picker (from Library8_1)
+        function containerAPI:ColorPicker(text, defaultColor, callback, icon)
+            local colorFrame = SafeCreate("Frame", {
+                Parent = container,
+                Size = UDim2.new(1, 0, 0, 52),
+                BackgroundTransparency = 1
+            })
+            
+            local label = SafeCreate("TextLabel", {
+                Parent = colorFrame,
+                AnchorPoint = Vector2.new(0, 0.5),
+                Position = UDim2.new(0, 0, 0.5, 0),
+                Size = UDim2.new(0.5, 0, 0, 22),
+                BackgroundTransparency = 1,
+                Text = (icon or "🎨") .. "  " .. text,
+                TextColor3 = theme.Text,
+                Font = Font.GothamMedium,
+                TextSize = 14,
+                TextXAlignment = Enum.TextXAlignment.Left
+            })
+            
+            local colorPreview = SafeCreate("TextButton", {
+                Parent = colorFrame,
+                AnchorPoint = Vector2.new(1, 0.5),
+                Position = UDim2.new(1, 0, 0.5, 0),
+                Size = UDim2.new(0, 36, 0, 36),
+                BackgroundColor3 = defaultColor or theme.AccentColor,
+                AutoButtonColor = false,
+                Text = ""
+            })
+            
+            SafeCreate("UICorner", {
+                CornerRadius = UDim.new(0, 10),
+                Parent = colorPreview
+            })
+            
+            SafeCreate("UIStroke", {
+                Color = Color3.fromRGB(255, 255, 255),
+                Thickness = 2,
+                Parent = colorPreview
+            })
+            
+            local pickerFrame = SafeCreate("Frame", {
+                Parent = self.ScreenGui,
+                BackgroundColor3 = theme.Surface,
+                Size = UDim2.new(0, 220, 0, 180),
+                Position = UDim2.new(0.5, -110, 0.5, -90),
+                Visible = false,
+                ZIndex = 1000
+            })
+            
+            SafeCreate("UICorner", {
+                CornerRadius = UDim.new(0, 10),
+                Parent = pickerFrame
+            })
+            
+            SafeCreate("UIStroke", {
+                Color = theme.AccentColor,
+                Thickness = 2,
+                Parent = pickerFrame
+            })
+            
+            local colorGrid = {
+                {Color3.fromRGB(255, 50, 50), Color3.fromRGB(255, 100, 50), Color3.fromRGB(255, 150, 50)},
+                {Color3.fromRGB(50, 255, 50), Color3.fromRGB(100, 255, 100), Color3.fromRGB(150, 255, 150)},
+                {Color3.fromRGB(50, 50, 255), Color3.fromRGB(100, 100, 255), Color3.fromRGB(150, 150, 255)},
+                {Color3.fromRGB(255, 50, 255), Color3.fromRGB(255, 255, 50), Color3.fromRGB(50, 255, 255)},
+                {Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 200, 200), Color3.fromRGB(100, 100, 100)}
+            }
+            
+            local isOpen = false
+            local currentColor = defaultColor or theme.AccentColor
+            
+            local function OpenPicker()
+                if isOpen then return end
+                isOpen = true
+                pickerFrame.Visible = true
+                
+                pickerFrame:ClearAllChildren()
+                
+                for row, colors in pairs(colorGrid) do
+                    for col, color in pairs(colors) do
+                        local colorButton = SafeCreate("TextButton", {
+                            Text = "",
+                            BackgroundColor3 = color,
+                            Size = UDim2.new(0, 40, 0, 40),
+                            Position = UDim2.new(0, (col-1) * 45 + 15, 0, (row-1) * 45 + 15),
+                            AutoButtonColor = false,
+                            ZIndex = 1001,
+                            Parent = pickerFrame
+                        })
+                        
+                        SafeCreate("UICorner", {
+                            CornerRadius = UDim.new(0, 6),
+                            Parent = colorButton
+                        })
+                        
+                        SafeCreate("UIStroke", {
+                            Color = Color3.fromRGB(255, 255, 255),
+                            Thickness = 1,
+                            Transparency = 0.5,
+                            Parent = colorButton
+                        })
+                        
+                        colorButton.MouseEnter:Connect(function()
+                            CreateTween(colorButton.UIStroke, {Transparency = 0}, 0.2)
+                        end)
+                        
+                        colorButton.MouseLeave:Connect(function()
+                            CreateTween(colorButton.UIStroke, {Transparency = 0.5}, 0.2)
+                        end)
+                        
+                        colorButton.MouseButton1Click:Connect(function()
+                            currentColor = color
+                            colorPreview.BackgroundColor3 = color
+                            pickerFrame.Visible = false
+                            isOpen = false
+                            if callback then
+                                callback(color)
+                            end
+                        end)
+                    end
+                end
+            end
+            
+            colorPreview.MouseButton1Click:Connect(OpenPicker)
+            
+            return {
+                Set = function(self, color)
+                    currentColor = color
+                    colorPreview.BackgroundColor3 = color
+                    if callback then
+                        callback(color)
+                    end
+                    return self
+                end,
+                Get = function(self)
+                    return currentColor
+                end
+            }
+        end
+        
         -- Store container widgets reference in section data
         table.insert(sectionData.ContainerWidgets, containerWidgets)
         
@@ -1745,6 +2481,11 @@ function Nova:Section(name, icon)
         return container and container:Divider(color)
     end
     
+    function api:ColorPicker(text, defaultColor, callback, icon)
+        local container = api:Container()
+        return container and container:ColorPicker(text, defaultColor, callback, icon)
+    end
+    
     return api
 end
 
@@ -1775,12 +2516,16 @@ function Nova:ApplyTheme()
         self.CloseButton.BackgroundColor3 = theme.Warning
     end
     
+    if self.SettingsButton then
+        self.SettingsButton.BackgroundColor3 = theme.Surface2
+    end
+    
     if self.Sidebar then
         self.Sidebar.BackgroundColor3 = theme.Surface2
     end
     
-    if self.FAB then
-        self.FAB.BackgroundColor3 = theme.AccentColor
+    if self.OpenButton then
+        self.OpenButton.BackgroundColor3 = theme.AccentColor
     end
     
     -- Update section buttons
@@ -1800,6 +2545,115 @@ function Nova:ApplyTheme()
     end
 end
 
+-- ESP System (from Library8_1)
+function Nova:CreateESP(player, settings)
+    if not player or not player.Character then return end
+    
+    local espFolder = Instance.new("Folder")
+    espFolder.Name = "ESP_" .. player.Name
+    espFolder.Parent = self.Folder or CoreGui
+    
+    local character = player.Character
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChild("Humanoid")
+    
+    if not humanoidRootPart or not humanoid then return end
+    
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ESPBillboard"
+    billboard.Size = UDim2.new(0, 150, 0, 80)
+    billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+    billboard.AlwaysOnTop = true
+    billboard.MaxDistance = settings.MaxDistance or 500
+    billboard.Enabled = true
+    billboard.Parent = espFolder
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "Name"
+    nameLabel.Text = player.Name
+    nameLabel.TextColor3 = settings.NameColor or Color3.fromRGB(255, 255, 255)
+    nameLabel.Font = Font.GothamMedium
+    nameLabel.TextSize = 12
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Size = UDim2.new(1, 0, 0, 18)
+    nameLabel.Parent = billboard
+    
+    local distanceLabel = Instance.new("TextLabel")
+    distanceLabel.Name = "Distance"
+    distanceLabel.Text = "0m"
+    distanceLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    distanceLabel.Font = Font.GothamMedium
+    distanceLabel.TextSize = 10
+    distanceLabel.BackgroundTransparency = 1
+    distanceLabel.Size = UDim2.new(1, 0, 0, 14)
+    distanceLabel.Parent = billboard
+    
+    local healthBarBack = Instance.new("Frame")
+    healthBarBack.Name = "HealthBarBack"
+    healthBarBack.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    healthBarBack.Size = UDim2.new(1, 0, 0, 6)
+    healthBarBack.Parent = billboard
+    
+    local healthBar = Instance.new("Frame")
+    healthBar.Name = "HealthBar"
+    healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    healthBar.Size = UDim2.new(0.5, 0, 1, 0)
+    healthBar.Parent = healthBarBack
+    
+    if settings.BoxESP then
+        local boxAdornment = Instance.new("BoxHandleAdornment")
+        boxAdornment.Name = "BoxESP"
+        boxAdornment.Adornee = humanoidRootPart
+        boxAdornment.Size = Vector3.new(4, 6, 2)
+        boxAdornment.Color3 = settings.BoxColor or self.CurrentTheme.AccentColor
+        boxAdornment.Transparency = 0.6
+        boxAdornment.AlwaysOnTop = true
+        boxAdornment.ZIndex = 1
+        boxAdornment.Parent = espFolder
+    end
+    
+    local espData = {
+        Player = player,
+        Folder = espFolder,
+        LastUpdate = tick(),
+        Update = function()
+            if not player or not player.Character then return false end
+            
+            local now = tick()
+            if now - espData.LastUpdate < 0.1 then return true end
+            espData.LastUpdate = now
+            
+            local char = player.Character
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChild("Humanoid")
+            
+            if not hrp or not hum then return false end
+            
+            if Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local distance = (hrp.Position - Players.LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+                distanceLabel.Text = math.floor(distance) .. "m"
+                billboard.Enabled = distance <= (settings.MaxDistance or 500)
+            end
+            
+            local healthPercent = hum.Health / hum.MaxHealth
+            healthBar.Size = UDim2.new(healthPercent, 0, 1, 0)
+            healthBar.BackgroundColor3 = Color3.fromRGB(
+                255 * (1 - healthPercent),
+                255 * healthPercent,
+                0
+            )
+            
+            return true
+        end,
+        Destroy = function()
+            espFolder:Destroy()
+        end
+    }
+    
+    self.ESPItems[player] = espData
+    return espData
+end
+
 -- Cleanup
 function Nova:Destroy()
     -- Stop animations
@@ -1814,11 +2668,45 @@ function Nova:Destroy()
         end
     end
     
+    -- Destroy ESP items
+    for player, espData in pairs(self.ESPItems) do
+        espData:Destroy()
+    end
+    self.ESPItems = {}
+    
+    -- Destroy floating texts
+    for _, textData in ipairs(self.FloatingTexts) do
+        if textData.connection then
+            textData.connection:Disconnect()
+        end
+        if textData.label then
+            textData.label:Destroy()
+        end
+    end
+    self.FloatingTexts = {}
+    
     -- Destroy all widget instances
     for _, widget in ipairs(self.WidgetInstances) do
         if widget and widget.Destroy then
             pcall(widget.Destroy, widget)
+        elseif widget and typeof(widget) == "Instance" then
+            pcall(widget.Destroy, widget)
         end
+    end
+    
+    -- Destroy blur effect
+    if self.BlurEffect then
+        self.BlurEffect:Destroy()
+    end
+    
+    -- Destroy open button
+    if self.OpenButton then
+        self.OpenButton:Destroy()
+    end
+    
+    -- Destroy settings GUI
+    if self.SettingsGUI then
+        self.SettingsGUI:Destroy()
     end
     
     -- Destroy screen gui
@@ -1858,6 +2746,78 @@ function Nova.CleanupAll()
     end
     table.clear(Nova.ActiveMenus)
     print("[Nova UI] All menus cleaned up")
+end
+
+-- Example usage function
+function Nova:ExampleUsage()
+    local mainSection = self:Section("Main", "⭐")
+    
+    -- Player section
+    local playerSection = self:Section("Player", "👤")
+    playerSection:Container("Player Settings", "Adjust player properties")
+    
+    playerSection:Button("Reset Character", function()
+        if Players.LocalPlayer.Character then
+            Players.LocalPlayer.Character:BreakJoints()
+            self:ShowNotification("Character reset!", self.CurrentTheme.Success)
+        end
+    end, "🔄", self.CurrentTheme.Warning)
+    
+    playerSection:Toggle("Fly", false, function(state)
+        self.EnabledFeatures.Fly = state
+        self:ShowNotification(state and "Fly enabled!" or "Fly disabled!", 
+            state and self.CurrentTheme.Success or self.CurrentTheme.Warning)
+    end, "✈")
+    
+    playerSection:Slider("Walk Speed", 16, 100, 16, function(value)
+        if Players.LocalPlayer.Character then
+            local humanoid = Players.LocalPlayer.Character:FindFirstChild("Humanoid")
+            if humanoid then
+                humanoid.WalkSpeed = value
+            end
+        end
+    end, 0, "🚶")
+    
+    -- Visual section
+    local visualSection = self:Section("Visual", "👁️")
+    visualSection:Container("ESP Settings", "Player ESP configuration")
+    
+    local espToggle = visualSection:Toggle("Enable ESP", false, function(state)
+        self.EnabledFeatures.ESP = state
+        self:ShowNotification(state and "ESP enabled!" or "ESP disabled!", 
+            state and self.CurrentTheme.Success or self.CurrentTheme.Warning)
+    end, "🎯")
+    
+    visualSection:ColorPicker("ESP Color", self.CurrentTheme.AccentColor, function(color)
+        if self.ESPSettings then
+            self.ESPSettings.Color = color
+        end
+    end, "🎨")
+    
+    visualSection:Slider("Max Distance", 50, 500, 200, function(value)
+        if self.ESPSettings then
+            self.ESPSettings.MaxDistance = value
+        end
+    end, 0, "📏")
+    
+    -- Misc section
+    local miscSection = self:Section("Misc", "⚙")
+    miscSection:Container("Miscellaneous", "Additional features")
+    
+    miscSection:Dropdown("Theme", {"GoldenNewYear", "ModernElegant", "WinterWonderland"}, "GoldenNewYear", function(option)
+        self.Config.Theme = option
+        self.CurrentTheme = Nova.Themes[option]
+        self:ApplyTheme()
+        self:ShowNotification("Theme changed to " .. option, self.CurrentTheme.AccentColor)
+    end, "🎨")
+    
+    miscSection:Button("Show Notification", function()
+        self:ShowNotification("This is a test notification!", self.CurrentTheme.Info, 2)
+    end, "🔔", self.CurrentTheme.Info)
+    
+    miscSection:Button("Destroy Menu", function()
+        self:Destroy()
+    end, "🗑️", self.CurrentTheme.Warning)
 end
 
 return Nova
