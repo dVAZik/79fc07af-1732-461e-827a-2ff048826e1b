@@ -1630,7 +1630,7 @@ function Nova:Section(name, icon)
             }
             
             table.insert(containerWidgets, buttonObj)
-            table.insert(self.WidgetInstances, buttonWidget)
+            table.insert(WidgetInstances, buttonWidget)
             return buttonObj
         end
         
@@ -1733,7 +1733,7 @@ function Nova:Section(name, icon)
             }
             
             table.insert(containerWidgets, toggleObj)
-            table.insert(self.WidgetInstances, toggleButton)
+            table.insert(WidgetInstances, toggleButton)
             return toggleObj
         end
         
