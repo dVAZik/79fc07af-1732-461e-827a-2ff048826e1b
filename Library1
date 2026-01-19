@@ -1,0 +1,1449 @@
+-- Odexel Hub UI Library
+-- Версия 1.0.0
+-- Автор: Odexel
+-- GitHub: https://github.com/odexel/odexel-hub
+
+local OdexelHub = {}
+OdexelHub.__index = OdexelHub
+
+-- Конфигурация
+local CONFIG = {
+	THEME = {
+		PRIMARY = Color3.fromRGB(45, 45, 65),
+		SECONDARY = Color3.fromRGB(35, 35, 50),
+		ACCENT = Color3.fromRGB(0, 170, 255),
+		TEXT = Color3.fromRGB(255, 255, 255),
+		SUCCESS = Color3.fromRGB(0, 200, 100),
+		WARNING = Color3.fromRGB(255, 170, 0),
+		ERROR = Color3.fromRGB(255, 50, 50)
+	},
+	FONT = Enum.Font.GothamSemibold,
+	RESPONSIVE_BREAKPOINT = 600, -- Ширина экрана для переключения мобильного режима
+	ANIMATION_SPEED = 0.15
+}
+
+-- Локальные переменные
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+-- Вспомогательные функции
+local function createInstance(className, properties)
+	local instance = Instance.new(className)
+	for prop, value in pairs(properties) do
+		instance[prop] = value
+	end
+	return instance
+end
+
+local function tween(object, properties, duration)
+	local tweenInfo = TweenInfo.new(duration or CONFIG.ANIMATION_SPEED, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local tween = TweenService:Create(object, tweenInfo, properties)
+	tween:Play()
+	return tween
+end
+
+local function isMobile()
+	return UserInputService.TouchEnabled
+end
+
+-- Класс Window
+local Window = {}
+Window.__index = Window
+
+function Window.new(title, size, position, closable)
+	local self = setmetatable({}, Window)
+	
+	self.Title = title or "Odexel Hub"
+	self.Size = size or UDim2.new(0, 500, 0, 400)
+	self.Position = position or UDim2.new(0.5, -250, 0.5, -200)
+	self.Closable = closable ~= false
+	self.Elements = {}
+	
+	self:CreateUI()
+	return self
+end
+
+function Window:CreateUI()
+	-- Основной экран
+	self.ScreenGui = createInstance("ScreenGui", {
+		Name = "OdexelHub",
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	})
+	
+	-- Фон
+	self.Background = createInstance("Frame", {
+		Name = "Background",
+		Parent = self.ScreenGui,
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.5,
+		BorderSizePixel = 0,
+		ZIndex = 1
+	})
+	
+	-- Основное окно
+	self.MainFrame = createInstance("Frame", {
+		Name = "MainFrame",
+		Parent = self.ScreenGui,
+		Size = self.Size,
+		Position = self.Position,
+		BackgroundColor3 = CONFIG.THEME.PRIMARY,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		ZIndex = 2
+	})
+	
+	-- Сглаживание углов
+	local UICorner = createInstance("UICorner", {
+		Parent = self.MainFrame,
+		CornerRadius = UDim.new(0, 8)
+	})
+	
+	-- Тень
+	local UIStroke = createInstance("UIStroke", {
+		Parent = self.MainFrame,
+		Color = Color3.fromRGB(0, 0, 0),
+		Thickness = 2,
+		Transparency = 0.8
+	})
+	
+	-- Верхняя панель
+	self.TopBar = createInstance("Frame", {
+		Name = "TopBar",
+		Parent = self.MainFrame,
+		Size = UDim2.new(1, 0, 0, 40),
+		BackgroundColor3 = CONFIG.THEME.SECONDARY,
+		BorderSizePixel = 0
+	})
+	
+	createInstance("UICorner", {
+		Parent = self.TopBar,
+		CornerRadius = UDim.new(0, 8, 0, 0)
+	})
+	
+	-- Заголовок
+	self.TitleLabel = createInstance("TextLabel", {
+		Name = "TitleLabel",
+		Parent = self.TopBar,
+		Size = UDim2.new(1, -80, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Text = self.Title,
+		TextColor3 = CONFIG.THEME.TEXT,
+		TextSize = 18,
+		Font = CONFIG.FONT,
+		TextXAlignment = Enum.TextXAlignment.Left
+	})
+	
+	-- Кнопка закрытия
+	if self.Closable then
+		self.CloseButton = createInstance("TextButton", {
+			Name = "CloseButton",
+			Parent = self.TopBar,
+			Size = UDim2.new(0, 30, 0, 30),
+			Position = UDim2.new(1, -35, 0.5, -15),
+			BackgroundColor3 = CONFIG.THEME.ERROR,
+			Text = "×",
+			TextColor3 = CONFIG.THEME.TEXT,
+			TextSize = 24,
+			Font = Enum.Font.GothamBold
+		})
+		
+		local closeCorner = createInstance("UICorner", {
+			Parent = self.CloseButton,
+			CornerRadius = UDim.new(0, 6)
+		})
+		
+		self.CloseButton.MouseButton1Click:Connect(function()
+			self:Close()
+		end)
+		
+		-- Анимация при наведении на кнопку закрытия
+		self.CloseButton.MouseEnter:Connect(function()
+			tween(self.CloseButton, {BackgroundColor3 = Color3.fromRGB(255, 100, 100)})
+		end)
+		
+		self.CloseButton.MouseLeave:Connect(function()
+			tween(self.CloseButton, {BackgroundColor3 = CONFIG.THEME.ERROR})
+		end)
+	end
+	
+	-- Контейнер для элементов
+	self.ContentFrame = createInstance("ScrollingFrame", {
+		Name = "ContentFrame",
+		Parent = self.MainFrame,
+		Size = UDim2.new(1, 0, 1, -45),
+		Position = UDim2.new(0, 0, 0, 40),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 4,
+		ScrollBarImageColor3 = CONFIG.THEME.ACCENT,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y
+	})
+	
+	-- Список элементов
+	self.ElementList = createInstance("UIListLayout", {
+		Parent = self.ContentFrame,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 10)
+	})
+	
+	-- Паддинг
+	self.ContentFrame.Padding = createInstance("UIPadding", {
+		PaddingTop = UDim.new(0, 15),
+		PaddingBottom = UDim.new(0, 15),
+		PaddingLeft = UDim.new(0, 15),
+		PaddingRight = UDim.new(0, 15)
+	})
+	
+	-- Перетаскивание окна
+	local dragging, dragInput, dragStart, startPos
+	local function update(input)
+		local delta = input.Position - dragStart
+		self.MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+	
+	self.TopBar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = self.MainFrame.Position
+			
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+	
+	self.TopBar.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+	
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input == dragInput then
+			update(input)
+		end
+	end)
+	
+	-- Адаптация под мобильные устройства
+	self:SetupResponsiveDesign()
+	
+	-- Добавляем в интерфейс игрока
+	self.ScreenGui.Parent = PlayerGui
+	
+	-- Эффект появления
+	self.MainFrame.Size = UDim2.new(0, 10, 0, 10)
+	self.MainFrame.Position = UDim2.new(0.5, -5, 0.5, -5)
+	self.Background.BackgroundTransparency = 1
+	
+	tween(self.MainFrame, {
+		Size = self.Size,
+		Position = self.Position
+	}, 0.3)
+	
+	tween(self.Background, {
+		BackgroundTransparency = 0.5
+	}, 0.3)
+end
+
+function Window:SetupResponsiveDesign()
+	-- Функция для обновления размера под экран
+	local function updateSize()
+		local viewportSize = workspace.CurrentCamera.ViewportSize
+		local isSmallScreen = viewportSize.X < CONFIG.RESPONSIVE_BREAKPOINT
+		
+		if isSmallScreen then
+			-- Мобильный режим
+			self.MainFrame.Size = UDim2.new(0.9, 0, 0.8, 0)
+			self.MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+			self.MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+			
+			-- Увеличиваем текст и элементы для касаний
+			self.TitleLabel.TextSize = 16
+			self.ContentFrame.ScrollBarThickness = 6
+		else
+			-- ПК режим
+			self.MainFrame.Size = self.Size
+			self.MainFrame.Position = self.Position
+			self.TitleLabel.TextSize = 18
+			self.ContentFrame.ScrollBarThickness = 4
+		end
+	end
+	
+	-- Слушатель изменения размера экрана
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateSize)
+	updateSize()
+end
+
+function Window:AddElement(element)
+	table.insert(self.Elements, element)
+	if element.Instance then
+		element.Instance.Parent = self.ContentFrame
+	end
+	return element
+end
+
+function Window:Close()
+	tween(self.MainFrame, {
+		Size = UDim2.new(0, 10, 0, 10),
+		Position = UDim2.new(0.5, -5, 0.5, -5)
+	}, 0.2)
+	
+	tween(self.Background, {
+		BackgroundTransparency = 1
+	}, 0.2):Wait()
+	
+	self.ScreenGui:Destroy()
+end
+
+function Window:Toggle()
+	if self.ScreenGui and self.ScreenGui.Parent then
+		self:Close()
+	else
+		self:CreateUI()
+	end
+end
+
+-- Класс Tab
+local Tab = {}
+Tab.__index = Tab
+
+function Tab.new(window, name)
+	local self = setmetatable({}, Tab)
+	
+	self.Window = window
+	self.Name = name or "Tab"
+	self.Elements = {}
+	
+	self:CreateUI()
+	return self
+end
+
+function Tab:CreateUI()
+	-- Контейнер для вкладки
+	self.TabFrame = createInstance("Frame", {
+		Name = "TabFrame_" .. self.Name,
+		Size = UDim2.new(1, 0, 0, 0),
+		BackgroundTransparency = 1,
+		LayoutOrder = #self.Window.Elements
+	})
+	
+	self.TabContainer = createInstance("Frame", {
+		Name = "Container",
+		Parent = self.TabFrame,
+		Size = UDim2.new(1, 0, 0, 0),
+		BackgroundTransparency = 1
+	})
+	
+	self.ElementList = createInstance("UIListLayout", {
+		Parent = self.TabContainer,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 8)
+	})
+	
+	self.ElementList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		self.TabFrame.Size = UDim2.new(1, 0, 0, self.ElementList.AbsoluteContentSize.Y)
+		self.TabContainer.Size = UDim2.new(1, 0, 0, self.ElementList.AbsoluteContentSize.Y)
+	end)
+	
+	self.Window:AddElement({Instance = self.TabFrame})
+end
+
+-- Методы создания элементов интерфейса
+function OdexelHub:CreateWindow(title, size, position, closable)
+	return Window.new(title, size, position, closable)
+end
+
+function Tab:Section(name)
+	local sectionFrame = createInstance("Frame", {
+		Name = "Section_" .. name,
+		Size = UDim2.new(1, 0, 0, 0),
+		BackgroundTransparency = 1,
+		LayoutOrder = #self.Elements
+	})
+	
+	local sectionTitle = createInstance("TextLabel", {
+		Name = "Title",
+		Parent = sectionFrame,
+		Size = UDim2.new(1, 0, 0, 25),
+		BackgroundTransparency = 1,
+		Text = name,
+		TextColor3 = CONFIG.THEME.ACCENT,
+		TextSize = 16,
+		Font = CONFIG.FONT,
+		TextXAlignment = Enum.TextXAlignment.Left
+	})
+	
+	local sectionContainer = createInstance("Frame", {
+		Name = "Container",
+		Parent = sectionFrame,
+		Size = UDim2.new(1, 0, 0, 0),
+		Position = UDim2.new(0, 0, 0, 25),
+		BackgroundTransparency = 1
+	})
+	
+	local sectionList = createInstance("UIListLayout", {
+		Parent = sectionContainer,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 8)
+	})
+	
+	sectionList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		sectionFrame.Size = UDim2.new(1, 0, 0, 25 + sectionList.AbsoluteContentSize.Y)
+		sectionContainer.Size = UDim2.new(1, 0, 0, sectionList.AbsoluteContentSize.Y)
+	end)
+	
+	sectionFrame.Parent = self.TabContainer
+	
+	local section = {
+		Instance = sectionFrame,
+		Container = sectionContainer
+	}
+	
+	table.insert(self.Elements, section)
+	
+	-- Методы для секции
+	function section:Button(text, callback)
+		local buttonFrame = createInstance("Frame", {
+			Name = "Button_" .. text,
+			Size = UDim2.new(1, 0, 0, 35),
+			BackgroundColor3 = CONFIG.THEME.SECONDARY,
+			LayoutOrder = #self.Container:GetChildren() - 1
+		})
+		
+		createInstance("UICorner", {
+			Parent = buttonFrame,
+			CornerRadius = UDim.new(0, 6)
+		})
+		
+		local buttonLabel = createInstance("TextLabel", {
+			Name = "Label",
+			Parent = buttonFrame,
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = text,
+			TextColor3 = CONFIG.THEME.TEXT,
+			TextSize = 14,
+			Font = CONFIG.FONT
+		})
+		
+		local button = createInstance("TextButton", {
+			Name = "Button",
+			Parent = buttonFrame,
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = "",
+			AutoButtonColor = false
+		})
+		
+		-- Анимации кнопки
+		button.MouseButton1Down:Connect(function()
+			tween(buttonFrame, {Size = UDim2.new(0.98, 0, 0, 33)})
+		end)
+		
+		button.MouseButton1Up:Connect(function()
+			tween(buttonFrame, {Size = UDim2.new(1, 0, 0, 35)})
+		end)
+		
+		button.MouseEnter:Connect(function()
+			tween(buttonFrame, {BackgroundColor3 = Color3.fromRGB(50, 50, 70)})
+		end)
+		
+		button.MouseLeave:Connect(function()
+			tween(buttonFrame, {BackgroundColor3 = CONFIG.THEME.SECONDARY})
+		end)
+		
+		button.MouseButton1Click:Connect(function()
+			if callback then
+				callback()
+			end
+		end)
+		
+		buttonFrame.Parent = self.Container
+		
+		return {
+			SetText = function(newText)
+				buttonLabel.Text = newText
+			end,
+			SetCallback = function(newCallback)
+				callback = newCallback
+			end,
+			Instance = buttonFrame
+		}
+	end
+	
+	function section:Toggle(text, default, callback)
+		local toggleFrame = createInstance("Frame", {
+			Name = "Toggle_" .. text,
+			Size = UDim2.new(1, 0, 0, 35),
+			BackgroundTransparency = 1,
+			LayoutOrder = #self.Container:GetChildren() - 1
+		})
+		
+		local toggleLabel = createInstance("TextLabel", {
+			Name = "Label",
+			Parent = toggleFrame,
+			Size = UDim2.new(0.7, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = text,
+			TextColor3 = CONFIG.THEME.TEXT,
+			TextSize = 14,
+			Font = CONFIG.FONT,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local toggleButton = createInstance("Frame", {
+			Name = "ToggleButton",
+			Parent = toggleFrame,
+			Size = UDim2.new(0, 50, 0, 25),
+			Position = UDim2.new(1, -50, 0.5, -12.5),
+			BackgroundColor3 = CONFIG.THEME.SECONDARY
+		})
+		
+		createInstance("UICorner", {
+			Parent = toggleButton,
+			CornerRadius = UDim.new(1, 0)
+		})
+		
+		local toggleKnob = createInstance("Frame", {
+			Name = "Knob",
+			Parent = toggleButton,
+			Size = UDim2.new(0, 21, 0, 21),
+			Position = UDim2.new(0, 2, 0.5, -10.5),
+			BackgroundColor3 = CONFIG.THEME.TEXT,
+			AnchorPoint = Vector2.new(0, 0.5)
+		})
+		
+		createInstance("UICorner", {
+			Parent = toggleKnob,
+			CornerRadius = UDim.new(1, 0)
+		})
+		
+		local toggleInput = createInstance("TextButton", {
+			Name = "Input",
+			Parent = toggleFrame,
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = "",
+			AutoButtonColor = false
+		})
+		
+		local state = default or false
+		
+		local function updateToggle()
+			if state then
+				tween(toggleButton, {BackgroundColor3 = CONFIG.THEME.ACCENT})
+				tween(toggleKnob, {Position = UDim2.new(1, -23, 0.5, -10.5)})
+			else
+				tween(toggleButton, {BackgroundColor3 = CONFIG.THEME.SECONDARY})
+				tween(toggleKnob, {Position = UDim2.new(0, 2, 0.5, -10.5)})
+			end
+			
+			if callback then
+				callback(state)
+			end
+		end
+		
+		toggleInput.MouseButton1Click:Connect(function()
+			state = not state
+			updateToggle()
+		end)
+		
+		updateToggle()
+		
+		toggleFrame.Parent = self.Container
+		
+		return {
+			GetState = function()
+				return state
+			end,
+			SetState = function(newState)
+				state = newState
+				updateToggle()
+			end,
+			Toggle = function()
+				state = not state
+				updateToggle()
+			end,
+			Instance = toggleFrame
+		}
+	end
+	
+	function section:Slider(text, min, max, default, callback, unit)
+		local sliderFrame = createInstance("Frame", {
+			Name = "Slider_" .. text,
+			Size = UDim2.new(1, 0, 0, 60),
+			BackgroundTransparency = 1,
+			LayoutOrder = #self.Container:GetChildren() - 1
+		})
+		
+		local sliderLabel = createInstance("TextLabel", {
+			Name = "Label",
+			Parent = sliderFrame,
+			Size = UDim2.new(1, 0, 0, 20),
+			BackgroundTransparency = 1,
+			Text = text,
+			TextColor3 = CONFIG.THEME.TEXT,
+			TextSize = 14,
+			Font = CONFIG.FONT,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local sliderValue = createInstance("TextLabel", {
+			Name = "Value",
+			Parent = sliderFrame,
+			Size = UDim2.new(0, 60, 0, 20),
+			Position = UDim2.new(1, -60, 0, 0),
+			BackgroundTransparency = 1,
+			Text = (default or min) .. (unit or ""),
+			TextColor3 = CONFIG.THEME.ACCENT,
+			TextSize = 14,
+			Font = CONFIG.FONT,
+			TextXAlignment = Enum.TextXAlignment.Right
+		})
+		
+		local sliderBar = createInstance("Frame", {
+			Name = "Bar",
+			Parent = sliderFrame,
+			Size = UDim2.new(1, 0, 0, 6),
+			Position = UDim2.new(0, 0, 0, 30),
+			BackgroundColor3 = CONFIG.THEME.SECONDARY
+		})
+		
+		createInstance("UICorner", {
+			Parent = sliderBar,
+			CornerRadius = UDim.new(1, 0)
+		})
+		
+		local sliderFill = createInstance("Frame", {
+			Name = "Fill",
+			Parent = sliderBar,
+			Size = UDim2.new((default or min) / max, 0, 1, 0),
+			BackgroundColor3 = CONFIG.THEME.ACCENT
+		})
+		
+		createInstance("UICorner", {
+			Parent = sliderFill,
+			CornerRadius = UDim.new(1, 0)
+		})
+		
+		local sliderButton = createInstance("TextButton", {
+			Name = "Button",
+			Parent = sliderBar,
+			Size = UDim2.new(0, 16, 0, 16),
+			Position = UDim2.new((default or min) / max, -8, 0.5, -8),
+			BackgroundColor3 = CONFIG.THEME.TEXT,
+			AutoButtonColor = false,
+			Text = ""
+		})
+		
+		createInstance("UICorner", {
+			Parent = sliderButton,
+			CornerRadius = UDim.new(1, 0)
+		})
+		
+		local dragging = false
+		local value = default or min
+		
+		local function updateSlider(newValue, fromInput)
+			value = math.clamp(math.floor(newValue), min, max)
+			sliderValue.Text = value .. (unit or "")
+			sliderFill.Size = UDim2.new(value / max, 0, 1, 0)
+			sliderButton.Position = UDim2.new(value / max, -8, 0.5, -8)
+			
+			if callback and not fromInput then
+				callback(value)
+			end
+		end
+		
+		local function updateFromInput(input)
+			local relativeX = (input.Position.X - sliderBar.AbsolutePosition.X) / sliderBar.AbsoluteSize.X
+			local newValue = min + (max - min) * relativeX
+			updateSlider(newValue)
+		end
+		
+		sliderButton.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+			end
+		end)
+		
+		sliderButton.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = false
+			end
+		end)
+		
+		sliderBar.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				updateFromInput(input)
+			end
+		end)
+		
+		UserInputService.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				updateFromInput(input)
+			end
+		end)
+		
+		updateSlider(value, true)
+		
+		sliderFrame.Parent = self.Container
+		
+		return {
+			GetValue = function()
+				return value
+			end,
+			SetValue = function(newValue)
+				updateSlider(newValue, true)
+			end,
+			SetRange = function(newMin, newMax)
+				min = newMin
+				max = newMax
+				updateSlider(value, true)
+			end,
+			Instance = sliderFrame
+		}
+	end
+	
+	function section:Dropdown(text, options, default, callback, multiSelect)
+		local dropdownFrame = createInstance("Frame", {
+			Name = "Dropdown_" .. text,
+			Size = UDim2.new(1, 0, 0, 35),
+			BackgroundColor3 = CONFIG.THEME.SECONDARY,
+			LayoutOrder = #self.Container:GetChildren() - 1,
+			ClipsDescendants = true
+		})
+		
+		createInstance("UICorner", {
+			Parent = dropdownFrame,
+			CornerRadius = UDim.new(0, 6)
+		})
+		
+		local dropdownLabel = createInstance("TextLabel", {
+			Name = "Label",
+			Parent = dropdownFrame,
+			Size = UDim2.new(0.7, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = text,
+			TextColor3 = CONFIG.THEME.TEXT,
+			TextSize = 14,
+			Font = CONFIG.FONT,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local dropdownValue = createInstance("TextLabel", {
+			Name = "Value",
+			Parent = dropdownFrame,
+			Size = UDim2.new(0.25, 0, 1, 0),
+			Position = UDim2.new(0.75, 0, 0, 0),
+			BackgroundTransparency = 1,
+			Text = default or "Select...",
+			TextColor3 = CONFIG.THEME.ACCENT,
+			TextSize = 12,
+			Font = CONFIG.FONT,
+			TextXAlignment = Enum.TextXAlignment.Right
+		})
+		
+		local dropdownButton = createInstance("TextButton", {
+			Name = "Button",
+			Parent = dropdownFrame,
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = "",
+			AutoButtonColor = false
+		})
+		
+		local dropdownArrow = createInstance("TextLabel", {
+			Name = "Arrow",
+			Parent = dropdownFrame,
+			Size = UDim2.new(0, 20, 0, 20),
+			Position = UDim2.new(1, -25, 0.5, -10),
+			BackgroundTransparency = 1,
+			Text = "▼",
+			TextColor3 = CONFIG.THEME.ACCENT,
+			TextSize = 12,
+			Font = CONFIG.FONT
+		})
+		
+		local dropdownList = createInstance("ScrollingFrame", {
+			Name = "List",
+			Parent = dropdownFrame,
+			Size = UDim2.new(1, -10, 0, 0),
+			Position = UDim2.new(0, 5, 1, 5),
+			BackgroundColor3 = CONFIG.THEME.PRIMARY,
+			BorderSizePixel = 0,
+			ScrollBarThickness = 4,
+			ScrollBarImageColor3 = CONFIG.THEME.ACCENT,
+			CanvasSize = UDim2.new(0, 0, 0, 0),
+			Visible = false
+		})
+		
+		createInstance("UICorner", {
+			Parent = dropdownList,
+			CornerRadius = UDim.new(0, 6)
+		})
+		
+		createInstance("UIStroke", {
+			Parent = dropdownList,
+			Color = CONFIG.THEME.SECONDARY,
+			Thickness = 2
+		})
+		
+		local listLayout = createInstance("UIListLayout", {
+			Parent = dropdownList,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 2)
+		})
+		
+		listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			dropdownList.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y)
+			dropdownList.Size = UDim2.new(1, -10, 0, math.min(listLayout.AbsoluteContentSize.Y, 150))
+		end)
+		
+		local selected = {}
+		if default and not multiSelect then
+			selected[default] = true
+		end
+		
+		local isOpen = false
+		
+		local function toggleDropdown()
+			isOpen = not isOpen
+			
+			if isOpen then
+				dropdownList.Visible = true
+				tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 40 + math.min(listLayout.AbsoluteContentSize.Y, 150))})
+				tween(dropdownArrow, {Rotation = 180})
+			else
+				tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 35)}):Wait()
+				dropdownList.Visible = false
+				tween(dropdownArrow, {Rotation = 0})
+			end
+		end
+		
+		local function updateValue()
+			if multiSelect then
+				local selectedText = ""
+				local count = 0
+				for option, isSelected in pairs(selected) do
+					if isSelected then
+						if count > 0 then
+							selectedText = selectedText .. ", "
+						end
+						selectedText = selectedText .. option
+						count = count + 1
+					end
+				end
+				dropdownValue.Text = count > 0 and selectedText or "Select..."
+			else
+				for option, isSelected in pairs(selected) do
+					if isSelected then
+						dropdownValue.Text = option
+						break
+					end
+				end
+			end
+			
+			if callback then
+				callback(multiSelect and selected or dropdownValue.Text)
+			end
+		end
+		
+		local function createOption(optionText)
+			local optionFrame = createInstance("Frame", {
+				Name = "Option_" .. optionText,
+				Size = UDim2.new(1, 0, 0, 30),
+				BackgroundTransparency = 1
+			})
+			
+			local optionButton = createInstance("TextButton", {
+				Name = "Button",
+				Parent = optionFrame,
+				Size = UDim2.new(1, 0, 1, 0),
+				BackgroundColor3 = CONFIG.THEME.SECONDARY,
+				Text = "",
+				AutoButtonColor = false
+			})
+			
+			createInstance("UICorner", {
+				Parent = optionButton,
+				CornerRadius = UDim.new(0, 4)
+			})
+			
+			local optionLabel = createInstance("TextLabel", {
+				Name = "Label",
+				Parent = optionFrame,
+				Size = UDim2.new(1, -10, 1, 0),
+				Position = UDim2.new(0, 5, 0, 0),
+				BackgroundTransparency = 1,
+				Text = optionText,
+				TextColor3 = CONFIG.THEME.TEXT,
+				TextSize = 12,
+				Font = CONFIG.FONT,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+			
+			if multiSelect then
+				local checkBox = createInstance("Frame", {
+					Name = "Checkbox",
+					Parent = optionFrame,
+					Size = UDim2.new(0, 20, 0, 20),
+					Position = UDim2.new(1, -25, 0.5, -10),
+					BackgroundColor3 = CONFIG.THEME.SECONDARY
+				})
+				
+				createInstance("UICorner", {
+					Parent = checkBox,
+					CornerRadius = UDim.new(0, 4)
+				})
+				
+				local checkMark = createInstance("ImageLabel", {
+					Name = "CheckMark",
+					Parent = checkBox,
+					Size = UDim2.new(0, 14, 0, 14),
+					Position = UDim2.new(0.5, -7, 0.5, -7),
+					BackgroundTransparency = 1,
+					Image = "rbxassetid://7072706620",
+					ImageColor3 = CONFIG.THEME.ACCENT,
+					Visible = selected[optionText] or false
+				})
+			end
+			
+			optionButton.MouseButton1Click:Connect(function()
+				if multiSelect then
+					selected[optionText] = not selected[optionText]
+					optionFrame.Checkbox.CheckMark.Visible = selected[optionText]
+				else
+					selected = {}
+					selected[optionText] = true
+					toggleDropdown()
+				end
+				updateValue()
+			end)
+			
+			optionButton.MouseEnter:Connect(function()
+				tween(optionButton, {BackgroundColor3 = Color3.fromRGB(50, 50, 70)})
+			end)
+			
+			optionButton.MouseLeave:Connect(function()
+				tween(optionButton, {BackgroundColor3 = CONFIG.THEME.SECONDARY})
+			end)
+			
+			optionFrame.Parent = dropdownList
+		end
+		
+		-- Создаем опции
+		for _, option in ipairs(options) do
+			createOption(option)
+		end
+		
+		dropdownButton.MouseButton1Click:Connect(toggleDropdown)
+		
+		-- Закрытие при клике вне элемента
+		local connection
+		dropdownButton.MouseButton1Click:Connect(function()
+			if not isOpen then
+				connection = UserInputService.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+						if isOpen then
+							toggleDropdown()
+							connection:Disconnect()
+						end
+					end
+				end)
+			end
+		end)
+		
+		updateValue()
+		
+		dropdownFrame.Parent = self.Container
+		
+		return {
+			GetValue = function()
+				return multiSelect and selected or dropdownValue.Text
+			end,
+			SetValue = function(newValue)
+				if multiSelect then
+					selected = newValue
+				else
+					selected = {[newValue] = true}
+				end
+				updateValue()
+			end,
+			SetOptions = function(newOptions)
+				dropdownList:ClearAllChildren()
+				for _, option in ipairs(newOptions) do
+					createOption(option)
+				end
+			end,
+			Instance = dropdownFrame
+		}
+	end
+	
+	function section:ColorPicker(text, defaultColor, callback)
+		local colorFrame = createInstance("Frame", {
+			Name = "ColorPicker_" .. text,
+			Size = UDim2.new(1, 0, 0, 35),
+			BackgroundTransparency = 1,
+			LayoutOrder = #self.Container:GetChildren() - 1
+		})
+		
+		local colorLabel = createInstance("TextLabel", {
+			Name = "Label",
+			Parent = colorFrame,
+			Size = UDim2.new(0.7, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = text,
+			TextColor3 = CONFIG.THEME.TEXT,
+			TextSize = 14,
+			Font = CONFIG.FONT,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local colorPreview = createInstance("Frame", {
+			Name = "Preview",
+			Parent = colorFrame,
+			Size = UDim2.new(0, 50, 0, 25),
+			Position = UDim2.new(1, -50, 0.5, -12.5),
+			BackgroundColor3 = defaultColor or CONFIG.THEME.ACCENT
+		})
+		
+		createInstance("UICorner", {
+			Parent = colorPreview,
+			CornerRadius = UDim.new(0, 6)
+		})
+		
+		local colorButton = createInstance("TextButton", {
+			Name = "Button",
+			Parent = colorFrame,
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = "",
+			AutoButtonColor = false
+		})
+		
+		local colorPickerWindow
+		local currentColor = defaultColor or CONFIG.THEME.ACCENT
+		
+		local function openColorPicker()
+			if colorPickerWindow then
+				colorPickerWindow:Destroy()
+			end
+			
+			colorPickerWindow = createInstance("ScreenGui", {
+				Name = "ColorPickerWindow",
+				Parent = PlayerGui,
+				ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+			})
+			
+			local pickerFrame = createInstance("Frame", {
+				Name = "PickerFrame",
+				Parent = colorPickerWindow,
+				Size = UDim2.new(0, 250, 0, 200),
+				Position = UDim2.new(0.5, -125, 0.5, -100),
+				BackgroundColor3 = CONFIG.THEME.PRIMARY,
+				ZIndex = 10
+			})
+			
+			createInstance("UICorner", {
+				Parent = pickerFrame,
+				CornerRadius = UDim.new(0, 8)
+			})
+			
+			createInstance("UIStroke", {
+				Parent = pickerFrame,
+				Color = CONFIG.THEME.SECONDARY,
+				Thickness = 2
+			})
+			
+			-- Палитра цвета
+			local colorPalette = createInstance("ImageLabel", {
+				Name = "ColorPalette",
+				Parent = pickerFrame,
+				Size = UDim2.new(0, 180, 0, 180),
+				Position = UDim2.new(0, 10, 0, 10),
+				Image = "rbxassetid://2615689005",
+				BackgroundTransparency = 1,
+				ZIndex = 11
+			})
+			
+			-- Селектор цвета
+			local colorSelector = createInstance("Frame", {
+				Name = "ColorSelector",
+				Parent = colorPalette,
+				Size = UDim2.new(0, 10, 0, 10),
+				BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+				BorderSizePixel = 2,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				ZIndex = 12
+			})
+			
+			createInstance("UICorner", {
+				Parent = colorSelector,
+				CornerRadius = UDim.new(1, 0)
+			})
+			
+			-- Ползунок яркости
+			local brightnessSlider = createInstance("Frame", {
+				Name = "BrightnessSlider",
+				Parent = pickerFrame,
+				Size = UDim2.new(0, 20, 0, 180),
+				Position = UDim2.new(1, -40, 0, 10),
+				BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+				ZIndex = 11
+			})
+			
+			local brightnessGradient = createInstance("UIGradient", {
+				Parent = brightnessSlider,
+				Color = ColorSequence.new{
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+				},
+				Rotation = 90
+			})
+			
+			local brightnessSelector = createInstance("Frame", {
+				Name = "BrightnessSelector",
+				Parent = brightnessSlider,
+				Size = UDim2.new(1, 4, 0, 4),
+				Position = UDim2.new(0, -2, 0.5, -2),
+				BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+				BorderSizePixel = 2,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				ZIndex = 12
+			})
+			
+			-- Предпросмотр выбранного цвета
+			local selectedColorPreview = createInstance("Frame", {
+				Name = "SelectedColorPreview",
+				Parent = pickerFrame,
+				Size = UDim2.new(0, 30, 0, 30),
+				Position = UDim2.new(1, -40, 1, -50),
+				BackgroundColor3 = currentColor,
+				ZIndex = 11
+			})
+			
+			createInstance("UICorner", {
+				Parent = selectedColorPreview,
+				CornerRadius = UDim.new(0, 6)
+			})
+			
+			-- Кнопка OK
+			local okButton = createInstance("TextButton", {
+				Name = "OKButton",
+				Parent = pickerFrame,
+				Size = UDim2.new(0, 60, 0, 30),
+				Position = UDim2.new(0.5, -30, 1, -10),
+				BackgroundColor3 = CONFIG.THEME.ACCENT,
+				Text = "OK",
+				TextColor3 = CONFIG.THEME.TEXT,
+				TextSize = 14,
+				Font = CONFIG.FONT,
+				ZIndex = 11
+			})
+			
+			createInstance("UICorner", {
+				Parent = okButton,
+				CornerRadius = UDim.new(0, 6)
+			})
+			
+			local brightness = 1
+			
+			local function updateColor()
+				local hue, saturation = colorSelector.Position.X.Scale, 1 - colorSelector.Position.Y.Scale
+				local color = Color3.fromHSV(hue, saturation, brightness)
+				
+				selectedColorPreview.BackgroundColor3 = color
+				colorPreview.BackgroundColor3 = color
+				currentColor = color
+				
+				if callback then
+					callback(color)
+				end
+			end
+			
+			local function updateFromPalette(input)
+				local relativeX = (input.Position.X - colorPalette.AbsolutePosition.X) / colorPalette.AbsoluteSize.X
+				local relativeY = (input.Position.Y - colorPalette.AbsolutePosition.Y) / colorPalette.AbsoluteSize.Y
+				
+				colorSelector.Position = UDim2.new(math.clamp(relativeX, 0, 1), -5, math.clamp(relativeY, 0, 1), -5)
+				updateColor()
+			end
+			
+			local function updateBrightness(input)
+				local relativeY = (input.Position.Y - brightnessSlider.AbsolutePosition.Y) / brightnessSlider.AbsoluteSize.Y
+				brightness = 1 - math.clamp(relativeY, 0, 1)
+				brightnessSelector.Position = UDim2.new(0, -2, brightness, -2)
+				updateColor()
+			end
+			
+			colorPalette.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+					updateFromPalette(input)
+					
+					local connection
+					connection = UserInputService.InputChanged:Connect(function(moveInput)
+						if moveInput.UserInputType == Enum.UserInputType.MouseMovement then
+							updateFromPalette(moveInput)
+						end
+					end)
+					
+					input.Changed:Connect(function()
+						if input.UserInputState == Enum.UserInputState.End then
+							connection:Disconnect()
+						end
+					end)
+				end
+			end)
+			
+			brightnessSlider.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+					updateBrightness(input)
+					
+					local connection
+					connection = UserInputService.InputChanged:Connect(function(moveInput)
+						if moveInput.UserInputType == Enum.UserInputType.MouseMovement then
+							updateBrightness(moveInput)
+						end
+					end)
+					
+					input.Changed:Connect(function()
+						if input.UserInputState == Enum.UserInputState.End then
+							connection:Disconnect()
+						end
+					end)
+				end
+			end)
+			
+			okButton.MouseButton1Click:Connect(function()
+				colorPickerWindow:Destroy()
+			end)
+			
+			-- Закрытие при клике вне окна
+			local background = createInstance("Frame", {
+				Name = "Background",
+				Parent = colorPickerWindow,
+				Size = UDim2.new(1, 0, 1, 0),
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 0.5,
+				ZIndex = 9
+			})
+			
+			background.MouseButton1Click:Connect(function()
+				colorPickerWindow:Destroy()
+			end)
+		end
+		
+		colorButton.MouseButton1Click:Connect(openColorPicker)
+		
+		colorFrame.Parent = self.Container
+		
+		return {
+			GetColor = function()
+				return currentColor
+			end,
+			SetColor = function(newColor)
+				currentColor = newColor
+				colorPreview.BackgroundColor3 = newColor
+				if callback then
+					callback(newColor)
+				end
+			end,
+			Instance = colorFrame
+		}
+	end
+	
+	function section:Textbox(text, placeholder, callback, isPassword)
+		local textboxFrame = createInstance("Frame", {
+			Name = "Textbox_" .. text,
+			Size = UDim2.new(1, 0, 0, 35),
+			BackgroundColor3 = CONFIG.THEME.SECONDARY,
+			LayoutOrder = #self.Container:GetChildren() - 1
+		})
+		
+		createInstance("UICorner", {
+			Parent = textboxFrame,
+			CornerRadius = UDim.new(0, 6)
+		})
+		
+		local textboxLabel = createInstance("TextLabel", {
+			Name = "Label",
+			Parent = textboxFrame,
+			Size = UDim2.new(0.3, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = text,
+			TextColor3 = CONFIG.THEME.TEXT,
+			TextSize = 14,
+			Font = CONFIG.FONT,
+			TextXAlignment = Enum.TextXAlignment.Left
+		})
+		
+		local textboxInput = createInstance("TextBox", {
+			Name = "Input",
+			Parent = textboxFrame,
+			Size = UDim2.new(0.7, -10, 1, -10),
+			Position = UDim2.new(0.3, 5, 0, 5),
+			BackgroundTransparency = 1,
+			Text = "",
+			PlaceholderText = placeholder or "Enter text...",
+			TextColor3 = CONFIG.THEME.TEXT,
+			PlaceholderColor3 = Color3.fromRGB(150, 150, 150),
+			TextSize = 14,
+			Font = CONFIG.FONT,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ClearTextOnFocus = false
+		})
+		
+		if isPassword then
+			textboxInput.TextTransparency = 1
+			
+			local hiddenText = createInstance("TextLabel", {
+				Name = "HiddenText",
+				Parent = textboxFrame,
+				Size = UDim2.new(0.7, -10, 1, -10),
+				Position = UDim2.new(0.3, 5, 0, 5),
+				BackgroundTransparency = 1,
+				Text = string.rep("•", #textboxInput.Text),
+				TextColor3 = CONFIG.THEME.TEXT,
+				TextSize = 14,
+				Font = CONFIG.FONT,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+			
+			textboxInput:GetPropertyChangedSignal("Text"):Connect(function()
+				hiddenText.Text = string.rep("•", #textboxInput.Text)
+			end)
+			
+			textboxInput.Focused:Connect(function()
+				hiddenText.Visible = false
+			end)
+			
+			textboxInput.FocusLost:Connect(function()
+				hiddenText.Visible = true
+				if callback then
+					callback(textboxInput.Text)
+				end
+			end)
+		else
+			textboxInput.FocusLost:Connect(function()
+				if callback then
+					callback(textboxInput.Text)
+				end
+			end)
+		end
+		
+		textboxFrame.Parent = self.Container
+		
+		return {
+			GetText = function()
+				return textboxInput.Text
+			end,
+			SetText = function(newText)
+				textboxInput.Text = newText
+			end,
+			Clear = function()
+				textboxInput.Text = ""
+			end,
+			Instance = textboxFrame
+		}
+	end
+	
+	function section:Label(text, color)
+		local labelFrame = createInstance("Frame", {
+			Name = "Label_" .. text,
+			Size = UDim2.new(1, 0, 0, 25),
+			BackgroundTransparency = 1,
+			LayoutOrder = #self.Container:GetChildren() - 1
+		})
+		
+		local labelText = createInstance("TextLabel", {
+			Name = "Text",
+			Parent = labelFrame,
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = text,
+			TextColor3 = color or CONFIG.THEME.TEXT,
+			TextSize = 14,
+			Font = CONFIG.FONT,
+			TextWrapped = true
+		})
+		
+		labelFrame.Parent = self.Container
+		
+		return {
+			SetText = function(newText)
+				labelText.Text = newText
+			end,
+			SetColor = function(newColor)
+				labelText.TextColor3 = newColor
+			end,
+			Instance = labelFrame
+		}
+	end
+	
+	return section
+end
+
+-- Добавляем методы создания элементов в Window и Tab
+function Window:Button(text, callback)
+	local windowSection = {
+		Container = self.ContentFrame
+	}
+	
+	local button = windowSection:Button(text, callback)
+	self:AddElement({Instance = button.Instance})
+	return button
+end
+
+function Window:Toggle(text, default, callback)
+	local windowSection = {
+		Container = self.ContentFrame
+	}
+	
+	local toggle = windowSection:Toggle(text, default, callback)
+	self:AddElement({Instance = toggle.Instance})
+	return toggle
+end
+
+-- Основной метод для создания вкладок
+function Window:Tab(name)
+	return Tab.new(self, name)
+end
+
+-- Экспорт
+OdexelHub.Window = Window
+OdexelHub.Tab = Tab
+OdexelHub.Config = CONFIG
+
+-- Готовые функции для быстрого доступа
+function OdexelHub:CreateButton(window, text, callback)
+	return window:Button(text, callback)
+end
+
+function OdexelHub:CreateToggle(window, text, default, callback)
+	return window:Toggle(text, default, callback)
+end
+
+function OdexelHub:CreateSlider(window, text, min, max, default, callback, unit)
+	local windowSection = {
+		Container = window.ContentFrame
+	}
+	
+	local slider = windowSection:Slider(text, min, max, default, callback, unit)
+	window:AddElement({Instance = slider.Instance})
+	return slider
+end
+
+return OdexelHub
