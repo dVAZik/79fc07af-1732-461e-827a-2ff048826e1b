@@ -1,5 +1,5 @@
 -- Odexel Hub UI Library
--- Версия 1.0.0
+-- Версия 1.1.0
 -- Автор: Odexel
 -- GitHub: https://github.com/odexel/odexel-hub
 
@@ -28,7 +28,6 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
-local PlayerGui = Player:WaitForChild("PlayerGui")
 
 -- Вспомогательные функции
 local function createInstance(className, properties)
@@ -68,11 +67,15 @@ function Window.new(title, size, position, closable)
 end
 
 function Window:CreateUI()
+	-- Получаем PlayerGui с задержкой, если необходимо
+	local PlayerGui = Player:WaitForChild("PlayerGui")
+	
 	-- Основной экран
 	self.ScreenGui = createInstance("ScreenGui", {
 		Name = "OdexelHub",
 		ResetOnSpawn = false,
-		ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 999
 	})
 	
 	-- Фон
@@ -99,13 +102,13 @@ function Window:CreateUI()
 	})
 	
 	-- Сглаживание углов
-	local UICorner = createInstance("UICorner", {
+	createInstance("UICorner", {
 		Parent = self.MainFrame,
 		CornerRadius = UDim.new(0, 8)
 	})
 	
 	-- Тень
-	local UIStroke = createInstance("UIStroke", {
+	createInstance("UIStroke", {
 		Parent = self.MainFrame,
 		Color = Color3.fromRGB(0, 0, 0),
 		Thickness = 2,
@@ -154,7 +157,7 @@ function Window:CreateUI()
 			Font = Enum.Font.GothamBold
 		})
 		
-		local closeCorner = createInstance("UICorner", {
+		createInstance("UICorner", {
 			Parent = self.CloseButton,
 			CornerRadius = UDim.new(0, 6)
 		})
@@ -188,14 +191,15 @@ function Window:CreateUI()
 	})
 	
 	-- Список элементов
-	self.ElementList = createInstance("UIListLayout", {
+	createInstance("UIListLayout", {
 		Parent = self.ContentFrame,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, 10)
 	})
 	
 	-- Паддинг
-	self.ContentFrame.Padding = createInstance("UIPadding", {
+	createInstance("UIPadding", {
+		Parent = self.ContentFrame,
 		PaddingTop = UDim.new(0, 15),
 		PaddingBottom = UDim.new(0, 15),
 		PaddingLeft = UDim.new(0, 15),
@@ -206,7 +210,12 @@ function Window:CreateUI()
 	local dragging, dragInput, dragStart, startPos
 	local function update(input)
 		local delta = input.Position - dragStart
-		self.MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		self.MainFrame.Position = UDim2.new(
+			startPos.X.Scale, 
+			startPos.X.Offset + delta.X, 
+			startPos.Y.Scale, 
+			startPos.Y.Offset + delta.Y
+		)
 	end
 	
 	self.TopBar.InputBegan:Connect(function(input)
@@ -418,7 +427,7 @@ function Tab:Section(name)
 			Name = "Button_" .. text,
 			Size = UDim2.new(1, 0, 0, 35),
 			BackgroundColor3 = CONFIG.THEME.SECONDARY,
-			LayoutOrder = #self.Container:GetChildren() - 1
+			LayoutOrder = #self.Container:GetChildren()
 		})
 		
 		createInstance("UICorner", {
@@ -487,7 +496,7 @@ function Tab:Section(name)
 			Name = "Toggle_" .. text,
 			Size = UDim2.new(1, 0, 0, 35),
 			BackgroundTransparency = 1,
-			LayoutOrder = #self.Container:GetChildren() - 1
+			LayoutOrder = #self.Container:GetChildren()
 		})
 		
 		local toggleLabel = createInstance("TextLabel", {
@@ -584,7 +593,7 @@ function Tab:Section(name)
 			Name = "Slider_" .. text,
 			Size = UDim2.new(1, 0, 0, 60),
 			BackgroundTransparency = 1,
-			LayoutOrder = #self.Container:GetChildren() - 1
+			LayoutOrder = #self.Container:GetChildren()
 		})
 		
 		local sliderLabel = createInstance("TextLabel", {
@@ -605,7 +614,7 @@ function Tab:Section(name)
 			Size = UDim2.new(0, 60, 0, 20),
 			Position = UDim2.new(1, -60, 0, 0),
 			BackgroundTransparency = 1,
-			Text = (default or min) .. (unit or ""),
+			Text = tostring(default or min) .. (unit or ""),
 			TextColor3 = CONFIG.THEME.ACCENT,
 			TextSize = 14,
 			Font = CONFIG.FONT,
@@ -628,7 +637,7 @@ function Tab:Section(name)
 		local sliderFill = createInstance("Frame", {
 			Name = "Fill",
 			Parent = sliderBar,
-			Size = UDim2.new((default or min) / max, 0, 1, 0),
+			Size = UDim2.new(((default or min) - min) / (max - min), 0, 1, 0),
 			BackgroundColor3 = CONFIG.THEME.ACCENT
 		})
 		
@@ -641,7 +650,7 @@ function Tab:Section(name)
 			Name = "Button",
 			Parent = sliderBar,
 			Size = UDim2.new(0, 16, 0, 16),
-			Position = UDim2.new((default or min) / max, -8, 0.5, -8),
+			Position = UDim2.new(((default or min) - min) / (max - min), -8, 0.5, -8),
 			BackgroundColor3 = CONFIG.THEME.TEXT,
 			AutoButtonColor = false,
 			Text = ""
@@ -650,16 +659,17 @@ function Tab:Section(name)
 		createInstance("UICorner", {
 			Parent = sliderButton,
 			CornerRadius = UDim.new(1, 0)
-		})
+		end)
 		
 		local dragging = false
 		local value = default or min
 		
 		local function updateSlider(newValue, fromInput)
-			value = math.clamp(math.floor(newValue), min, max)
-			sliderValue.Text = value .. (unit or "")
-			sliderFill.Size = UDim2.new(value / max, 0, 1, 0)
-			sliderButton.Position = UDim2.new(value / max, -8, 0.5, -8)
+			value = math.clamp(newValue, min, max)
+			sliderValue.Text = string.format("%.1f", value) .. (unit or "")
+			local percentage = (value - min) / (max - min)
+			sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+			sliderButton.Position = UDim2.new(percentage, -8, 0.5, -8)
 			
 			if callback and not fromInput then
 				callback(value)
@@ -668,7 +678,7 @@ function Tab:Section(name)
 		
 		local function updateFromInput(input)
 			local relativeX = (input.Position.X - sliderBar.AbsolutePosition.X) / sliderBar.AbsoluteSize.X
-			local newValue = min + (max - min) * relativeX
+			local newValue = min + (max - min) * math.clamp(relativeX, 0, 1)
 			updateSlider(newValue)
 		end
 		
@@ -691,9 +701,17 @@ function Tab:Section(name)
 			end
 		end)
 		
-		UserInputService.InputChanged:Connect(function(input)
+		local inputChangedConnection
+		inputChangedConnection = UserInputService.InputChanged:Connect(function(input)
 			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 				updateFromInput(input)
+			end
+		end)
+		
+		-- Сохраняем соединение для очистки
+		sliderFrame:GetPropertyChangedSignal("Parent"):Connect(function()
+			if not sliderFrame.Parent then
+				inputChangedConnection:Disconnect()
 			end
 		end)
 		
@@ -722,7 +740,7 @@ function Tab:Section(name)
 			Name = "Dropdown_" .. text,
 			Size = UDim2.new(1, 0, 0, 35),
 			BackgroundColor3 = CONFIG.THEME.SECONDARY,
-			LayoutOrder = #self.Container:GetChildren() - 1,
+			LayoutOrder = #self.Container:GetChildren(),
 			ClipsDescendants = true
 		})
 		
@@ -813,7 +831,7 @@ function Tab:Section(name)
 		end)
 		
 		local selected = {}
-		if default and not multiSelect then
+		if default and options and table.find(options, default) then
 			selected[default] = true
 		end
 		
@@ -824,12 +842,18 @@ function Tab:Section(name)
 			
 			if isOpen then
 				dropdownList.Visible = true
-				tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 40 + math.min(listLayout.AbsoluteContentSize.Y, 150))})
+				local listHeight = math.min(listLayout.AbsoluteContentSize.Y, 150)
+				tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 40 + listHeight)})
 				tween(dropdownArrow, {Rotation = 180})
 			else
-				tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 35)}):Wait()
-				dropdownList.Visible = false
+				tween(dropdownFrame, {Size = UDim2.new(1, 0, 0, 35)})
 				tween(dropdownArrow, {Rotation = 0})
+				
+				-- Небольшая задержка перед скрытием
+				task.wait(0.2)
+				if not isOpen then
+					dropdownList.Visible = false
+				end
 			end
 		end
 		
@@ -853,6 +877,9 @@ function Tab:Section(name)
 						dropdownValue.Text = option
 						break
 					end
+				end
+				if next(selected) == nil then
+					dropdownValue.Text = "Select..."
 				end
 			end
 			
@@ -919,19 +946,20 @@ function Tab:Section(name)
 					ImageColor3 = CONFIG.THEME.ACCENT,
 					Visible = selected[optionText] or false
 				})
-			end
-			
-			optionButton.MouseButton1Click:Connect(function()
-				if multiSelect then
+				
+				optionButton.MouseButton1Click:Connect(function()
 					selected[optionText] = not selected[optionText]
-					optionFrame.Checkbox.CheckMark.Visible = selected[optionText]
-				else
+					checkMark.Visible = selected[optionText]
+					updateValue()
+				end)
+			else
+				optionButton.MouseButton1Click:Connect(function()
 					selected = {}
 					selected[optionText] = true
 					toggleDropdown()
-				end
-				updateValue()
-			end)
+					updateValue()
+				end)
+			end
 			
 			optionButton.MouseEnter:Connect(function()
 				tween(optionButton, {BackgroundColor3 = Color3.fromRGB(50, 50, 70)})
@@ -942,27 +970,41 @@ function Tab:Section(name)
 			end)
 			
 			optionFrame.Parent = dropdownList
+			return optionFrame
 		end
 		
 		-- Создаем опции
-		for _, option in ipairs(options) do
-			createOption(option)
+		if options then
+			for _, option in ipairs(options) do
+				createOption(option)
+			end
 		end
 		
 		dropdownButton.MouseButton1Click:Connect(toggleDropdown)
 		
 		-- Закрытие при клике вне элемента
-		local connection
+		local closeConnection
 		dropdownButton.MouseButton1Click:Connect(function()
 			if not isOpen then
-				connection = UserInputService.InputBegan:Connect(function(input)
+				closeConnection = UserInputService.InputBegan:Connect(function(input)
 					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 						if isOpen then
 							toggleDropdown()
-							connection:Disconnect()
+							if closeConnection then
+								closeConnection:Disconnect()
+							end
 						end
 					end
 				end)
+			end
+		end)
+		
+		-- Очистка соединения при уничтожении
+		dropdownFrame.AncestryChanged:Connect(function()
+			if not dropdownFrame.Parent then
+				if closeConnection then
+					closeConnection:Disconnect()
+				end
 			end
 		end)
 		
@@ -997,7 +1039,7 @@ function Tab:Section(name)
 			Name = "ColorPicker_" .. text,
 			Size = UDim2.new(1, 0, 0, 35),
 			BackgroundTransparency = 1,
-			LayoutOrder = #self.Container:GetChildren() - 1
+			LayoutOrder = #self.Container:GetChildren()
 		})
 		
 		local colorLabel = createInstance("TextLabel", {
@@ -1038,14 +1080,17 @@ function Tab:Section(name)
 		local currentColor = defaultColor or CONFIG.THEME.ACCENT
 		
 		local function openColorPicker()
-			if colorPickerWindow then
+			if colorPickerWindow and colorPickerWindow.Parent then
 				colorPickerWindow:Destroy()
 			end
+			
+			local PlayerGui = Player:WaitForChild("PlayerGui")
 			
 			colorPickerWindow = createInstance("ScreenGui", {
 				Name = "ColorPickerWindow",
 				Parent = PlayerGui,
-				ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+				ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+				DisplayOrder = 1000
 			})
 			
 			local pickerFrame = createInstance("Frame", {
@@ -1161,6 +1206,11 @@ function Tab:Section(name)
 			
 			local brightness = 1
 			
+			-- Устанавливаем начальную позицию селектора на основе текущего цвета
+			local h, s, v = currentColor:ToHSV()
+			colorSelector.Position = UDim2.new(h, -5, 1 - s, -5)
+			brightnessSelector.Position = UDim2.new(0, -2, 1 - v, -2)
+			
 			local function updateColor()
 				local hue, saturation = colorSelector.Position.X.Scale, 1 - colorSelector.Position.Y.Scale
 				local color = Color3.fromHSV(hue, saturation, brightness)
@@ -1202,7 +1252,9 @@ function Tab:Section(name)
 					
 					input.Changed:Connect(function()
 						if input.UserInputState == Enum.UserInputState.End then
-							connection:Disconnect()
+							if connection then
+								connection:Disconnect()
+							end
 						end
 					end)
 				end
@@ -1221,7 +1273,9 @@ function Tab:Section(name)
 					
 					input.Changed:Connect(function()
 						if input.UserInputState == Enum.UserInputState.End then
-							connection:Disconnect()
+							if connection then
+								connection:Disconnect()
+							end
 						end
 					end)
 				end
@@ -1270,7 +1324,7 @@ function Tab:Section(name)
 			Name = "Textbox_" .. text,
 			Size = UDim2.new(1, 0, 0, 35),
 			BackgroundColor3 = CONFIG.THEME.SECONDARY,
-			LayoutOrder = #self.Container:GetChildren() - 1
+			LayoutOrder = #self.Container:GetChildren()
 		})
 		
 		createInstance("UICorner", {
@@ -1307,15 +1361,13 @@ function Tab:Section(name)
 		})
 		
 		if isPassword then
-			textboxInput.TextTransparency = 1
-			
 			local hiddenText = createInstance("TextLabel", {
 				Name = "HiddenText",
 				Parent = textboxFrame,
 				Size = UDim2.new(0.7, -10, 1, -10),
 				Position = UDim2.new(0.3, 5, 0, 5),
 				BackgroundTransparency = 1,
-				Text = string.rep("•", #textboxInput.Text),
+				Text = "",
 				TextColor3 = CONFIG.THEME.TEXT,
 				TextSize = 14,
 				Font = CONFIG.FONT,
@@ -1337,9 +1389,9 @@ function Tab:Section(name)
 				end
 			end)
 		else
-			textboxInput.FocusLost:Connect(function()
+			textboxInput.FocusLost:Connect(function(enterPressed)
 				if callback then
-					callback(textboxInput.Text)
+					callback(textboxInput.Text, enterPressed)
 				end
 			end)
 		end
@@ -1365,7 +1417,7 @@ function Tab:Section(name)
 			Name = "Label_" .. text,
 			Size = UDim2.new(1, 0, 0, 25),
 			BackgroundTransparency = 1,
-			LayoutOrder = #self.Container:GetChildren() - 1
+			LayoutOrder = #self.Container:GetChildren()
 		})
 		
 		local labelText = createInstance("TextLabel", {
