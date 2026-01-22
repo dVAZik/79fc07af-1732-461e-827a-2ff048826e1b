@@ -1,6 +1,6 @@
 -- Автоматический оптимизатор арендаторов с полным заполнением и заменой
 -- Автор: AI Assistant
--- Версия: 4.5 (Улучшенный алгоритм замены)
+-- Версия: 5.0 (Premium UI + ScrollingFrame)
 
 -- Получаем необходимые модули
 local Portfolio = require(game:GetService("ReplicatedStorage").Modules.Game.PortfolioController)
@@ -14,8 +14,8 @@ local RunService = game:GetService("RunService")
 local NetworkPath = game:GetService("ReplicatedStorage").Modules.NetworkClient
 
 -- Конфигурация
-local MIN_STARS = 3  -- Минимум звезд для удержания арендатора (снижено до 3)
-local MIN_STARS_FOR_NEW = 3  -- Минимум звезд для новых заявок (3+)
+local MIN_STARS = 3  -- Минимум звезд для удержания арендатора
+local MIN_STARS_FOR_NEW = 3  -- Минимум звезд для новых заявок
 local CHECK_INTERVAL = 15  -- Интервал проверки в секундах
 local AUTO_DENY_BAD_APPLICANTS = true  -- Автоматически отклонять плохих (<3 звезд)
 local AUTO_ACCEPT_GOOD_APPLICANTS = true  -- Автоматически принимать хороших (≥3 звезд)
@@ -504,7 +504,7 @@ local function optimizeAllSpotsAggressive(propertyUID)
             -- Выселяем худшего арендатора
             local success1, message1 = evictRenter(propertyUID, worstRenter.id)
             if success1 then
-                task.wait(0.5)  -- Задержка между действиями
+                task.wait(0.5)
                 
                 -- Принимаем лучшую заявку
                 local success2, message2 = acceptApplicant(propertyUID, bestReplacement.id)
@@ -893,7 +893,7 @@ local function setupPortfolioListeners()
                 for applicantId, applicant in pairs(property.Applicants) do
                     if applicantId and applicant then
                         local stars = applicant.Stars or 1
-                        if stars >= MIN_STARS_FOR_NEW then  -- От 3+ звезд
+                        if stars >= MIN_STARS_FOR_NEW then
                             log(string.format("🔔 Новая хорошая заявка в %s: %d⭐", propertyUID, stars), "info")
                             
                             -- Проверяем есть ли свободные места
@@ -1041,13 +1041,761 @@ local function aggressiveReplaceAll()
     end
 end
 
--- Остальная часть кода с Premium GUI остается без изменений (как в предыдущей версии)
--- ... [Код создания GUI здесь без изменений] ...
+-- Функция создания Premium Mobile UI с ScrollingFrame
+local function createPremiumMobileUI()
+    local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    
+    -- Удаляем старый GUI если есть
+    local oldGUI = PlayerGui:FindFirstChild("RenterOptimizerPremiumUI")
+    if oldGUI then oldGUI:Destroy() end
+    
+    -- Создаем новый GUI
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "RenterOptimizerPremiumUI"
+    ScreenGui.Parent = PlayerGui
+    
+    -- Основной контейнер (Draggable)
+    local MainContainer = Instance.new("Frame")
+    MainContainer.Size = UDim2.new(0, 340, 0, 500)
+    MainContainer.Position = UDim2.new(0.5, -170, 0.5, -250)
+    MainContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+    MainContainer.BackgroundTransparency = 0.05
+    MainContainer.BorderSizePixel = 0
+    MainContainer.ClipsDescendants = true
+    MainContainer.Parent = ScreenGui
+    
+    -- Скругление углов (скрываем острые края)
+    local ContainerCorner = Instance.new("UICorner")
+    ContainerCorner.CornerRadius = UDim.new(0, 20)
+    ContainerCorner.Parent = MainContainer
+    
+    -- Внутренняя маска для скрытия углов у дочерних элементов
+    local ContainerMask = Instance.new("Frame")
+    ContainerMask.Size = UDim2.new(1, 0, 1, 0)
+    ContainerMask.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+    ContainerMask.BorderSizePixel = 0
+    ContainerMask.ClipsDescendants = true
+    ContainerMask.Parent = MainContainer
+    
+    local MaskCorner = Instance.new("UICorner")
+    MaskCorner.CornerRadius = UDim.new(0, 20)
+    MaskCorner.Parent = ContainerMask
+    
+    -- Эффект градиента фона
+    local Gradient = Instance.new("UIGradient")
+    Gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 25, 40)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(20, 20, 35)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 15, 30))
+    })
+    Gradient.Rotation = 45
+    Gradient.Parent = ContainerMask
+    
+    -- Тень с мягкими краями
+    local Shadow = Instance.new("ImageLabel")
+    Shadow.Size = UDim2.new(1, 20, 1, 20)
+    Shadow.Position = UDim2.new(0, -10, 0, -10)
+    Shadow.BackgroundTransparency = 1
+    Shadow.Image = "rbxassetid://1316045217"
+    Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+    Shadow.ImageTransparency = 0.85
+    Shadow.ScaleType = Enum.ScaleType.Slice
+    Shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+    Shadow.Parent = MainContainer
+    
+    -- Заголовок с иконкой (Draggable область)
+    local Header = Instance.new("Frame")
+    Header.Size = UDim2.new(1, 0, 0, 55)
+    Header.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+    Header.BorderSizePixel = 0
+    Header.Parent = ContainerMask
+    
+    local HeaderCorner = Instance.new("UICorner")
+    HeaderCorner.CornerRadius = UDim.new(0, 20)
+    HeaderCorner.Parent = Header
+    
+    -- Верхний градиент заголовка
+    local HeaderGradient = Instance.new("UIGradient")
+    HeaderGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 70)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 50))
+    })
+    HeaderGradient.Parent = Header
+    
+    -- Иконка робота
+    local RobotIcon = Instance.new("ImageLabel")
+    RobotIcon.Size = UDim2.new(0, 45, 0, 45)
+    RobotIcon.Position = UDim2.new(0, 10, 0.5, -22.5)
+    RobotIcon.BackgroundTransparency = 1
+    RobotIcon.Image = "rbxassetid://3926305904"
+    RobotIcon.ImageRectOffset = Vector2.new(964, 324)
+    RobotIcon.ImageRectSize = Vector2.new(36, 36)
+    RobotIcon.ImageColor3 = Color3.fromRGB(100, 200, 255)
+    RobotIcon.Parent = Header
+    
+    -- Заголовок
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(0.6, 0, 0, 30)
+    Title.Position = UDim2.new(0, 65, 0, 8)
+    Title.BackgroundTransparency = 1
+    Title.Text = "🤖 АВТООПТИМИЗАТОР"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 18
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = Header
+    
+    -- Подзаголовок версии
+    local Subtitle = Instance.new("TextLabel")
+    Subtitle.Size = UDim2.new(0.6, 0, 0, 20)
+    Subtitle.Position = UDim2.new(0, 65, 0, 30)
+    Subtitle.BackgroundTransparency = 1
+    Subtitle.Text = "Premium v5.0"
+    Subtitle.TextColor3 = Color3.fromRGB(180, 200, 255)
+    Subtitle.Font = Enum.Font.Gotham
+    Subtitle.TextSize = 12
+    Subtitle.TextXAlignment = Enum.TextXAlignment.Left
+    Subtitle.Parent = Header
+    
+    -- Индикатор статуса
+    local StatusIndicator = Instance.new("Frame")
+    StatusIndicator.Size = UDim2.new(0, 14, 0, 14)
+    StatusIndicator.Position = UDim2.new(1, -60, 0.5, -7)
+    StatusIndicator.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    StatusIndicator.BorderSizePixel = 0
+    StatusIndicator.Name = "StatusIndicator"
+    
+    local StatusCorner = Instance.new("UICorner")
+    StatusCorner.CornerRadius = UDim.new(1, 0)
+    StatusCorner.Parent = StatusIndicator
+    
+    local StatusGlow = Instance.new("ImageLabel")
+    StatusGlow.Size = UDim2.new(1, 6, 1, 6)
+    StatusGlow.Position = UDim2.new(0, -3, 0, -3)
+    StatusGlow.BackgroundTransparency = 1
+    StatusGlow.Image = "rbxassetid://4996891970"
+    StatusGlow.ImageColor3 = Color3.fromRGB(255, 50, 50)
+    StatusGlow.ImageTransparency = 0.6
+    StatusGlow.Parent = StatusIndicator
+    
+    StatusIndicator.Parent = Header
+    
+    -- Кнопка свернуть/развернуть
+    local ToggleButton = Instance.new("TextButton")
+    ToggleButton.Size = UDim2.new(0, 40, 0, 40)
+    ToggleButton.Position = UDim2.new(1, -45, 0.5, -20)
+    ToggleButton.BackgroundTransparency = 1
+    ToggleButton.Text = "▼"
+    ToggleButton.TextColor3 = Color3.fromRGB(200, 220, 255)
+    ToggleButton.Font = Enum.Font.GothamBold
+    ToggleButton.TextSize = 22
+    ToggleButton.Name = "ToggleButton"
+    ToggleButton.Parent = Header
+    
+    -- Основной ScrollingFrame для содержимого
+    local MainScrollingFrame = Instance.new("ScrollingFrame")
+    MainScrollingFrame.Size = UDim2.new(1, 0, 1, -60)
+    MainScrollingFrame.Position = UDim2.new(0, 0, 0, 55)
+    MainScrollingFrame.BackgroundTransparency = 1
+    MainScrollingFrame.BorderSizePixel = 0
+    MainScrollingFrame.ScrollBarThickness = 4
+    MainScrollingFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255)
+    MainScrollingFrame.ScrollBarImageTransparency = 0.7
+    MainScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 800)
+    MainScrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    MainScrollingFrame.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+    MainScrollingFrame.Parent = ContainerMask
+    
+    -- Контейнер для элементов внутри ScrollingFrame
+    local ContentContainer = Instance.new("Frame")
+    ContentContainer.Size = UDim2.new(1, 0, 0, 800)
+    ContentContainer.BackgroundTransparency = 1
+    ContentContainer.Parent = MainScrollingFrame
+    
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Padding = UDim.new(0, 10)
+    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    UIListLayout.Parent = ContentContainer
+    
+    -- Карточка статистики
+    local StatsCard = Instance.new("Frame")
+    StatsCard.Size = UDim2.new(1, -20, 0, 160)
+    StatsCard.Position = UDim2.new(0, 10, 0, 0)
+    StatsCard.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
+    StatsCard.BorderSizePixel = 0
+    StatsCard.LayoutOrder = 1
+    
+    local StatsCorner = Instance.new("UICorner")
+    StatsCorner.CornerRadius = UDim.new(0, 15)
+    StatsCorner.Parent = StatsCard
+    
+    local StatsStroke = Instance.new("UIStroke")
+    StatsStroke.Color = Color3.fromRGB(100, 150, 255)
+    StatsStroke.Thickness = 1.5
+    StatsStroke.Transparency = 0.3
+    StatsStroke.Parent = StatsCard
+    
+    StatsCard.Parent = ContentContainer
+    
+    -- Заголовок статистики
+    local StatsTitle = Instance.new("TextLabel")
+    StatsTitle.Size = UDim2.new(1, 0, 0, 35)
+    StatsTitle.BackgroundTransparency = 1
+    StatsTitle.Text = "📊 СТАТИСТИКА В РЕАЛЬНОМ ВРЕМЕНИ"
+    StatsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    StatsTitle.Font = Enum.Font.GothamBold
+    StatsTitle.TextSize = 14
+    StatsTitle.Parent = StatsCard
+    
+    -- Сетка для статистики (2 колонки)
+    local StatsGrid = Instance.new("Frame")
+    StatsGrid.Size = UDim2.new(1, -20, 1, -45)
+    StatsGrid.Position = UDim2.new(0, 10, 0, 35)
+    StatsGrid.BackgroundTransparency = 1
+    StatsGrid.Parent = StatsCard
+    
+    -- Функция создания элемента статистики
+    local function createStatItem(name, value, color, icon, position, size)
+        local frame = Instance.new("Frame")
+        frame.Size = size or UDim2.new(0.48, -5, 0, 28)
+        frame.Position = position
+        frame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+        frame.BorderSizePixel = 0
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = frame
+        
+        local iconLabel = Instance.new("TextLabel")
+        iconLabel.Size = UDim2.new(0, 25, 1, 0)
+        iconLabel.BackgroundTransparency = 1
+        iconLabel.Text = icon
+        iconLabel.TextColor3 = color
+        iconLabel.Font = Enum.Font.GothamBold
+        iconLabel.TextSize = 14
+        iconLabel.Parent = frame
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(0.4, -30, 1, 0)
+        nameLabel.Position = UDim2.new(0, 25, 0, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = name
+        nameLabel.TextColor3 = Color3.fromRGB(200, 210, 230)
+        nameLabel.Font = Enum.Font.Gotham
+        nameLabel.TextSize = 11
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.Parent = frame
+        
+        local valueLabel = Instance.new("TextLabel")
+        valueLabel.Size = UDim2.new(0.6, 0, 1, 0)
+        valueLabel.Position = UDim2.new(0.4, 0, 0, 0)
+        valueLabel.BackgroundTransparency = 1
+        valueLabel.Text = value
+        valueLabel.TextColor3 = color
+        valueLabel.Font = Enum.Font.GothamBold
+        valueLabel.TextSize = 12
+        valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+        valueLabel.Name = "Value"
+        valueLabel.Parent = frame
+        
+        return frame, valueLabel
+    end
+    
+    -- Создаем элементы статистики (первая строка)
+    local incomeFrame, incomeStat = createStatItem("Доход:", "$0.00", 
+        Color3.fromRGB(100, 255, 100), "💰", UDim2.new(0, 0, 0, 0))
+    incomeFrame.Parent = StatsGrid
+    
+    local propertiesFrame, propertiesStat = createStatItem("Объекты:", "0", 
+        Color3.fromRGB(100, 200, 255), "🏢", UDim2.new(0.52, 5, 0, 0))
+    propertiesFrame.Parent = StatsGrid
+    
+    -- Вторая строка
+    local occupancyFrame, occupancyStat = createStatItem("Заполнено:", "0%", 
+        Color3.fromRGB(255, 200, 100), "📈", UDim2.new(0, 0, 0, 33))
+    occupancyFrame.Parent = StatsGrid
+    
+    local cycleFrame, cycleStat = createStatItem("Цикл:", "#0", 
+        Color3.fromRGB(200, 100, 255), "🔄", UDim2.new(0.52, 5, 0, 33))
+    cycleFrame.Parent = StatsGrid
+    
+    -- Третья строка
+    local changeFrame, changeStat = createStatItem("Изменение:", "+$0.00", 
+        Color3.fromRGB(255, 255, 100), "📊", UDim2.new(0, 0, 0, 66))
+    changeFrame.Parent = StatsGrid
+    
+    local timeFrame, timeStat = createStatItem("Время:", "0.00s", 
+        Color3.fromRGB(100, 255, 255), "⏱️", UDim2.new(0.52, 5, 0, 66))
+    timeFrame.Parent = StatsGrid
+    
+    -- Четвертая строка (полная ширина)
+    local replacementsFrame, replacementsStat = createStatItem("Всего замен:", "0", 
+        Color3.fromRGB(255, 150, 100), "👥", UDim2.new(0, 0, 0, 99), UDim2.new(1, 0, 0, 28))
+    replacementsFrame.Parent = StatsGrid
+    
+    -- Карточка лучшего объекта
+    local BestPropertyCard = Instance.new("Frame")
+    BestPropertyCard.Size = UDim2.new(1, -20, 0, 90)
+    BestPropertyCard.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
+    BestPropertyCard.BorderSizePixel = 0
+    BestPropertyCard.LayoutOrder = 2
+    
+    local BestCorner = Instance.new("UICorner")
+    BestCorner.CornerRadius = UDim.new(0, 15)
+    BestCorner.Parent = BestPropertyCard
+    
+    local BestStroke = Instance.new("UIStroke")
+    BestStroke.Color = Color3.fromRGB(255, 200, 100)
+    BestStroke.Thickness = 1.5
+    BestStroke.Transparency = 0.3
+    BestStroke.Parent = BestPropertyCard
+    
+    BestPropertyCard.Parent = ContentContainer
+    
+    local BestTitle = Instance.new("TextLabel")
+    BestTitle.Size = UDim2.new(1, 0, 0, 30)
+    BestTitle.BackgroundTransparency = 1
+    BestTitle.Text = "🏆 ЛУЧШИЙ ОБЪЕКТ"
+    BestTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    BestTitle.Font = Enum.Font.GothamBold
+    BestTitle.TextSize = 14
+    BestTitle.Parent = BestPropertyCard
+    
+    local BestInfo = Instance.new("TextLabel")
+    BestInfo.Size = UDim2.new(1, -20, 0.7, -30)
+    BestInfo.Position = UDim2.new(0, 10, 0, 30)
+    BestInfo.BackgroundTransparency = 1
+    BestInfo.Text = "Загрузка данных..."
+    BestInfo.TextColor3 = Color3.fromRGB(200, 210, 230)
+    BestInfo.Font = Enum.Font.Gotham
+    BestInfo.TextSize = 11
+    BestInfo.TextWrapped = true
+    BestInfo.TextXAlignment = Enum.TextXAlignment.Left
+    BestInfo.Name = "BestInfo"
+    BestInfo.Parent = BestPropertyCard
+    
+    -- Панель управления
+    local ControlCard = Instance.new("Frame")
+    ControlCard.Size = UDim2.new(1, -20, 0, 180)
+    ControlCard.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
+    ControlCard.BorderSizePixel = 0
+    ControlCard.LayoutOrder = 3
+    
+    local ControlCorner = Instance.new("UICorner")
+    ControlCorner.CornerRadius = UDim.new(0, 15)
+    ControlCorner.Parent = ControlCard
+    
+    ControlCard.Parent = ContentContainer
+    
+    local ControlTitle = Instance.new("TextLabel")
+    ControlTitle.Size = UDim2.new(1, 0, 0, 35)
+    ControlTitle.BackgroundTransparency = 1
+    ControlTitle.Text = "🎮 УПРАВЛЕНИЕ"
+    ControlTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ControlTitle.Font = Enum.Font.GothamBold
+    ControlTitle.TextSize = 14
+    ControlTitle.Parent = ControlCard
+    
+    -- Контейнер для кнопок управления
+    local ButtonsContainer = Instance.new("Frame")
+    ButtonsContainer.Size = UDim2.new(1, -20, 1, -45)
+    ButtonsContainer.Position = UDim2.new(0, 10, 0, 35)
+    ButtonsContainer.BackgroundTransparency = 1
+    ButtonsContainer.Parent = ControlCard
+    
+    -- Функция создания красивой кнопки
+    local function createControlButton(text, icon, color, position, callback)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(0.48, -5, 0, 60)
+        button.Position = position
+        button.BackgroundColor3 = color
+        button.Text = ""
+        button.AutoButtonColor = true
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 12)
+        corner.Parent = button
+        
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(255, 255, 255)
+        stroke.Thickness = 1.5
+        stroke.Transparency = 0.5
+        stroke.Parent = button
+        
+        -- Градиент для кнопки
+        local buttonGradient = Instance.new("UIGradient")
+        buttonGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, color),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(
+                math.floor(color.r * 200),
+                math.floor(color.g * 200),
+                math.floor(color.b * 200)
+            ))
+        })
+        buttonGradient.Rotation = 90
+        buttonGradient.Parent = button
+        
+        -- Эффект при наведении
+        local hoverEffect = Instance.new("Frame")
+        hoverEffect.Size = UDim2.new(1, 0, 1, 0)
+        hoverEffect.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        hoverEffect.BackgroundTransparency = 0.9
+        hoverEffect.Visible = false
+        hoverEffect.Parent = button
+        
+        button.MouseEnter:Connect(function()
+            hoverEffect.Visible = true
+            local tween = TweenService:Create(button, TweenInfo.new(0.2), {Size = UDim2.new(0.48, 0, 0, 62)})
+            tween:Play()
+        end)
+        
+        button.MouseLeave:Connect(function()
+            hoverEffect.Visible = false
+            local tween = TweenService:Create(button, TweenInfo.new(0.2), {Size = UDim2.new(0.48, -5, 0, 60)})
+            tween:Play()
+        end)
+        
+        -- Иконка
+        local iconLabel = Instance.new("TextLabel")
+        iconLabel.Size = UDim2.new(0, 35, 0, 35)
+        iconLabel.Position = UDim2.new(0, 10, 0.5, -17.5)
+        iconLabel.BackgroundTransparency = 1
+        iconLabel.Text = icon
+        iconLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        iconLabel.Font = Enum.Font.GothamBold
+        iconLabel.TextSize = 20
+        iconLabel.Parent = button
+        
+        -- Текст
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(1, -50, 1, 0)
+        textLabel.Position = UDim2.new(0, 45, 0, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = text
+        textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        textLabel.Font = Enum.Font.Gotham
+        textLabel.TextSize = 13
+        textLabel.TextXAlignment = Enum.TextXAlignment.Left
+        textLabel.Parent = button
+        
+        -- Подсветка при клике
+        button.MouseButton1Click:Connect(function()
+            local clickEffect = Instance.new("Frame")
+            clickEffect.Size = UDim2.new(1, 0, 1, 0)
+            clickEffect.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            clickEffect.BackgroundTransparency = 0.7
+            clickEffect.Parent = button
+            
+            local tween = TweenService:Create(clickEffect, TweenInfo.new(0.3), {BackgroundTransparency = 1})
+            tween:Play()
+            tween.Completed:Connect(function()
+                clickEffect:Destroy()
+            end)
+            
+            if callback then
+                task.spawn(callback)
+            end
+        end)
+        
+        button.Parent = ButtonsContainer
+        return button
+    end
+    
+    -- Создаем кнопки управления (2x2 сетка)
+    local autoButton = createControlButton("АВТОРЕЖИМ", "▶", Color3.fromRGB(0, 180, 0), 
+        UDim2.new(0, 0, 0, 0), function()
+            if not isRunning then
+                task.spawn(startAutoOptimizer)
+            end
+        end)
+    
+    local quickButton = createControlButton("БЫСТРАЯ", "⚡", Color3.fromRGB(255, 150, 0), 
+        UDim2.new(0.52, 5, 0, 0), quickOptimize)
+    
+    local fillButton = createControlButton("ЗАПОЛНИТЬ", "🚀", Color3.fromRGB(0, 150, 255), 
+        UDim2.new(0, 0, 0, 65), forceFillAllSpots)
+    
+    local aggressiveButton = createControlButton("АГРЕССИВНО", "💥", Color3.fromRGB(255, 100, 100), 
+        UDim2.new(0.52, 5, 0, 65), aggressiveReplaceAll)
+    
+    -- Карточка логов
+    local LogCard = Instance.new("Frame")
+    LogCard.Size = UDim2.new(1, -20, 0, 150)
+    LogCard.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+    LogCard.BorderSizePixel = 0
+    LogCard.LayoutOrder = 4
+    
+    local LogCorner = Instance.new("UICorner")
+    LogCorner.CornerRadius = UDim.new(0, 15)
+    LogCorner.Parent = LogCard
+    
+    LogCard.Parent = ContentContainer
+    
+    local LogTitle = Instance.new("TextLabel")
+    LogTitle.Size = UDim2.new(1, 0, 0, 30)
+    LogTitle.BackgroundTransparency = 1
+    LogTitle.Text = "📝 ПОСЛЕДНИЕ СОБЫТИЯ"
+    LogTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    LogTitle.Font = Enum.Font.GothamBold
+    LogTitle.TextSize = 14
+    LogTitle.Parent = LogCard
+    
+    -- ScrollingFrame для логов
+    local LogScrollingFrame = Instance.new("ScrollingFrame")
+    LogScrollingFrame.Size = UDim2.new(1, -10, 1, -40)
+    LogScrollingFrame.Position = UDim2.new(0, 5, 0, 30)
+    LogScrollingFrame.BackgroundTransparency = 1
+    LogScrollingFrame.BorderSizePixel = 0
+    LogScrollingFrame.ScrollBarThickness = 3
+    LogScrollingFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255)
+    LogScrollingFrame.ScrollBarImageTransparency = 0.7
+    LogScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    LogScrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    LogScrollingFrame.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+    LogScrollingFrame.Parent = LogCard
+    
+    local LogContainer = Instance.new("Frame")
+    LogContainer.Size = UDim2.new(1, 0, 0, 0)
+    LogContainer.BackgroundTransparency = 1
+    LogContainer.Parent = LogScrollingFrame
+    
+    local LogListLayout = Instance.new("UIListLayout")
+    LogListLayout.Padding = UDim.new(0, 5)
+    LogListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    LogListLayout.Parent = LogContainer
+    
+    -- Буфер для логов
+    local logBuffer = {}
+    local maxLogs = 8
+    
+    -- Функция обновления логов в GUI
+    _G.GUILogger = function(message, type)
+        local timestamp = os.date("%H:%M")
+        local color = Color3.fromRGB(200, 210, 230)
+        
+        if type == "success" then
+            color = Color3.fromRGB(100, 255, 100)
+        elseif type == "error" then
+            color = Color3.fromRGB(255, 100, 100)
+        elseif type == "warning" then
+            color = Color3.fromRGB(255, 200, 100)
+        elseif type == "money" then
+            color = Color3.fromRGB(100, 255, 255)
+        elseif type == "spot" then
+            color = Color3.fromRGB(100, 200, 255)
+        elseif type == "hire" then
+            color = Color3.fromRGB(255, 150, 100)
+        elseif type == "evict" then
+            color = Color3.fromRGB(255, 100, 200)
+        end
+        
+        -- Создаем новый лог элемент
+        local logFrame = Instance.new("Frame")
+        logFrame.Size = UDim2.new(1, 0, 0, 25)
+        logFrame.BackgroundTransparency = 1
+        logFrame.LayoutOrder = 1
+        
+        -- Сдвигаем старые логи вниз
+        for _, child in ipairs(LogContainer:GetChildren()) do
+            if child:IsA("Frame") then
+                child.LayoutOrder = child.LayoutOrder + 1
+            end
+        end
+        
+        local timeLabel = Instance.new("TextLabel")
+        timeLabel.Size = UDim2.new(0, 40, 1, 0)
+        timeLabel.BackgroundTransparency = 1
+        timeLabel.Text = string.format("[%s]", timestamp)
+        timeLabel.TextColor3 = Color3.fromRGB(150, 160, 180)
+        timeLabel.Font = Enum.Font.Gotham
+        timeLabel.TextSize = 10
+        timeLabel.TextXAlignment = Enum.TextXAlignment.Left
+        timeLabel.Parent = logFrame
+        
+        local messageLabel = Instance.new("TextLabel")
+        messageLabel.Size = UDim2.new(1, -45, 1, 0)
+        messageLabel.Position = UDim2.new(0, 40, 0, 0)
+        messageLabel.BackgroundTransparency = 1
+        messageLabel.Text = message
+        messageLabel.TextColor3 = color
+        messageLabel.Font = Enum.Font.Gotham
+        messageLabel.TextSize = 11
+        messageLabel.TextXAlignment = Enum.TextXAlignment.Left
+        messageLabel.TextWrapped = true
+        messageLabel.Parent = logFrame
+        
+        logFrame.Parent = LogContainer
+        
+        -- Удаляем старые логи если слишком много
+        task.wait()
+        local children = LogContainer:GetChildren()
+        for i = #children, maxLogs + 1, -1 do
+            local child = children[i]
+            if child:IsA("Frame") then
+                child:Destroy()
+            end
+        end
+        
+        -- Прокручиваем к самому новому логу
+        task.wait(0.05)
+        LogScrollingFrame.CanvasPosition = Vector2.new(0, LogScrollingFrame.AbsoluteCanvasSize.Y)
+    end
+    
+    -- Функция обновления статистики в GUI
+    _G.UpdateGUIStats = function(data)
+        incomeStat.Text = string.format("$%.2f", data.totalIncome)
+        propertiesStat.Text = tostring(data.totalProperties)
+        occupancyStat.Text = string.format("%.1f%%", data.occupancyRate)
+        cycleStat.Text = "#" .. tostring(cycleCount)
+        
+        if data.lastIncomeChange > 0 then
+            changeStat.Text = string.format("+$%.2f", data.lastIncomeChange)
+            changeStat.TextColor3 = Color3.fromRGB(100, 255, 100)
+        elseif data.lastIncomeChange < 0 then
+            changeStat.Text = string.format("-$%.2f", math.abs(data.lastIncomeChange))
+            changeStat.TextColor3 = Color3.fromRGB(255, 100, 100)
+        else
+            changeStat.Text = "$0.00"
+            changeStat.TextColor3 = Color3.fromRGB(200, 200, 200)
+        end
+        
+        timeStat.Text = string.format("%.2fs", data.cycleTime)
+        replacementsStat.Text = tostring(data.totalReplacements)
+        
+        if data.bestProperty then
+            BestInfo.Text = string.format("%s\n💰 $%.2f | 🏘️ %s", 
+                data.bestProperty.Type or "Неизвестно",
+                data.bestProperty.Income or 0,
+                data.bestProperty.District or "Неизвестно")
+        else
+            BestInfo.Text = "Нет данных об объектах"
+        end
+    end
+    
+    -- Функция обновления статуса авторежима
+    _G.UpdateAutoStatus = function(running)
+        if running then
+            StatusIndicator.BackgroundColor3 = Color3.fromRGB(50, 255, 50)
+            StatusGlow.ImageColor3 = Color3.fromRGB(50, 255, 50)
+            autoButton.TextLabel.Text = "ПАУЗА"
+        else
+            StatusIndicator.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+            StatusGlow.ImageColor3 = Color3.fromRGB(255, 50, 50)
+            autoButton.TextLabel.Text = "АВТОРЕЖИМ"
+        end
+    end
+    
+    -- Функционал Drag and Drop
+    local dragging = false
+    local dragStart
+    local startPosition
+    
+    Header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPosition = MainContainer.Position
+            
+            -- Эффект при захвате
+            local tween = TweenService:Create(MainContainer, TweenInfo.new(0.1), {
+                BackgroundTransparency = 0.15,
+                Size = UDim2.new(0, 345, 0, 505)
+            })
+            tween:Play()
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = input.Position - dragStart
+            MainContainer.Position = startPosition + UDim2.new(0, delta.X, 0, delta.Y)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+            
+            -- Эффект при отпускании
+            local tween = TweenService:Create(MainContainer, TweenInfo.new(0.1), {
+                BackgroundTransparency = 0.05,
+                Size = UDim2.new(0, 340, 0, 500)
+            })
+            tween:Play()
+        end
+    end)
+    
+    -- Функционал сворачивания/разворачивания
+    local isMinimized = false
+    local originalSize = MainContainer.Size
+    local minimizedSize = UDim2.new(0, 340, 0, 55)
+    
+    ToggleButton.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        
+        if isMinimized then
+            -- Сворачиваем
+            ToggleButton.Text = "▲"
+            local tween = TweenService:Create(MainContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = minimizedSize
+            })
+            tween:Play()
+            ContainerMask.Visible = false
+        else
+            -- Разворачиваем
+            ToggleButton.Text = "▼"
+            local tween = TweenService:Create(MainContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = originalSize
+            })
+            tween:Play()
+            ContainerMask.Visible = true
+        end
+    end)
+    
+    -- Анимация появления
+    MainContainer.BackgroundTransparency = 1
+    MainContainer.Size = UDim2.new(0, 0, 0, 0)
+    ContainerMask.Visible = false
+    
+    local openTween = TweenService:Create(MainContainer, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = originalSize,
+        BackgroundTransparency = 0.05
+    })
+    openTween:Play()
+    
+    openTween.Completed:Connect(function()
+        ContainerMask.Visible = true
+        log("🎮 Premium интерфейс создан", "success")
+        log("👆 Перетаскивайте за верхнюю панель", "info")
+        log("📱 Адаптировано для мобильных устройств", "info")
+    end)
+    
+    -- Пульсация индикатора статуса
+    task.spawn(function()
+        while ScreenGui.Parent do
+            local tween = TweenService:Create(StatusGlow, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut, 0, true), {
+                ImageTransparency = 0.3
+            })
+            tween:Play()
+            task.wait(1)
+        end
+    end)
+    
+    -- Автоматическое обновление размера ScrollingFrame
+    task.spawn(function()
+        while ScreenGui.Parent do
+            task.wait(1)
+            MainScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, ContentContainer.AbsoluteSize.Y)
+        end
+    end)
+    
+    return ScreenGui
+end
 
 -- Инициализация
 print("\n" .. string.rep("=", 70))
-print("🏢 АВТООПТИМИЗАТОР АРЕНДАТОРОВ ВЕРСИЯ 4.5")
-print("🎯 УЛУЧШЕННЫЙ АЛГОРИТМ ЗАМЕНЫ")
+print("🏢 АВТООПТИМИЗАТОР АРЕНДАТОРОВ ВЕРСИЯ 5.0")
+print("🎯 PREMIUM UI + SCROLLINGFRAME EDITION")
 print(string.rep("=", 70))
 print("📁 NetworkClient путь:", NetworkPath:GetFullName())
 print("⚙️ Настройки:")
@@ -1055,14 +1803,16 @@ print("   Удержание от: " .. MIN_STARS .. "⭐")
 print("   Новые от: " .. MIN_STARS_FOR_NEW .. "⭐")
 print("   Интервал: " .. CHECK_INTERVAL .. "с")
 print("   Режим: Агрессивная замена слабых арендаторов")
-print("   📊 Алгоритм: Проверка ВСЕХ мест + оптимизация")
+print("   🎨 Premium интерфейс с ScrollingFrame")
+print("   📱 Полная адаптация для телефонов")
+print("   👆 Drag & Drop + сворачивание")
 print(string.rep("=", 70))
 
 -- Устанавливаем слушатели обновлений
 setupPortfolioListeners()
 
--- Создаем Premium UI (используем предыдущий код GUI без изменений)
--- createPremiumMobileUI()
+-- Создаем Premium UI
+createPremiumMobileUI()
 
 -- Автоматический старт через 3 секунды
 task.wait(3)
