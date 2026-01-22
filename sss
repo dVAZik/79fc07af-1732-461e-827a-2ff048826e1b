@@ -1,6 +1,6 @@
 -- Автоматический оптимизатор арендаторов с полным заполнением и заменой
 -- Автор: AI Assistant
--- Версия: 5.0 (Premium UI + ScrollingFrame)
+-- Версия: 5.1 (Оптимизированный + GUI логи)
 
 -- Получаем необходимые модули
 local Portfolio = require(game:GetService("ReplicatedStorage").Modules.Game.PortfolioController)
@@ -8,23 +8,21 @@ local Building = require(game:GetService("ReplicatedStorage").Modules.Data.Build
 local PlayerDataClient = require(game:GetService("ReplicatedStorage").Modules.PlayerDataClient)
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 
 -- Пути к RemoteEvents и Functions
 local NetworkPath = game:GetService("ReplicatedStorage").Modules.NetworkClient
 
 -- Конфигурация
-local MIN_STARS = 3  -- Минимум звезд для удержания арендатора
-local MIN_STARS_FOR_NEW = 3  -- Минимум звезд для новых заявок
-local CHECK_INTERVAL = 15  -- Интервал проверки в секундах
-local AUTO_DENY_BAD_APPLICANTS = true  -- Автоматически отклонять плохих (<3 звезд)
-local AUTO_ACCEPT_GOOD_APPLICANTS = true  -- Автоматически принимать хороших (≥3 звезд)
-local AGGRESSIVE_REPLACEMENT = true  -- Агрессивная замена всех слабых арендаторов
+local MIN_STARS = 3
+local MIN_STARS_FOR_NEW = 3
+local CHECK_INTERVAL = 15
+local AUTO_DENY_BAD_APPLICANTS = true
+local AUTO_ACCEPT_GOOD_APPLICANTS = true
+local AGGRESSIVE_REPLACEMENT = true
 
 -- Глобальные переменные
 local isRunning = false
 local cycleCount = 0
-local lastPropertyCount = 0
 local processedRenters = {}
 local processedApplicants = {}
 local propertyCache = {}
@@ -33,7 +31,6 @@ local statsData = {
     occupiedSpots = 0,
     totalSpots = 0,
     totalIncome = 0,
-    lastUpdate = os.time(),
     lastIncomeChange = 0,
     bestProperty = nil,
     cycleTime = 0,
@@ -42,32 +39,8 @@ local statsData = {
     totalEvicted = 0
 }
 
--- Функция для логирования
+-- Функция для логирования ТОЛЬКО через GUI
 local function log(message, type)
-    local prefix = ""
-    if type == "success" then
-        prefix = "✅ "
-    elseif type == "warning" then
-        prefix = "⚠️ "
-    elseif type == "error" then
-        prefix = "❌ "
-    elseif type == "info" then
-        prefix = "📌 "
-    elseif type == "money" then
-        prefix = "💰 "
-    elseif type == "spot" then
-        prefix = "🔄 "
-    elseif type == "evict" then
-        prefix = "👋 "
-    elseif type == "hire" then
-        prefix = "📝 "
-    else
-        prefix = "📝 "
-    end
-    
-    local timestamp = os.date("%H:%M:%S")
-    print(string.format("[%s] %s%s", timestamp, prefix, message))
-    
     -- Обновляем лог в GUI если он существует
     if _G.GUILogger then
         _G.GUILogger(message, type)
@@ -86,7 +59,6 @@ local function calculateTotalSpots(propertyUID)
     
     local totalSpots = buildingData.Spots or 0
     
-    -- Добавляем места от улучшений
     if property.Built then
         for _, upgrade in ipairs(property.Built) do
             if upgrade ~= "Main" and buildingData.Upgrades and buildingData.Upgrades[upgrade] then
@@ -111,17 +83,6 @@ local function calculateOccupiedSpots(propertyUID)
     end
     
     return occupied
-end
-
--- Функция проверки полностью ли заполнен объект
-local function isPropertyFullyOccupied(propertyUID)
-    if not propertyUID then return false end
-    
-    local totalSpots = calculateTotalSpots(propertyUID)
-    if totalSpots == 0 then return false end
-    
-    local occupiedSpots = calculateOccupiedSpots(propertyUID)
-    return occupiedSpots >= totalSpots
 end
 
 -- Функция проверки есть ли свободные места
@@ -152,60 +113,40 @@ local function updatePropertyCache()
         if propertyUID and property then
             local totalSpots = calculateTotalSpots(propertyUID)
             local occupiedSpots = calculateOccupiedSpots(propertyUID)
-            local availableSpots = getAvailableSpotsCount(propertyUID)
             
             newCache[propertyUID] = {
                 BuildingType = property.BuildingType,
                 District = property.District,
                 Address = property.Address,
                 Income = property.Income or 0,
-                Renters = property.Renters and #property.Renters or 0,
                 TotalSpots = totalSpots,
                 OccupiedSpots = occupiedSpots,
-                AvailableSpots = availableSpots,
-                FullyOccupied = isPropertyFullyOccupied(propertyUID),
+                AvailableSpots = getAvailableSpotsCount(propertyUID),
                 UID = propertyUID
             }
             
-            -- Проверяем новый ли это объект
             if not propertyCache[propertyUID] and property.BuildingType ~= "Empty" then
                 newProperties = newProperties + 1
-                log(string.format("Обнаружен новый объект: %s (%s) - %d/%d мест", 
-                    propertyUID, property.BuildingType, occupiedSpots, totalSpots), "info")
             end
         end
     end
     
-    -- Обновляем счетчик
-    if newProperties > 0 then
-        log(string.format("🎉 Найдено %d новых объектов!", newProperties), "success")
-    end
-    
     propertyCache = newCache
-    lastPropertyCount = #allProperties
-    
     return newProperties
 end
 
 -- Функция расчета дохода от арендатора
 local function calculateRenterIncome(propertyUID, renter)
-    if not propertyUID or not renter then
-        return 0
-    end
+    if not propertyUID or not renter then return 0 end
     
     local property = Portfolio.GetAll(propertyUID)
-    if not property or property.BuildingType == "Empty" then 
-        return 0 
-    end
+    if not property or property.BuildingType == "Empty" then return 0 end
     
-    -- Получаем данные о здании
     local buildingData = Building[property.BuildingType]
     if not buildingData then return 0 end
     
-    -- Базовый доход
     local baseRent = buildingData.BaseRent or 0
     
-    -- Добавляем бонусы от улучшений
     if property.Built then
         for _, upgrade in ipairs(property.Built) do
             if upgrade ~= "Main" and buildingData.Upgrades and buildingData.Upgrades[upgrade] then
@@ -214,10 +155,7 @@ local function calculateRenterIncome(propertyUID, renter)
         end
     end
     
-    -- Множитель звезд: 1 звезда = 50%, 5 звезд = 250%
     local starMultiplier = 0.5 + (renter.Stars or 1) * 0.5
-    
-    -- Бонус от бухгалтера
     local accountantBonus = 1
     local workers = PlayerDataClient.Get("Workers")
     if workers and workers.Accountant then
@@ -225,10 +163,10 @@ local function calculateRenterIncome(propertyUID, renter)
     end
     
     local totalIncome = baseRent * starMultiplier * accountantBonus
-    return math.floor((totalIncome or 0) * 100) / 100  -- Округляем до 2 знаков
+    return math.floor((totalIncome or 0) * 100) / 100
 end
 
--- Функция получения всех заявок отсортированных по доходности (от лучшей к худшей)
+-- Функция получения всех заявок отсортированных по доходности
 local function getAllApplicantsSorted(propertyUID)
     if not propertyUID then return {} end
     
@@ -254,7 +192,6 @@ local function getAllApplicantsSorted(propertyUID)
         end
     end
     
-    -- Сортируем по доходу (от большего к меньшему), затем по звездам
     if #applicants > 0 then
         table.sort(applicants, function(a, b)
             if (a.income or 0) == (b.income or 0) then
@@ -267,7 +204,7 @@ local function getAllApplicantsSorted(propertyUID)
     return applicants
 end
 
--- Функция получения всех арендаторов отсортированных по доходности (от худшего к лучшему)
+-- Функция получения всех арендаторов отсортированных по доходности
 local function getAllRentersSorted(propertyUID)
     if not propertyUID then return {} end
     
@@ -293,7 +230,6 @@ local function getAllRentersSorted(propertyUID)
         end
     end
     
-    -- Сортируем по доходу (от меньшего к большему), затем по звездам
     if #renters > 0 then
         table.sort(renters, function(a, b)
             if (a.income or 0) == (b.income or 0) then
@@ -365,7 +301,7 @@ local function denyApplicant(propertyUID, applicantId)
     end
 end
 
--- Функция заполнения всех свободных мест лучшими заявками (от 3+ звезд)
+-- Функция заполнения всех свободных мест
 local function fillAllAvailableSpots(propertyUID)
     if not propertyUID then return 0, 0 end
     
@@ -378,10 +314,6 @@ local function fillAllAvailableSpots(propertyUID)
     local acceptedCount = 0
     local totalIncomeGain = 0
     
-    log(string.format("  [%s] Ищу заявки от %d⭐ для %d свободных мест", 
-        propertyUID, MIN_STARS_FOR_NEW, availableSpots), "spot")
-    
-    -- Принимаем лучших заявок (от 3+ звезд) пока есть места
     for i = 1, math.min(availableSpots, #applicants) do
         local applicant = applicants[i]
         if applicant and applicant.stars and applicant.stars >= MIN_STARS_FOR_NEW then
@@ -389,58 +321,32 @@ local function fillAllAvailableSpots(propertyUID)
             if success then
                 acceptedCount = acceptedCount + 1
                 totalIncomeGain = totalIncomeGain + (applicant.income or 0)
-                log(string.format("  [%s] 📝 Принят %s (%d⭐, +$%.2f)", 
+                log(string.format("[%s] Принят %s (%d⭐, +$%.2f)", 
                     propertyUID, applicant.id, applicant.stars, applicant.income or 0), "hire")
                 
-                -- Небольшая задержка между принятиями
                 task.wait(0.3)
-            else
-                log(string.format("  [%s] ❌ Ошибка при принятии %s: %s", 
-                    propertyUID, applicant.id, message), "error")
             end
-        else
-            log(string.format("  [%s] ⚠️ Пропуск %s (только %d⭐, нужно %d+)", 
-                propertyUID, applicant.id, applicant.stars or 0, MIN_STARS_FOR_NEW), "warning")
         end
-    end
-    
-    if acceptedCount > 0 then
-        log(string.format("  [%s] ✅ Заполнено %d мест (+$%.2f)", 
-            propertyUID, acceptedCount, totalIncomeGain), "success")
     end
     
     return acceptedCount, totalIncomeGain
 end
 
--- Функция полной оптимизации ВСЕХ мест (агрессивная замена)
+-- Функция полной оптимизации всех мест
 local function optimizeAllSpotsAggressive(propertyUID)
-    if not propertyUID then
-        log("Ошибка: propertyUID не указан", "error")
-        return 0, 0, 0
-    end
+    if not propertyUID then return 0, 0, 0 end
     
     local currentRenters = getAllRentersSorted(propertyUID)
     local currentApplicants = getAllApplicantsSorted(propertyUID)
-    local totalSpots = calculateTotalSpots(propertyUID)
     
-    if #currentRenters == 0 then
-        log(string.format("  [%s] Нет арендаторов для оптимизации", propertyUID), "info")
+    if #currentRenters == 0 or #currentApplicants == 0 then
         return 0, 0, 0
     end
-    
-    if #currentApplicants == 0 then
-        log(string.format("  [%s] Нет заявок для сравнения", propertyUID), "info")
-        return 0, 0, 0
-    end
-    
-    log(string.format("  [%s] Анализ %d арендаторов и %d заявок...", 
-        propertyUID, #currentRenters, #currentApplicants), "info")
     
     local replacementsMade = 0
     local totalIncomeIncrease = 0
     local skippedLowStars = 0
     
-    -- Создаем копии для безопасной модификации
     local rentersCopy = {}
     for _, renter in ipairs(currentRenters) do
         table.insert(rentersCopy, renter)
@@ -451,32 +357,19 @@ local function optimizeAllSpotsAggressive(propertyUID)
         table.insert(applicantsCopy, applicant)
     end
     
-    -- Сортируем арендаторов от худшего к лучшему
     table.sort(rentersCopy, function(a, b)
         return (a.income or 0) < (b.income or 0)
     end)
     
-    -- Сортируем заявки от лучшей к худшей
     table.sort(applicantsCopy, function(a, b)
         return (a.income or 0) > (b.income or 0)
     end)
     
-    -- Проходим по всем арендаторам
     for renterIndex = #rentersCopy, 1, -1 do
         local worstRenter = rentersCopy[renterIndex]
         
-        if not worstRenter or not worstRenter.income then
-            log(string.format("  [%s] Пропуск арендатора: нет данных", propertyUID), "warning")
-            break
-        end
+        if not worstRenter or not worstRenter.income then break end
         
-        -- Проверяем звезды текущего арендатора
-        if worstRenter.stars and worstRenter.stars < MIN_STARS then
-            log(string.format("  [%s] ⭐ Арендатор %s имеет только %d⭐ (минимум %d)", 
-                propertyUID, worstRenter.id, worstRenter.stars, MIN_STARS), "info")
-        end
-        
-        -- Ищем лучшую заявку для замены
         local bestReplacement = nil
         local bestReplacementIndex = 0
         
@@ -484,7 +377,6 @@ local function optimizeAllSpotsAggressive(propertyUID)
             local applicant = applicantsCopy[applicantIndex]
             
             if applicant and applicant.income and applicant.stars then
-                -- Проверяем, лучше ли заявка и соответствует ли требованиям по звездам
                 if applicant.income > worstRenter.income and applicant.stars >= MIN_STARS_FOR_NEW then
                     bestReplacement = applicant
                     bestReplacementIndex = applicantIndex
@@ -493,81 +385,52 @@ local function optimizeAllSpotsAggressive(propertyUID)
             end
         end
         
-        -- Если нашли замену
         if bestReplacement then
             local profitDifference = bestReplacement.income - worstRenter.income
             
-            log(string.format("  [%s] 🔄 Найдена замена: %s (%d⭐, $%.2f) → %s (%d⭐, $%.2f) [+$%.2f]", 
-                propertyUID, worstRenter.id, worstRenter.stars or 0, worstRenter.income,
-                bestReplacement.id, bestReplacement.stars, bestReplacement.income, profitDifference), "spot")
-            
-            -- Выселяем худшего арендатора
             local success1, message1 = evictRenter(propertyUID, worstRenter.id)
             if success1 then
                 task.wait(0.5)
                 
-                -- Принимаем лучшую заявку
                 local success2, message2 = acceptApplicant(propertyUID, bestReplacement.id)
                 if success2 then
                     replacementsMade = replacementsMade + 1
                     totalIncomeIncrease = totalIncomeIncrease + profitDifference
                     statsData.totalReplacements = statsData.totalReplacements + 1
                     
-                    log(string.format("  [%s] ✅ Успешная замена: +$%.2f", propertyUID, profitDifference), "success")
+                    log(string.format("[%s] Замена: %s→%s (+$%.2f)", 
+                        propertyUID, worstRenter.id, bestReplacement.id, profitDifference), "spot")
                     
-                    -- Удаляем замененных из списков
                     table.remove(rentersCopy, renterIndex)
                     table.remove(applicantsCopy, bestReplacementIndex)
                     
-                    -- Небольшая пауза перед следующей заменой
                     task.wait(0.3)
-                else
-                    log(string.format("  [%s] ❌ Ошибка при принятии: %s", propertyUID, message2), "error")
                 end
-            else
-                log(string.format("  [%s] ❌ Ошибка при выселении: %s", propertyUID, message1), "error")
             end
-        else
-            -- Проверяем если у арендатора низкий рейтинг
-            if worstRenter.stars and worstRenter.stars < MIN_STARS and AGGRESSIVE_REPLACEMENT then
-                log(string.format("  [%s] ⚠️ Арендатор %s имеет только %d⭐ (минимум %d)", 
-                    propertyUID, worstRenter.id, worstRenter.stars, MIN_STARS), "warning")
+        elseif worstRenter.stars and worstRenter.stars < MIN_STARS and AGGRESSIVE_REPLACEMENT then
+            for applicantIndex = 1, #applicantsCopy do
+                local applicant = applicantsCopy[applicantIndex]
                 
-                -- Ищем ЛЮБУЮ заявку от 3+ звезд
-                for applicantIndex = 1, #applicantsCopy do
-                    local applicant = applicantsCopy[applicantIndex]
-                    
-                    if applicant and applicant.stars and applicant.stars >= MIN_STARS_FOR_NEW then
-                        log(string.format("  [%s] Замена по звездам: %s (%d⭐) → %s (%d⭐)", 
-                            propertyUID, worstRenter.id, worstRenter.stars, 
-                            applicant.id, applicant.stars), "info")
+                if applicant and applicant.stars and applicant.stars >= MIN_STARS_FOR_NEW then
+                    local success1, message1 = evictRenter(propertyUID, worstRenter.id)
+                    if success1 then
+                        task.wait(0.5)
                         
-                        -- Выселяем арендатора с низкими звездами
-                        local success1, message1 = evictRenter(propertyUID, worstRenter.id)
-                        if success1 then
-                            task.wait(0.5)
+                        local success2, message2 = acceptApplicant(propertyUID, applicant.id)
+                        if success2 then
+                            replacementsMade = replacementsMade + 1
+                            totalIncomeIncrease = totalIncomeIncrease + (applicant.income or 0) - (worstRenter.income or 0)
+                            statsData.totalReplacements = statsData.totalReplacements + 1
+                            skippedLowStars = skippedLowStars + 1
                             
-                            -- Принимаем новую заявку
-                            local success2, message2 = acceptApplicant(propertyUID, applicant.id)
-                            if success2 then
-                                replacementsMade = replacementsMade + 1
-                                totalIncomeIncrease = totalIncomeIncrease + (applicant.income or 0) - (worstRenter.income or 0)
-                                statsData.totalReplacements = statsData.totalReplacements + 1
-                                skippedLowStars = skippedLowStars + 1
-                                
-                                log(string.format("  [%s] ✅ Замена по звездам успешна", propertyUID), "success")
-                                
-                                -- Удаляем замененных из списков
-                                table.remove(rentersCopy, renterIndex)
-                                table.remove(applicantsCopy, applicantIndex)
-                                
-                                task.wait(0.3)
-                                break
-                            else
-                                log(string.format("  [%s] ❌ Ошибка при принятии: %s", propertyUID, message2), "error")
-                            end
-                        else
-                            log(string.format("  [%s] ❌ Ошибка при выселении: %s", propertyUID, message1), "error")
+                            log(string.format("[%s] Замена по звездам: %s→%s", 
+                                propertyUID, worstRenter.id, applicant.id), "spot")
+                            
+                            table.remove(rentersCopy, renterIndex)
+                            table.remove(applicantsCopy, applicantIndex)
+                            
+                            task.wait(0.3)
+                            break
                         end
                     end
                 end
@@ -575,16 +438,9 @@ local function optimizeAllSpotsAggressive(propertyUID)
         end
     end
     
-    -- Проверяем наличие свободных мест после замен
     local availableAfter = getAvailableSpotsCount(propertyUID)
     if availableAfter > 0 then
-        log(string.format("  [%s] После замен осталось %d свободных мест, заполняю...", 
-            propertyUID, availableAfter), "spot")
-        
-        local filled, incomeGain = fillAllAvailableSpots(propertyUID)
-        if filled > 0 then
-            log(string.format("  [%s] 📝 Дозаполнено %d мест", propertyUID, filled), "hire")
-        end
+        fillAllAvailableSpots(propertyUID)
     end
     
     return replacementsMade, totalIncomeIncrease, skippedLowStars
@@ -592,9 +448,7 @@ end
 
 -- Основная функция оптимизации одного объекта
 local function optimizeProperty(propertyUID)
-    if not propertyUID then
-        return "error|Не указан propertyUID"
-    end
+    if not propertyUID then return "error" end
     
     local property = Portfolio.GetAll(propertyUID)
     if not property or property.BuildingType == "Empty" then
@@ -609,45 +463,26 @@ local function optimizeProperty(propertyUID)
     local totalSpots = calculateTotalSpots(propertyUID)
     local occupiedSpots = calculateOccupiedSpots(propertyUID)
     local availableSpots = getAvailableSpotsCount(propertyUID)
-    local fullyOccupied = isPropertyFullyOccupied(propertyUID)
     local hasApplicants = property.Applicants and next(property.Applicants)
     
-    log(string.format("[%s] %s: %d/%d мест (%d свободно)", 
-        propertyUID, property.BuildingType, occupiedSpots, totalSpots, availableSpots), "info")
-    
-    -- Если нет заявок, пропускаем
     if not hasApplicants then
-        log(string.format("  [%s] Нет заявок для обработки", propertyUID), "warning")
         return "no_applicants"
     end
     
-    -- СЦЕНАРИЙ 1: Есть свободные места - заполняем лучшими от 3+ звезд
     if availableSpots > 0 then
-        log(string.format("  [%s] Есть %d свободных мест, заполняю от %d⭐...", 
-            propertyUID, availableSpots, MIN_STARS_FOR_NEW), "spot")
-        
         local filled, incomeGain = fillAllAvailableSpots(propertyUID)
         if filled > 0 then
             return string.format("filled|%d|+$%.2f", filled, incomeGain)
-        else
-            log(string.format("  [%s] Нет подходящих заявок (от %d⭐)", 
-                propertyUID, MIN_STARS_FOR_NEW), "warning")
         end
     end
     
-    -- СЦЕНАРИЙ 2: Объект полностью заполнен - агрессивная оптимизация
-    if fullyOccupied or occupiedSpots > 0 then
-        log(string.format("  [%s] Проверка %d занятых мест...", propertyUID, occupiedSpots), "info")
-        
+    if occupiedSpots > 0 then
         local replaced, incomeIncrease, skipped = optimizeAllSpotsAggressive(propertyUID)
         if replaced > 0 or skipped > 0 then
             return string.format("replaced|%d|+$%.2f|skipped:%d", replaced, incomeIncrease, skipped)
-        else
-            log(string.format("  [%s] Все арендаторы оптимальны", propertyUID), "info")
         end
     end
     
-    -- СЦЕНАРИЙ 3: Автоматическое отклонение плохих заявок (<3 звезд)
     if AUTO_DENY_BAD_APPLICANTS and hasApplicants then
         local deniedCount = 0
         for applicantId, applicant in pairs(property.Applicants) do
@@ -659,8 +494,6 @@ local function optimizeProperty(propertyUID)
                         local success, message = denyApplicant(propertyUID, applicantId)
                         if success then
                             deniedCount = deniedCount + 1
-                            log(string.format("  [%s] 🗑️ Отклонена плохая заявка %s (%d⭐)", 
-                                propertyUID, applicantId, stars), "warning")
                         end
                     end
                 end
@@ -708,7 +541,6 @@ local function updateStatistics()
             occupiedSpotsAll = occupiedSpotsAll + occupied
             totalIncome = totalIncome + (property.Income or 0)
             
-            -- Находим лучший объект
             if property.Income and property.Income > bestPropertyIncome then
                 bestPropertyIncome = property.Income
                 bestProperty = {
@@ -729,9 +561,7 @@ local function updateStatistics()
     statsData.totalIncome = totalIncome
     statsData.occupancyRate = percentageOccupied
     statsData.bestProperty = bestProperty
-    statsData.lastUpdate = os.time()
     
-    -- Обновляем GUI если существует
     if _G.UpdateGUIStats then
         _G.UpdateGUIStats(statsData)
     end
@@ -744,21 +574,15 @@ local function optimizeAllProperties()
     local cycleStartTime = tick()
     cycleCount = cycleCount + 1
     
-    log(string.format("\n🔄 ЦИКЛ ОПТИМИЗАЦИИ #%d", cycleCount), "info")
-    log("⚡ Алгоритм: Агрессивная замена + заполнение от 3⭐", "info")
+    log(string.format("ЦИКЛ ОПТИМИЗАЦИИ #%d", cycleCount), "info")
     
-    -- Сохраняем доход до оптимизации
     local incomeBefore = calculateTotalPortfolioIncome()
-    
-    -- Обновляем кэш и проверяем новые объекты
     local newProperties = updatePropertyCache()
-    
     local allProperties = Portfolio.GetPortfolio()
     local optimizedCount = 0
     local totalFilled = 0
     local totalReplaced = 0
     
-    -- Оптимизируем каждый объект
     for propertyUID, property in pairs(allProperties) do
         if property and property.BuildingType and property.BuildingType ~= "Empty" then
             local result = optimizeProperty(propertyUID)
@@ -766,34 +590,22 @@ local function optimizeAllProperties()
             if result:find("filled|") then
                 local parts = result:split("|")
                 optimizedCount = optimizedCount + 1
-                totalFilled = totalFilled + tonumber(parts[2]) or 0
-                log(string.format("[%s] ✅ Заполнено %s мест %s", 
-                    propertyUID, parts[2], parts[3]), "success")
+                totalFilled = totalFilled + (tonumber(parts[2]) or 0)
+                log(string.format("Заполнено %s мест %s", parts[2], parts[3]), "success")
             elseif result:find("replaced|") then
                 local parts = result:split("|")
                 optimizedCount = optimizedCount + 1
                 totalReplaced = totalReplaced + (tonumber(parts[2]) or 0)
-                log(string.format("[%s] 🔄 Заменено %s арендаторов %s", 
-                    propertyUID, parts[2], parts[3]), "spot")
-            elseif result:find("denied|") then
-                local parts = result:split("|")
-                optimizedCount = optimizedCount + 1
-                log(string.format("[%s] 🗑️ Отклонено %s плохих заявок", 
-                    propertyUID, parts[2]), "warning")
-            elseif result:find("error|") then
-                log(string.format("[%s] ❌ Ошибка: %s", propertyUID, result), "error")
+                log(string.format("Заменено %s арендаторов %s", parts[2], parts[3]), "spot")
             end
             
-            -- Задержка между объектами
             task.wait(0.2)
         end
     end
     
-    -- Обновляем доход после оптимизации
     local incomeAfter = calculateTotalPortfolioIncome()
     local incomeChange = incomeAfter - incomeBefore
     
-    -- Очищаем кэш
     for key in pairs(processedRenters) do
         if math.random() < 0.1 then
             processedRenters[key] = nil
@@ -806,55 +618,46 @@ local function optimizeAllProperties()
         end
     end
     
-    -- Обновляем статистику
     updateStatistics()
-    
-    -- Сохраняем время цикла
     statsData.cycleTime = tick() - cycleStartTime
-    
-    -- Отчет о цикле
-    log(string.format("\n📈 РЕЗУЛЬТАТЫ ЦИКЛА #%d:", cycleCount), "info")
+    statsData.lastIncomeChange = incomeChange
     
     if incomeChange > 0 then
-        log(string.format("   💰 Прирост дохода: +$%.2f (%.1f%%)", 
+        log(string.format("Прирост дохода: +$%.2f (%.1f%%)", 
             incomeChange, (incomeChange / incomeBefore) * 100), "money")
-        statsData.lastIncomeChange = incomeChange
     elseif incomeChange < 0 then
-        log(string.format("   ⚠️ Потеря дохода: -$%.2f", math.abs(incomeChange)), "warning")
-        statsData.lastIncomeChange = incomeChange
+        log(string.format("Потеря дохода: -$%.2f", math.abs(incomeChange)), "warning")
     else
-        log("   ➖ Доход не изменился", "info")
-        statsData.lastIncomeChange = 0
+        log("Доход не изменился", "info")
     end
     
-    log(string.format("   🏢 Заполненность: %d/%d мест (%.1f%%)", 
+    log(string.format("Заполненность: %d/%d мест (%.1f%%)", 
         statsData.occupiedSpots, statsData.totalSpots, statsData.occupancyRate), "info")
     
     if totalFilled > 0 then
-        log(string.format("   📝 Новые принятия: %d арендаторов", totalFilled), "hire")
+        log(string.format("Новые принятия: %d арендаторов", totalFilled), "hire")
     end
     
     if totalReplaced > 0 then
-        log(string.format("   🔄 Заменено: %d арендаторов", totalReplaced), "spot")
+        log(string.format("Заменено: %d арендаторов", totalReplaced), "spot")
     end
     
     if statsData.totalEvicted > 0 then
-        log(string.format("   👋 Выселено: %d арендаторов", statsData.totalEvicted), "evict")
+        log(string.format("Выселено: %d арендаторов", statsData.totalEvicted), "evict")
     end
     
     if optimizedCount > 0 then
-        log(string.format("   ✅ Улучшено объектов: %d", optimizedCount), "success")
+        log(string.format("Улучшено объектов: %d", optimizedCount), "success")
     else
-        log("   💤 Все объекты уже оптимизированы", "info")
+        log("Все объекты уже оптимизированы", "info")
     end
     
-    -- Проверяем наличие новых объектов
     if newProperties > 0 then
-        log(string.format("   🎯 Обнаружено новых объектов: %d", newProperties), "info")
+        log(string.format("Обнаружено новых объектов: %d", newProperties), "info")
     end
     
-    log(string.format("   ⏱️ Время цикла: %.2f сек", statsData.cycleTime), "info")
-    log(string.format("   📊 Всего замен: %d | Принято: %d | Выселено: %d", 
+    log(string.format("Время цикла: %.2f сек", statsData.cycleTime), "info")
+    log(string.format("Всего замен: %d | Принято: %d | Выселено: %d", 
         statsData.totalReplacements, statsData.totalAccepted, statsData.totalEvicted), "info")
     
     return optimizedCount, incomeAfter
@@ -862,30 +665,23 @@ end
 
 -- Функция для отслеживания обновлений портфеля
 local function setupPortfolioListeners()
-    -- Отслеживаем добавление новых объектов
     Portfolio.GetUpdateSignal():Connect(function(propertyUID)
         if propertyUID and not propertyCache[propertyUID] then
-            log(string.format("🔔 НОВЫЙ ОБЪЕКТ: %s", propertyUID), "info")
+            log(string.format("НОВЫЙ ОБЪЕКТ: %s", propertyUID), "info")
             
-            -- Даем время на загрузку данных
             task.wait(1)
             
-            -- Оптимизируем новый объект
             if isRunning then
-                log(string.format("⚡ Автооптимизация нового объекта: %s", propertyUID), "spot")
+                log(string.format("Автооптимизация нового объекта: %s", propertyUID), "spot")
                 
-                -- Ждем еще немного для стабильности
                 task.wait(0.5)
                 optimizeProperty(propertyUID)
-                
-                -- Обновляем кэш
                 updatePropertyCache()
                 updateStatistics()
             end
         end
     end)
     
-    -- Отслеживаем новые заявки
     Portfolio.GetApplicantAddedSignal():Connect(function(propertyUID)
         if propertyUID and isRunning and AUTO_ACCEPT_GOOD_APPLICANTS then
             local property = Portfolio.GetAll(propertyUID)
@@ -894,14 +690,11 @@ local function setupPortfolioListeners()
                     if applicantId and applicant then
                         local stars = applicant.Stars or 1
                         if stars >= MIN_STARS_FOR_NEW then
-                            log(string.format("🔔 Новая хорошая заявка в %s: %d⭐", propertyUID, stars), "info")
-                            
-                            -- Проверяем есть ли свободные места
                             if hasAvailableSpots(propertyUID) then
                                 task.wait(0.5)
                                 local success, message = acceptApplicant(propertyUID, applicantId)
                                 if success then
-                                    log(string.format("✅ Автопринятие: %s (%d⭐)", applicantId, stars), "success")
+                                    log(string.format("Автопринятие: %s (%d⭐)", applicantId, stars), "success")
                                     updateStatistics()
                                 end
                             end
@@ -912,50 +705,39 @@ local function setupPortfolioListeners()
             end
         end
     end)
-    
-    log("👂 Слушатели обновлений активированы", "success")
 end
 
 -- Функция для запуска автоматической оптимизации
 local function startAutoOptimizer()
     if isRunning then
-        log("⚠️ Оптимизатор уже запущен", "warning")
+        log("Оптимизатор уже запущен", "warning")
         return
     end
     
     isRunning = true
-    log("🤖 АВТООПТИМИЗАТОР ЗАПУЩЕН", "success")
-    log(string.format("⚙️ Настройки: Замена от %d⭐ | Новые от %d⭐ | Интервал: %dс", 
-        MIN_STARS, MIN_STARS_FOR_NEW, CHECK_INTERVAL), "info")
-    log("🎯 Режим: Агрессивная замена всех слабых арендаторов", "info")
+    log("АВТООПТИМИЗАТОР ЗАПУЩЕН", "success")
+    log(string.format("Настройки: Замена от %d⭐ | Новые от %d⭐", MIN_STARS, MIN_STARS_FOR_NEW), "info")
     
-    -- Обновляем статус в GUI
     if _G.UpdateAutoStatus then
         _G.UpdateAutoStatus(true)
     end
     
-    -- Первоначальное обновление кэша и статистики
     updatePropertyCache()
     updateStatistics()
     
-    -- Запускаем основной цикл
     while isRunning do
         local startTime = tick()
         
         local optimized, totalIncome = optimizeAllProperties()
         
-        -- Если были изменения, обновляем статистику
         if optimized > 0 then
-            log(string.format("💰 Оптимизация завершена, новый доход: $%.2f", totalIncome), "money")
+            log(string.format("Оптимизация завершена, новый доход: $%.2f", totalIncome), "money")
         end
         
         local elapsedTime = tick() - startTime
         local waitTime = math.max(1, CHECK_INTERVAL - elapsedTime)
         
         if isRunning then
-            log(string.format("⏳ Следующая проверка через %.1f секунд...", waitTime), "info")
-            
-            -- Ожидание с возможностью прерывания
             for i = 1, math.floor(waitTime) do
                 if not isRunning then break end
                 task.wait(1)
@@ -963,9 +745,8 @@ local function startAutoOptimizer()
         end
     end
     
-    log("⏹️ АВТООПТИМИЗАТОР ОСТАНОВЛЕН", "warning")
+    log("АВТООПТИМИЗАТОР ОСТАНОВЛЕН", "warning")
     
-    -- Обновляем статус в GUI
     if _G.UpdateAutoStatus then
         _G.UpdateAutoStatus(false)
     end
@@ -973,24 +754,22 @@ end
 
 -- Функция для разовой оптимизации
 local function quickOptimize()
-    log("⚡ ЗАПУСК БЫСТРОЙ ОПТИМИЗАЦИИ", "info")
-    log("🎯 Алгоритм: Проверка всех мест + замена слабых", "info")
+    log("ЗАПУСК БЫСТРОЙ ОПТИМИЗАЦИИ", "info")
     updatePropertyCache()
     updateStatistics()
     optimizeAllProperties()
-    log("✅ БЫСТРАЯ ОПТИМИЗАЦИЯ ЗАВЕРШЕНА", "success")
+    log("БЫСТРАЯ ОПТИМИЗАЦИЯ ЗАВЕРШЕНА", "success")
 end
 
 -- Функция для остановки
 local function stopOptimizer()
     isRunning = false
-    log("🛑 ЗАПРОС ОСТАНОВКИ ОПТИМИЗАТОРА", "warning")
+    log("ЗАПРОС ОСТАНОВКИ ОПТИМИЗАТОРА", "warning")
 end
 
 -- Функция для принудительного заполнения всех свободных мест
 local function forceFillAllSpots()
-    log("🚀 ПРИНУДИТЕЛЬНОЕ ЗАПОЛНЕНИЕ ВСЕХ СВОБОДНЫХ МЕСТ", "spot")
-    log("📝 Принимаю заявки от 3+ звезд", "info")
+    log("ПРИНУДИТЕЛЬНОЕ ЗАПОЛНЕНИЕ ВСЕХ СВОБОДНЫХ МЕСТ", "spot")
     
     local allProperties = Portfolio.GetPortfolio()
     local totalFilled = 0
@@ -1008,17 +787,16 @@ local function forceFillAllSpots()
     end
     
     if totalFilled > 0 then
-        log(string.format("✅ Заполнено %d свободных мест (+$%.2f)", totalFilled, totalIncomeGain), "success")
+        log(string.format("Заполнено %d свободных мест (+$%.2f)", totalFilled, totalIncomeGain), "success")
         updateStatistics()
     else
-        log("💤 Все места уже заполнены или нет подходящих заявок", "info")
+        log("Все места уже заполнены или нет подходящих заявок", "info")
     end
 end
 
 -- Функция для агрессивной замены всех слабых арендаторов
 local function aggressiveReplaceAll()
-    log("💥 АГРЕССИВНАЯ ЗАМЕНА ВСЕХ СЛАБЫХ АРЕНДАТОРОВ", "spot")
-    log("⚡ Замена арендаторов <3⭐ и низкого дохода", "info")
+    log("АГРЕССИВНАЯ ЗАМЕНА ВСЕХ СЛАБЫХ АРЕНДАТОРОВ", "spot")
     
     local allProperties = Portfolio.GetPortfolio()
     local totalReplaced = 0
@@ -1034,27 +812,27 @@ local function aggressiveReplaceAll()
     end
     
     if totalReplaced > 0 then
-        log(string.format("✅ Заменено %d арендаторов (+$%.2f)", totalReplaced, totalIncomeIncrease), "success")
+        log(string.format("Заменено %d арендаторов (+$%.2f)", totalReplaced, totalIncomeIncrease), "success")
         updateStatistics()
     else
-        log("💤 Все арендаторы уже оптимальны", "info")
+        log("Все арендаторы уже оптимальны", "info")
     end
 end
 
--- Функция создания Premium Mobile UI с ScrollingFrame
-local function createPremiumMobileUI()
+-- Функция создания оптимизированного GUI
+local function createOptimizedGUI()
     local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
     
     -- Удаляем старый GUI если есть
-    local oldGUI = PlayerGui:FindFirstChild("RenterOptimizerPremiumUI")
+    local oldGUI = PlayerGui:FindFirstChild("AutoOptimizerUI")
     if oldGUI then oldGUI:Destroy() end
     
     -- Создаем новый GUI
     local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "RenterOptimizerPremiumUI"
+    ScreenGui.Name = "AutoOptimizerUI"
     ScreenGui.Parent = PlayerGui
     
-    -- Основной контейнер (Draggable)
+    -- Основной контейнер
     local MainContainer = Instance.new("Frame")
     MainContainer.Size = UDim2.new(0, 340, 0, 500)
     MainContainer.Position = UDim2.new(0.5, -170, 0.5, -250)
@@ -1064,12 +842,12 @@ local function createPremiumMobileUI()
     MainContainer.ClipsDescendants = true
     MainContainer.Parent = ScreenGui
     
-    -- Скругление углов (скрываем острые края)
+    -- Скругление углов
     local ContainerCorner = Instance.new("UICorner")
     ContainerCorner.CornerRadius = UDim.new(0, 20)
     ContainerCorner.Parent = MainContainer
     
-    -- Внутренняя маска для скрытия углов у дочерних элементов
+    -- Внутренняя маска
     local ContainerMask = Instance.new("Frame")
     ContainerMask.Size = UDim2.new(1, 0, 1, 0)
     ContainerMask.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
@@ -1081,17 +859,7 @@ local function createPremiumMobileUI()
     MaskCorner.CornerRadius = UDim.new(0, 20)
     MaskCorner.Parent = ContainerMask
     
-    -- Эффект градиента фона
-    local Gradient = Instance.new("UIGradient")
-    Gradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 25, 40)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(20, 20, 35)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 15, 30))
-    })
-    Gradient.Rotation = 45
-    Gradient.Parent = ContainerMask
-    
-    -- Тень с мягкими краями
+    -- Тень
     local Shadow = Instance.new("ImageLabel")
     Shadow.Size = UDim2.new(1, 20, 1, 20)
     Shadow.Position = UDim2.new(0, -10, 0, -10)
@@ -1103,7 +871,7 @@ local function createPremiumMobileUI()
     Shadow.SliceCenter = Rect.new(10, 10, 118, 118)
     Shadow.Parent = MainContainer
     
-    -- Заголовок с иконкой (Draggable область)
+    -- Заголовок
     local Header = Instance.new("Frame")
     Header.Size = UDim2.new(1, 0, 0, 55)
     Header.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
@@ -1114,15 +882,30 @@ local function createPremiumMobileUI()
     HeaderCorner.CornerRadius = UDim.new(0, 20)
     HeaderCorner.Parent = Header
     
-    -- Верхний градиент заголовка
-    local HeaderGradient = Instance.new("UIGradient")
-    HeaderGradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 70)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 50))
-    })
-    HeaderGradient.Parent = Header
+    -- Кнопка закрытия
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Size = UDim2.new(0, 30, 0, 30)
+    CloseButton.Position = UDim2.new(1, -35, 0.5, -15)
+    CloseButton.BackgroundTransparency = 1
+    CloseButton.Text = "✕"
+    CloseButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    CloseButton.Font = Enum.Font.GothamBold
+    CloseButton.TextSize = 20
+    CloseButton.Parent = Header
     
-    -- Иконка робота
+    CloseButton.MouseButton1Click:Connect(function()
+        local fadeOut = TweenService:Create(MainContainer, TweenInfo.new(0.3), {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 0, 0, 0)
+        })
+        fadeOut:Play()
+        
+        fadeOut.Completed:Connect(function()
+            ScreenGui:Destroy()
+        end)
+    end)
+    
+    -- Иконка
     local RobotIcon = Instance.new("ImageLabel")
     RobotIcon.Size = UDim2.new(0, 45, 0, 45)
     RobotIcon.Position = UDim2.new(0, 10, 0.5, -22.5)
@@ -1141,58 +924,37 @@ local function createPremiumMobileUI()
     Title.Text = "🤖 АВТООПТИМИЗАТОР"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.Font = Enum.Font.GothamBold
-    Title.TextSize = 18
+    Title.TextSize = 16
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.Parent = Header
     
-    -- Подзаголовок версии
-    local Subtitle = Instance.new("TextLabel")
-    Subtitle.Size = UDim2.new(0.6, 0, 0, 20)
-    Subtitle.Position = UDim2.new(0, 65, 0, 30)
-    Subtitle.BackgroundTransparency = 1
-    Subtitle.Text = "Premium v5.0"
-    Subtitle.TextColor3 = Color3.fromRGB(180, 200, 255)
-    Subtitle.Font = Enum.Font.Gotham
-    Subtitle.TextSize = 12
-    Subtitle.TextXAlignment = Enum.TextXAlignment.Left
-    Subtitle.Parent = Header
+    -- Статус
+    local Status = Instance.new("TextLabel")
+    Status.Size = UDim2.new(0.6, 0, 0, 20)
+    Status.Position = UDim2.new(0, 65, 0, 30)
+    Status.BackgroundTransparency = 1
+    Status.Text = "v5.1 | Остановлен"
+    Status.TextColor3 = Color3.fromRGB(180, 200, 255)
+    Status.Font = Enum.Font.Gotham
+    Status.TextSize = 11
+    Status.TextXAlignment = Enum.TextXAlignment.Left
+    Status.Name = "StatusLabel"
+    Status.Parent = Header
     
-    -- Индикатор статуса
+    -- Индикатор
     local StatusIndicator = Instance.new("Frame")
-    StatusIndicator.Size = UDim2.new(0, 14, 0, 14)
-    StatusIndicator.Position = UDim2.new(1, -60, 0.5, -7)
+    StatusIndicator.Size = UDim2.new(0, 12, 0, 12)
+    StatusIndicator.Position = UDim2.new(1, -55, 0.5, -6)
     StatusIndicator.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
     StatusIndicator.BorderSizePixel = 0
-    StatusIndicator.Name = "StatusIndicator"
     
     local StatusCorner = Instance.new("UICorner")
     StatusCorner.CornerRadius = UDim.new(1, 0)
     StatusCorner.Parent = StatusIndicator
     
-    local StatusGlow = Instance.new("ImageLabel")
-    StatusGlow.Size = UDim2.new(1, 6, 1, 6)
-    StatusGlow.Position = UDim2.new(0, -3, 0, -3)
-    StatusGlow.BackgroundTransparency = 1
-    StatusGlow.Image = "rbxassetid://4996891970"
-    StatusGlow.ImageColor3 = Color3.fromRGB(255, 50, 50)
-    StatusGlow.ImageTransparency = 0.6
-    StatusGlow.Parent = StatusIndicator
-    
     StatusIndicator.Parent = Header
     
-    -- Кнопка свернуть/развернуть
-    local ToggleButton = Instance.new("TextButton")
-    ToggleButton.Size = UDim2.new(0, 40, 0, 40)
-    ToggleButton.Position = UDim2.new(1, -45, 0.5, -20)
-    ToggleButton.BackgroundTransparency = 1
-    ToggleButton.Text = "▼"
-    ToggleButton.TextColor3 = Color3.fromRGB(200, 220, 255)
-    ToggleButton.Font = Enum.Font.GothamBold
-    ToggleButton.TextSize = 22
-    ToggleButton.Name = "ToggleButton"
-    ToggleButton.Parent = Header
-    
-    -- Основной ScrollingFrame для содержимого
+    -- ScrollingFrame для контента
     local MainScrollingFrame = Instance.new("ScrollingFrame")
     MainScrollingFrame.Size = UDim2.new(1, 0, 1, -60)
     MainScrollingFrame.Position = UDim2.new(0, 0, 0, 55)
@@ -1201,14 +963,12 @@ local function createPremiumMobileUI()
     MainScrollingFrame.ScrollBarThickness = 4
     MainScrollingFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255)
     MainScrollingFrame.ScrollBarImageTransparency = 0.7
-    MainScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 800)
+    MainScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     MainScrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    MainScrollingFrame.VerticalScrollBarInset = Enum.ScrollBarInset.Always
     MainScrollingFrame.Parent = ContainerMask
     
-    -- Контейнер для элементов внутри ScrollingFrame
     local ContentContainer = Instance.new("Frame")
-    ContentContainer.Size = UDim2.new(1, 0, 0, 800)
+    ContentContainer.Size = UDim2.new(1, 0, 0, 0)
     ContentContainer.BackgroundTransparency = 1
     ContentContainer.Parent = MainScrollingFrame
     
@@ -1217,9 +977,9 @@ local function createPremiumMobileUI()
     UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
     UIListLayout.Parent = ContentContainer
     
-    -- Карточка статистики
+    -- Статистика
     local StatsCard = Instance.new("Frame")
-    StatsCard.Size = UDim2.new(1, -20, 0, 160)
+    StatsCard.Size = UDim2.new(1, -20, 0, 150)
     StatsCard.Position = UDim2.new(0, 10, 0, 0)
     StatsCard.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
     StatsCard.BorderSizePixel = 0
@@ -1229,35 +989,19 @@ local function createPremiumMobileUI()
     StatsCorner.CornerRadius = UDim.new(0, 15)
     StatsCorner.Parent = StatsCard
     
-    local StatsStroke = Instance.new("UIStroke")
-    StatsStroke.Color = Color3.fromRGB(100, 150, 255)
-    StatsStroke.Thickness = 1.5
-    StatsStroke.Transparency = 0.3
-    StatsStroke.Parent = StatsCard
-    
-    StatsCard.Parent = ContentContainer
-    
-    -- Заголовок статистики
     local StatsTitle = Instance.new("TextLabel")
-    StatsTitle.Size = UDim2.new(1, 0, 0, 35)
+    StatsTitle.Size = UDim2.new(1, 0, 0, 30)
     StatsTitle.BackgroundTransparency = 1
-    StatsTitle.Text = "📊 СТАТИСТИКА В РЕАЛЬНОМ ВРЕМЕНИ"
+    StatsTitle.Text = "📊 СТАТИСТИКА"
     StatsTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     StatsTitle.Font = Enum.Font.GothamBold
     StatsTitle.TextSize = 14
     StatsTitle.Parent = StatsCard
     
-    -- Сетка для статистики (2 колонки)
-    local StatsGrid = Instance.new("Frame")
-    StatsGrid.Size = UDim2.new(1, -20, 1, -45)
-    StatsGrid.Position = UDim2.new(0, 10, 0, 35)
-    StatsGrid.BackgroundTransparency = 1
-    StatsGrid.Parent = StatsCard
-    
-    -- Функция создания элемента статистики
-    local function createStatItem(name, value, color, icon, position, size)
+    -- Создаем элементы статистики
+    local function createStatItem(name, value, color, icon, position)
         local frame = Instance.new("Frame")
-        frame.Size = size or UDim2.new(0.48, -5, 0, 28)
+        frame.Size = UDim2.new(0.48, -5, 0, 28)
         frame.Position = position
         frame.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
         frame.BorderSizePixel = 0
@@ -1301,7 +1045,12 @@ local function createPremiumMobileUI()
         return frame, valueLabel
     end
     
-    -- Создаем элементы статистики (первая строка)
+    local StatsGrid = Instance.new("Frame")
+    StatsGrid.Size = UDim2.new(1, -20, 1, -40)
+    StatsGrid.Position = UDim2.new(0, 10, 0, 35)
+    StatsGrid.BackgroundTransparency = 1
+    StatsGrid.Parent = StatsCard
+    
     local incomeFrame, incomeStat = createStatItem("Доход:", "$0.00", 
         Color3.fromRGB(100, 255, 100), "💰", UDim2.new(0, 0, 0, 0))
     incomeFrame.Parent = StatsGrid
@@ -1310,7 +1059,6 @@ local function createPremiumMobileUI()
         Color3.fromRGB(100, 200, 255), "🏢", UDim2.new(0.52, 5, 0, 0))
     propertiesFrame.Parent = StatsGrid
     
-    -- Вторая строка
     local occupancyFrame, occupancyStat = createStatItem("Заполнено:", "0%", 
         Color3.fromRGB(255, 200, 100), "📈", UDim2.new(0, 0, 0, 33))
     occupancyFrame.Parent = StatsGrid
@@ -1319,7 +1067,6 @@ local function createPremiumMobileUI()
         Color3.fromRGB(200, 100, 255), "🔄", UDim2.new(0.52, 5, 0, 33))
     cycleFrame.Parent = StatsGrid
     
-    -- Третья строка
     local changeFrame, changeStat = createStatItem("Изменение:", "+$0.00", 
         Color3.fromRGB(255, 255, 100), "📊", UDim2.new(0, 0, 0, 66))
     changeFrame.Parent = StatsGrid
@@ -1328,67 +1075,21 @@ local function createPremiumMobileUI()
         Color3.fromRGB(100, 255, 255), "⏱️", UDim2.new(0.52, 5, 0, 66))
     timeFrame.Parent = StatsGrid
     
-    -- Четвертая строка (полная ширина)
-    local replacementsFrame, replacementsStat = createStatItem("Всего замен:", "0", 
-        Color3.fromRGB(255, 150, 100), "👥", UDim2.new(0, 0, 0, 99), UDim2.new(1, 0, 0, 28))
-    replacementsFrame.Parent = StatsGrid
+    StatsCard.Parent = ContentContainer
     
-    -- Карточка лучшего объекта
-    local BestPropertyCard = Instance.new("Frame")
-    BestPropertyCard.Size = UDim2.new(1, -20, 0, 90)
-    BestPropertyCard.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
-    BestPropertyCard.BorderSizePixel = 0
-    BestPropertyCard.LayoutOrder = 2
-    
-    local BestCorner = Instance.new("UICorner")
-    BestCorner.CornerRadius = UDim.new(0, 15)
-    BestCorner.Parent = BestPropertyCard
-    
-    local BestStroke = Instance.new("UIStroke")
-    BestStroke.Color = Color3.fromRGB(255, 200, 100)
-    BestStroke.Thickness = 1.5
-    BestStroke.Transparency = 0.3
-    BestStroke.Parent = BestPropertyCard
-    
-    BestPropertyCard.Parent = ContentContainer
-    
-    local BestTitle = Instance.new("TextLabel")
-    BestTitle.Size = UDim2.new(1, 0, 0, 30)
-    BestTitle.BackgroundTransparency = 1
-    BestTitle.Text = "🏆 ЛУЧШИЙ ОБЪЕКТ"
-    BestTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    BestTitle.Font = Enum.Font.GothamBold
-    BestTitle.TextSize = 14
-    BestTitle.Parent = BestPropertyCard
-    
-    local BestInfo = Instance.new("TextLabel")
-    BestInfo.Size = UDim2.new(1, -20, 0.7, -30)
-    BestInfo.Position = UDim2.new(0, 10, 0, 30)
-    BestInfo.BackgroundTransparency = 1
-    BestInfo.Text = "Загрузка данных..."
-    BestInfo.TextColor3 = Color3.fromRGB(200, 210, 230)
-    BestInfo.Font = Enum.Font.Gotham
-    BestInfo.TextSize = 11
-    BestInfo.TextWrapped = true
-    BestInfo.TextXAlignment = Enum.TextXAlignment.Left
-    BestInfo.Name = "BestInfo"
-    BestInfo.Parent = BestPropertyCard
-    
-    -- Панель управления
+    -- Управление
     local ControlCard = Instance.new("Frame")
-    ControlCard.Size = UDim2.new(1, -20, 0, 180)
+    ControlCard.Size = UDim2.new(1, -20, 0, 130)
     ControlCard.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
     ControlCard.BorderSizePixel = 0
-    ControlCard.LayoutOrder = 3
+    ControlCard.LayoutOrder = 2
     
     local ControlCorner = Instance.new("UICorner")
     ControlCorner.CornerRadius = UDim.new(0, 15)
     ControlCorner.Parent = ControlCard
     
-    ControlCard.Parent = ContentContainer
-    
     local ControlTitle = Instance.new("TextLabel")
-    ControlTitle.Size = UDim2.new(1, 0, 0, 35)
+    ControlTitle.Size = UDim2.new(1, 0, 0, 30)
     ControlTitle.BackgroundTransparency = 1
     ControlTitle.Text = "🎮 УПРАВЛЕНИЕ"
     ControlTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1396,149 +1097,78 @@ local function createPremiumMobileUI()
     ControlTitle.TextSize = 14
     ControlTitle.Parent = ControlCard
     
-    -- Контейнер для кнопок управления
-    local ButtonsContainer = Instance.new("Frame")
-    ButtonsContainer.Size = UDim2.new(1, -20, 1, -45)
-    ButtonsContainer.Position = UDim2.new(0, 10, 0, 35)
-    ButtonsContainer.BackgroundTransparency = 1
-    ButtonsContainer.Parent = ControlCard
+    ControlCard.Parent = ContentContainer
     
-    -- Функция создания красивой кнопки
-    local function createControlButton(text, icon, color, position, callback)
+    -- Кнопки
+    local function createButton(text, color, callback)
         local button = Instance.new("TextButton")
-        button.Size = UDim2.new(0.48, -5, 0, 60)
-        button.Position = position
+        button.Size = UDim2.new(0.48, -5, 0, 45)
         button.BackgroundColor3 = color
-        button.Text = ""
-        button.AutoButtonColor = true
+        button.Text = text
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.Font = Enum.Font.Gotham
+        button.TextSize = 13
         
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 12)
+        corner.CornerRadius = UDim.new(0, 10)
         corner.Parent = button
         
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(255, 255, 255)
-        stroke.Thickness = 1.5
-        stroke.Transparency = 0.5
-        stroke.Parent = button
-        
-        -- Градиент для кнопки
-        local buttonGradient = Instance.new("UIGradient")
-        buttonGradient.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, color),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(
-                math.floor(color.r * 200),
-                math.floor(color.g * 200),
-                math.floor(color.b * 200)
-            ))
-        })
-        buttonGradient.Rotation = 90
-        buttonGradient.Parent = button
-        
-        -- Эффект при наведении
-        local hoverEffect = Instance.new("Frame")
-        hoverEffect.Size = UDim2.new(1, 0, 1, 0)
-        hoverEffect.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        hoverEffect.BackgroundTransparency = 0.9
-        hoverEffect.Visible = false
-        hoverEffect.Parent = button
-        
-        button.MouseEnter:Connect(function()
-            hoverEffect.Visible = true
-            local tween = TweenService:Create(button, TweenInfo.new(0.2), {Size = UDim2.new(0.48, 0, 0, 62)})
-            tween:Play()
-        end)
-        
-        button.MouseLeave:Connect(function()
-            hoverEffect.Visible = false
-            local tween = TweenService:Create(button, TweenInfo.new(0.2), {Size = UDim2.new(0.48, -5, 0, 60)})
-            tween:Play()
-        end)
-        
-        -- Иконка
-        local iconLabel = Instance.new("TextLabel")
-        iconLabel.Size = UDim2.new(0, 35, 0, 35)
-        iconLabel.Position = UDim2.new(0, 10, 0.5, -17.5)
-        iconLabel.BackgroundTransparency = 1
-        iconLabel.Text = icon
-        iconLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        iconLabel.Font = Enum.Font.GothamBold
-        iconLabel.TextSize = 20
-        iconLabel.Parent = button
-        
-        -- Текст
-        local textLabel = Instance.new("TextLabel")
-        textLabel.Size = UDim2.new(1, -50, 1, 0)
-        textLabel.Position = UDim2.new(0, 45, 0, 0)
-        textLabel.BackgroundTransparency = 1
-        textLabel.Text = text
-        textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        textLabel.Font = Enum.Font.Gotham
-        textLabel.TextSize = 13
-        textLabel.TextXAlignment = Enum.TextXAlignment.Left
-        textLabel.Parent = button
-        
-        -- Подсветка при клике
         button.MouseButton1Click:Connect(function()
-            local clickEffect = Instance.new("Frame")
-            clickEffect.Size = UDim2.new(1, 0, 1, 0)
-            clickEffect.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-            clickEffect.BackgroundTransparency = 0.7
-            clickEffect.Parent = button
-            
-            local tween = TweenService:Create(clickEffect, TweenInfo.new(0.3), {BackgroundTransparency = 1})
-            tween:Play()
-            tween.Completed:Connect(function()
-                clickEffect:Destroy()
-            end)
-            
             if callback then
                 task.spawn(callback)
             end
         end)
         
-        button.Parent = ButtonsContainer
         return button
     end
     
-    -- Создаем кнопки управления (2x2 сетка)
-    local autoButton = createControlButton("АВТОРЕЖИМ", "▶", Color3.fromRGB(0, 180, 0), 
-        UDim2.new(0, 0, 0, 0), function()
-            if not isRunning then
-                task.spawn(startAutoOptimizer)
-            end
-        end)
+    local ButtonsContainer = Instance.new("Frame")
+    ButtonsContainer.Size = UDim2.new(1, -20, 1, -40)
+    ButtonsContainer.Position = UDim2.new(0, 10, 0, 35)
+    ButtonsContainer.BackgroundTransparency = 1
+    ButtonsContainer.Parent = ControlCard
     
-    local quickButton = createControlButton("БЫСТРАЯ", "⚡", Color3.fromRGB(255, 150, 0), 
-        UDim2.new(0.52, 5, 0, 0), quickOptimize)
+    local autoButton = createButton("АВТОРЕЖИМ", Color3.fromRGB(0, 180, 0), function()
+        if not isRunning then
+            task.spawn(startAutoOptimizer)
+        end
+    end)
+    autoButton.Position = UDim2.new(0, 0, 0, 0)
+    autoButton.Parent = ButtonsContainer
     
-    local fillButton = createControlButton("ЗАПОЛНИТЬ", "🚀", Color3.fromRGB(0, 150, 255), 
-        UDim2.new(0, 0, 0, 65), forceFillAllSpots)
+    local quickButton = createButton("БЫСТРАЯ", Color3.fromRGB(255, 150, 0), quickOptimize)
+    quickButton.Position = UDim2.new(0.52, 5, 0, 0)
+    quickButton.Parent = ButtonsContainer
     
-    local aggressiveButton = createControlButton("АГРЕССИВНО", "💥", Color3.fromRGB(255, 100, 100), 
-        UDim2.new(0.52, 5, 0, 65), aggressiveReplaceAll)
+    local fillButton = createButton("ЗАПОЛНИТЬ", Color3.fromRGB(0, 150, 255), forceFillAllSpots)
+    fillButton.Position = UDim2.new(0, 0, 0, 50)
+    fillButton.Parent = ButtonsContainer
     
-    -- Карточка логов
+    local stopButton = createButton("ОСТАНОВИТЬ", Color3.fromRGB(220, 0, 0), stopOptimizer)
+    stopButton.Position = UDim2.new(0.52, 5, 0, 50)
+    stopButton.Parent = ButtonsContainer
+    
+    -- Логи
     local LogCard = Instance.new("Frame")
-    LogCard.Size = UDim2.new(1, -20, 0, 150)
+    LogCard.Size = UDim2.new(1, -20, 0, 120)
     LogCard.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
     LogCard.BorderSizePixel = 0
-    LogCard.LayoutOrder = 4
+    LogCard.LayoutOrder = 3
     
     local LogCorner = Instance.new("UICorner")
     LogCorner.CornerRadius = UDim.new(0, 15)
     LogCorner.Parent = LogCard
     
-    LogCard.Parent = ContentContainer
-    
     local LogTitle = Instance.new("TextLabel")
     LogTitle.Size = UDim2.new(1, 0, 0, 30)
     LogTitle.BackgroundTransparency = 1
-    LogTitle.Text = "📝 ПОСЛЕДНИЕ СОБЫТИЯ"
+    LogTitle.Text = "📝 СОБЫТИЯ"
     LogTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     LogTitle.Font = Enum.Font.GothamBold
     LogTitle.TextSize = 14
     LogTitle.Parent = LogCard
+    
+    LogCard.Parent = ContentContainer
     
     -- ScrollingFrame для логов
     local LogScrollingFrame = Instance.new("ScrollingFrame")
@@ -1551,7 +1181,6 @@ local function createPremiumMobileUI()
     LogScrollingFrame.ScrollBarImageTransparency = 0.7
     LogScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     LogScrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    LogScrollingFrame.VerticalScrollBarInset = Enum.ScrollBarInset.Always
     LogScrollingFrame.Parent = LogCard
     
     local LogContainer = Instance.new("Frame")
@@ -1564,13 +1193,8 @@ local function createPremiumMobileUI()
     LogListLayout.SortOrder = Enum.SortOrder.LayoutOrder
     LogListLayout.Parent = LogContainer
     
-    -- Буфер для логов
-    local logBuffer = {}
-    local maxLogs = 8
-    
-    -- Функция обновления логов в GUI
+    -- Функция для GUI логов
     _G.GUILogger = function(message, type)
-        local timestamp = os.date("%H:%M")
         local color = Color3.fromRGB(200, 210, 230)
         
         if type == "success" then
@@ -1589,32 +1213,19 @@ local function createPremiumMobileUI()
             color = Color3.fromRGB(255, 100, 200)
         end
         
-        -- Создаем новый лог элемент
         local logFrame = Instance.new("Frame")
-        logFrame.Size = UDim2.new(1, 0, 0, 25)
+        logFrame.Size = UDim2.new(1, 0, 0, 20)
         logFrame.BackgroundTransparency = 1
         logFrame.LayoutOrder = 1
         
-        -- Сдвигаем старые логи вниз
         for _, child in ipairs(LogContainer:GetChildren()) do
             if child:IsA("Frame") then
                 child.LayoutOrder = child.LayoutOrder + 1
             end
         end
         
-        local timeLabel = Instance.new("TextLabel")
-        timeLabel.Size = UDim2.new(0, 40, 1, 0)
-        timeLabel.BackgroundTransparency = 1
-        timeLabel.Text = string.format("[%s]", timestamp)
-        timeLabel.TextColor3 = Color3.fromRGB(150, 160, 180)
-        timeLabel.Font = Enum.Font.Gotham
-        timeLabel.TextSize = 10
-        timeLabel.TextXAlignment = Enum.TextXAlignment.Left
-        timeLabel.Parent = logFrame
-        
         local messageLabel = Instance.new("TextLabel")
-        messageLabel.Size = UDim2.new(1, -45, 1, 0)
-        messageLabel.Position = UDim2.new(0, 40, 0, 0)
+        messageLabel.Size = UDim2.new(1, 0, 1, 0)
         messageLabel.BackgroundTransparency = 1
         messageLabel.Text = message
         messageLabel.TextColor3 = color
@@ -1626,22 +1237,20 @@ local function createPremiumMobileUI()
         
         logFrame.Parent = LogContainer
         
-        -- Удаляем старые логи если слишком много
         task.wait()
         local children = LogContainer:GetChildren()
-        for i = #children, maxLogs + 1, -1 do
+        for i = #children, 9, -1 do
             local child = children[i]
             if child:IsA("Frame") then
                 child:Destroy()
             end
         end
         
-        -- Прокручиваем к самому новому логу
         task.wait(0.05)
         LogScrollingFrame.CanvasPosition = Vector2.new(0, LogScrollingFrame.AbsoluteCanvasSize.Y)
     end
     
-    -- Функция обновления статистики в GUI
+    -- Функция обновления статистики
     _G.UpdateGUIStats = function(data)
         incomeStat.Text = string.format("$%.2f", data.totalIncome)
         propertiesStat.Text = tostring(data.totalProperties)
@@ -1660,32 +1269,22 @@ local function createPremiumMobileUI()
         end
         
         timeStat.Text = string.format("%.2fs", data.cycleTime)
-        replacementsStat.Text = tostring(data.totalReplacements)
-        
-        if data.bestProperty then
-            BestInfo.Text = string.format("%s\n💰 $%.2f | 🏘️ %s", 
-                data.bestProperty.Type or "Неизвестно",
-                data.bestProperty.Income or 0,
-                data.bestProperty.District or "Неизвестно")
-        else
-            BestInfo.Text = "Нет данных об объектах"
-        end
     end
     
-    -- Функция обновления статуса авторежима
+    -- Функция обновления статуса
     _G.UpdateAutoStatus = function(running)
         if running then
             StatusIndicator.BackgroundColor3 = Color3.fromRGB(50, 255, 50)
-            StatusGlow.ImageColor3 = Color3.fromRGB(50, 255, 50)
-            autoButton.TextLabel.Text = "ПАУЗА"
+            Status.Text = "v5.1 | Работает"
+            autoButton.Text = "ПАУЗА"
         else
             StatusIndicator.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-            StatusGlow.ImageColor3 = Color3.fromRGB(255, 50, 50)
-            autoButton.TextLabel.Text = "АВТОРЕЖИМ"
+            Status.Text = "v5.1 | Остановлен"
+            autoButton.Text = "АВТОРЕЖИМ"
         end
     end
     
-    -- Функционал Drag and Drop
+    -- Drag and Drop
     local dragging = false
     local dragStart
     local startPosition
@@ -1695,13 +1294,6 @@ local function createPremiumMobileUI()
             dragging = true
             dragStart = input.Position
             startPosition = MainContainer.Position
-            
-            -- Эффект при захвате
-            local tween = TweenService:Create(MainContainer, TweenInfo.new(0.1), {
-                BackgroundTransparency = 0.15,
-                Size = UDim2.new(0, 345, 0, 505)
-            })
-            tween:Play()
         end
     end)
     
@@ -1715,116 +1307,35 @@ local function createPremiumMobileUI()
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
-            
-            -- Эффект при отпускании
-            local tween = TweenService:Create(MainContainer, TweenInfo.new(0.1), {
-                BackgroundTransparency = 0.05,
-                Size = UDim2.new(0, 340, 0, 500)
-            })
-            tween:Play()
-        end
-    end)
-    
-    -- Функционал сворачивания/разворачивания
-    local isMinimized = false
-    local originalSize = MainContainer.Size
-    local minimizedSize = UDim2.new(0, 340, 0, 55)
-    
-    ToggleButton.MouseButton1Click:Connect(function()
-        isMinimized = not isMinimized
-        
-        if isMinimized then
-            -- Сворачиваем
-            ToggleButton.Text = "▲"
-            local tween = TweenService:Create(MainContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Size = minimizedSize
-            })
-            tween:Play()
-            ContainerMask.Visible = false
-        else
-            -- Разворачиваем
-            ToggleButton.Text = "▼"
-            local tween = TweenService:Create(MainContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                Size = originalSize
-            })
-            tween:Play()
-            ContainerMask.Visible = true
         end
     end)
     
     -- Анимация появления
     MainContainer.BackgroundTransparency = 1
     MainContainer.Size = UDim2.new(0, 0, 0, 0)
-    ContainerMask.Visible = false
     
     local openTween = TweenService:Create(MainContainer, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = originalSize,
+        Size = UDim2.new(0, 340, 0, 500),
         BackgroundTransparency = 0.05
     })
     openTween:Play()
     
     openTween.Completed:Connect(function()
-        ContainerMask.Visible = true
-        log("🎮 Premium интерфейс создан", "success")
-        log("👆 Перетаскивайте за верхнюю панель", "info")
-        log("📱 Адаптировано для мобильных устройств", "info")
-    end)
-    
-    -- Пульсация индикатора статуса
-    task.spawn(function()
-        while ScreenGui.Parent do
-            local tween = TweenService:Create(StatusGlow, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut, 0, true), {
-                ImageTransparency = 0.3
-            })
-            tween:Play()
-            task.wait(1)
-        end
-    end)
-    
-    -- Автоматическое обновление размера ScrollingFrame
-    task.spawn(function()
-        while ScreenGui.Parent do
-            task.wait(1)
-            MainScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, ContentContainer.AbsoluteSize.Y)
-        end
+        log("Интерфейс создан", "success")
+        log("Алгоритм: Проверка каждого места", "info")
+        log("Новые заявки: от 3+ звезд", "info")
     end)
     
     return ScreenGui
 end
 
--- Инициализация
-print("\n" .. string.rep("=", 70))
-print("🏢 АВТООПТИМИЗАТОР АРЕНДАТОРОВ ВЕРСИЯ 5.0")
-print("🎯 PREMIUM UI + SCROLLINGFRAME EDITION")
-print(string.rep("=", 70))
-print("📁 NetworkClient путь:", NetworkPath:GetFullName())
-print("⚙️ Настройки:")
-print("   Удержание от: " .. MIN_STARS .. "⭐")
-print("   Новые от: " .. MIN_STARS_FOR_NEW .. "⭐")
-print("   Интервал: " .. CHECK_INTERVAL .. "с")
-print("   Режим: Агрессивная замена слабых арендаторов")
-print("   🎨 Premium интерфейс с ScrollingFrame")
-print("   📱 Полная адаптация для телефонов")
-print("   👆 Drag & Drop + сворачивание")
-print(string.rep("=", 70))
-
--- Устанавливаем слушатели обновлений
+-- Инициализация без print()
 setupPortfolioListeners()
+createOptimizedGUI()
 
--- Создаем Premium UI
-createPremiumMobileUI()
-
--- Автоматический старт через 3 секунды
+-- Автозапуск через 3 секунды
 task.wait(3)
-log("✅ Система инициализирована", "success")
-log("💡 Алгоритм: Проверка каждого места + замена слабых", "info")
-log("📝 Новые заявки: Принимаются от 3+ звезд", "info")
-log("👋 Старые арендаторы: Заменяются если <3⭐ или низкий доход", "info")
-
--- Автозапуск через 5 секунд
-task.wait(5)
 if not isRunning then
-    log("🚀 Автозапуск оптимизатора...", "info")
     task.spawn(startAutoOptimizer)
 end
 
@@ -1834,15 +1345,11 @@ _G.startAutoOptimizer = startAutoOptimizer
 _G.stopOptimizer = stopOptimizer
 _G.forceFillAllSpots = forceFillAllSpots
 _G.aggressiveReplaceAll = aggressiveReplaceAll
-_G.updatePropertyCache = updatePropertyCache
 
 return {
     quickOptimize = quickOptimize,
     startAutoOptimizer = startAutoOptimizer,
     stopOptimizer = stopOptimizer,
     forceFillAllSpots = forceFillAllSpots,
-    aggressiveReplaceAll = aggressiveReplaceAll,
-    updatePropertyCache = updatePropertyCache,
-    optimizeProperty = optimizeProperty,
-    updateStatistics = updateStatistics
+    aggressiveReplaceAll = aggressiveReplaceAll
 }
