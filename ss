@@ -1,6 +1,7 @@
+
 -- Автоматический оптимизатор арендаторов с полным заполнением и заменой
 -- Автор: AI Assistant
--- Версия: 5.1 (Оптимизированный + GUI логи)
+-- Версия: 5.2 (Исправленный + Улучшенная логика звезд)
 
 -- Получаем необходимые модули
 local Portfolio = require(game:GetService("ReplicatedStorage").Modules.Game.PortfolioController)
@@ -8,17 +9,20 @@ local Building = require(game:GetService("ReplicatedStorage").Modules.Data.Build
 local PlayerDataClient = require(game:GetService("ReplicatedStorage").Modules.PlayerDataClient)
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 -- Пути к RemoteEvents и Functions
 local NetworkPath = game:GetService("ReplicatedStorage").Modules.NetworkClient
 
--- Конфигурация
-local MIN_STARS = 3
-local MIN_STARS_FOR_NEW = 3
+-- Конфигурация (Исправленная логика звезд)
+local MIN_STARS_FOR_REPLACEMENT = 3  -- Минимальные звезды для замены существующих
+local MIN_STARS_FOR_NEW = 3         -- Минимальные звезды для новых арендаторов
+local MAX_STARS = 6                 -- Максимальное количество звезд
 local CHECK_INTERVAL = 15
 local AUTO_DENY_BAD_APPLICANTS = true
 local AUTO_ACCEPT_GOOD_APPLICANTS = true
 local AGGRESSIVE_REPLACEMENT = true
+local PRIORITIZE_HIGHER_STARS = true -- Приоритет арендаторов с большим количеством звезд
 
 -- Глобальные переменные
 local isRunning = false
@@ -36,7 +40,8 @@ local statsData = {
     cycleTime = 0,
     totalReplacements = 0,
     totalAccepted = 0,
-    totalEvicted = 0
+    totalEvicted = 0,
+    totalStarsImproved = 0
 }
 
 -- Функция для логирования ТОЛЬКО через GUI
@@ -45,6 +50,11 @@ local function log(message, type)
     if _G.GUILogger then
         _G.GUILogger(message, type)
     end
+end
+
+-- Функция проверки валидности звезд
+local function isValidStars(stars)
+    return stars and stars >= 1 and stars <= MAX_STARS
 end
 
 -- Функция расчета общего количества мест в объекте
@@ -155,7 +165,12 @@ local function calculateRenterIncome(propertyUID, renter)
         end
     end
     
-    local starMultiplier = 0.5 + (renter.Stars or 1) * 0.5
+    local stars = renter.Stars or 1
+    if not isValidStars(stars) then
+        stars = 1
+    end
+    
+    local starMultiplier = 0.5 + stars * 0.5
     local accountantBonus = 1
     local workers = PlayerDataClient.Get("Workers")
     if workers and workers.Accountant then
@@ -166,7 +181,7 @@ local function calculateRenterIncome(propertyUID, renter)
     return math.floor((totalIncome or 0) * 100) / 100
 end
 
--- Функция получения всех заявок отсортированных по доходности
+-- Функция получения всех заявок отсортированных по приоритету
 local function getAllApplicantsSorted(propertyUID)
     if not propertyUID then return {} end
     
@@ -179,32 +194,43 @@ local function getAllApplicantsSorted(propertyUID)
         if applicantId and applicant then
             local cacheKey = propertyUID .. "_" .. applicantId
             if not processedApplicants[cacheKey] then
-                local income = calculateRenterIncome(propertyUID, applicant)
-                if income then
-                    table.insert(applicants, {
-                        id = applicantId,
-                        income = income,
-                        stars = applicant.Stars or 1,
-                        data = applicant
-                    })
+                local stars = applicant.Stars or 1
+                if isValidStars(stars) then
+                    local income = calculateRenterIncome(propertyUID, applicant)
+                    if income then
+                        table.insert(applicants, {
+                            id = applicantId,
+                            income = income,
+                            stars = stars,
+                            data = applicant
+                        })
+                    end
                 end
             end
         end
     end
     
     if #applicants > 0 then
-        table.sort(applicants, function(a, b)
-            if (a.income or 0) == (b.income or 0) then
-                return a.stars > b.stars
-            end
-            return (a.income or 0) > (b.income or 0)
-        end)
+        if PRIORITIZE_HIGHER_STARS then
+            -- Сортировка: сначала по звездам (больше лучше), потом по доходу
+            table.sort(applicants, function(a, b)
+                if a.stars ~= b.stars then
+                    return a.stars > b.stars
+                end
+                return (a.income or 0) > (b.income or 0)
+            end)
+        else
+            -- Сортировка только по доходу
+            table.sort(applicants, function(a, b)
+                return (a.income or 0) > (b.income or 0)
+            end)
+        end
     end
     
     return applicants
 end
 
--- Функция получения всех арендаторов отсортированных по доходности
+-- Функция получения всех арендаторов отсортированных по приоритету замены
 local function getAllRentersSorted(propertyUID)
     if not propertyUID then return {} end
     
@@ -217,22 +243,26 @@ local function getAllRentersSorted(propertyUID)
         if renterId and renter then
             local cacheKey = propertyUID .. "_" .. renterId
             if not processedRenters[cacheKey] then
-                local income = calculateRenterIncome(propertyUID, renter)
-                if income then
-                    table.insert(renters, {
-                        id = renterId,
-                        income = income,
-                        stars = renter.Stars or 1,
-                        data = renter
-                    })
+                local stars = renter.Stars or 1
+                if isValidStars(stars) then
+                    local income = calculateRenterIncome(propertyUID, renter)
+                    if income then
+                        table.insert(renters, {
+                            id = renterId,
+                            income = income,
+                            stars = stars,
+                            data = renter
+                        })
+                    end
                 end
             end
         end
     end
     
     if #renters > 0 then
+        -- Сортировка: сначала по звездам (меньше лучше), потом по доходу (меньше лучше)
         table.sort(renters, function(a, b)
-            if (a.income or 0) == (b.income or 0) then
+            if a.stars ~= b.stars then
                 return a.stars < b.stars
             end
             return (a.income or 0) < (b.income or 0)
@@ -313,6 +343,7 @@ local function fillAllAvailableSpots(propertyUID)
     
     local acceptedCount = 0
     local totalIncomeGain = 0
+    local bestStars = 0
     
     for i = 1, math.min(availableSpots, #applicants) do
         local applicant = applicants[i]
@@ -321,6 +352,8 @@ local function fillAllAvailableSpots(propertyUID)
             if success then
                 acceptedCount = acceptedCount + 1
                 totalIncomeGain = totalIncomeGain + (applicant.income or 0)
+                bestStars = math.max(bestStars, applicant.stars)
+                
                 log(string.format("[%s] Принят %s (%d⭐, +$%.2f)", 
                     propertyUID, applicant.id, applicant.stars, applicant.income or 0), "hire")
                 
@@ -329,23 +362,51 @@ local function fillAllAvailableSpots(propertyUID)
         end
     end
     
+    if bestStars > 0 then
+        statsData.totalStarsImproved = statsData.totalStarsImproved + bestStars
+    end
+    
     return acceptedCount, totalIncomeGain
+end
+
+-- Функция проверки возможности улучшения звезд
+local function shouldReplaceForStars(oldStars, newStars, oldIncome, newIncome)
+    if not isValidStars(oldStars) or not isValidStars(newStars) then
+        return false
+    end
+    
+    -- Улучшение по звездам с проверкой дохода
+    if newStars > oldStars then
+        -- Если новые звезды выше, проверяем доход
+        if newIncome > oldIncome then
+            return true, "stars_and_income"
+        elseif newStars >= 4 and oldStars <= 3 then
+            -- Принудительная замена при переходе от 3⭐ к 4+⭐ даже при равном доходе
+            return true, "star_upgrade"
+        end
+    elseif newStars == oldStars and newIncome > oldIncome then
+        -- Такие же звезды, но больше доход
+        return true, "income_only"
+    end
+    
+    return false, "no_improvement"
 end
 
 -- Функция полной оптимизации всех мест
 local function optimizeAllSpotsAggressive(propertyUID)
-    if not propertyUID then return 0, 0, 0 end
+    if not propertyUID then return 0, 0, 0, 0 end
     
     local currentRenters = getAllRentersSorted(propertyUID)
     local currentApplicants = getAllApplicantsSorted(propertyUID)
     
     if #currentRenters == 0 or #currentApplicants == 0 then
-        return 0, 0, 0
+        return 0, 0, 0, 0
     end
     
     local replacementsMade = 0
     local totalIncomeIncrease = 0
     local skippedLowStars = 0
+    local starUpgrades = 0
     
     local rentersCopy = {}
     for _, renter in ipairs(currentRenters) do
@@ -357,29 +418,47 @@ local function optimizeAllSpotsAggressive(propertyUID)
         table.insert(applicantsCopy, applicant)
     end
     
+    -- Сортируем арендаторов от худших к лучшим
     table.sort(rentersCopy, function(a, b)
+        if a.stars ~= b.stars then
+            return a.stars < b.stars
+        end
         return (a.income or 0) < (b.income or 0)
     end)
     
+    -- Сортируем заявки от лучших к худшим
     table.sort(applicantsCopy, function(a, b)
+        if a.stars ~= b.stars then
+            return a.stars > b.stars
+        end
         return (a.income or 0) > (b.income or 0)
     end)
     
     for renterIndex = #rentersCopy, 1, -1 do
         local worstRenter = rentersCopy[renterIndex]
         
-        if not worstRenter or not worstRenter.income then break end
+        if not worstRenter or not worstRenter.income or not worstRenter.stars then break end
         
         local bestReplacement = nil
         local bestReplacementIndex = 0
+        local replacementReason = ""
         
         for applicantIndex = 1, #applicantsCopy do
             local applicant = applicantsCopy[applicantIndex]
             
             if applicant and applicant.income and applicant.stars then
-                if applicant.income > worstRenter.income and applicant.stars >= MIN_STARS_FOR_NEW then
+                -- Проверяем возможность улучшения
+                local shouldReplace, reason = shouldReplaceForStars(
+                    worstRenter.stars, 
+                    applicant.stars, 
+                    worstRenter.income, 
+                    applicant.income
+                )
+                
+                if shouldReplace then
                     bestReplacement = applicant
                     bestReplacementIndex = applicantIndex
+                    replacementReason = reason
                     break
                 end
             end
@@ -398,8 +477,19 @@ local function optimizeAllSpotsAggressive(propertyUID)
                     totalIncomeIncrease = totalIncomeIncrease + profitDifference
                     statsData.totalReplacements = statsData.totalReplacements + 1
                     
-                    log(string.format("[%s] Замена: %s→%s (+$%.2f)", 
-                        propertyUID, worstRenter.id, bestReplacement.id, profitDifference), "spot")
+                    if replacementReason == "star_upgrade" or replacementReason == "stars_and_income" then
+                        starUpgrades = starUpgrades + 1
+                        statsData.totalStarsImproved = statsData.totalStarsImproved + (bestReplacement.stars - worstRenter.stars)
+                    end
+                    
+                    local logMessage = string.format("[%s] Замена: %s(%d⭐)→%s(%d⭐)", 
+                        propertyUID, worstRenter.id, worstRenter.stars, bestReplacement.id, bestReplacement.stars)
+                    
+                    if profitDifference > 0 then
+                        logMessage = logMessage .. string.format(" (+$%.2f)", profitDifference)
+                    end
+                    
+                    log(logMessage, "spot")
                     
                     table.remove(rentersCopy, renterIndex)
                     table.remove(applicantsCopy, bestReplacementIndex)
@@ -407,7 +497,8 @@ local function optimizeAllSpotsAggressive(propertyUID)
                     task.wait(0.3)
                 end
             end
-        elseif worstRenter.stars and worstRenter.stars < MIN_STARS and AGGRESSIVE_REPLACEMENT then
+        elseif worstRenter.stars and worstRenter.stars < MIN_STARS_FOR_REPLACEMENT and AGGRESSIVE_REPLACEMENT then
+            -- Агрессивная замена арендаторов с низкими звездами
             for applicantIndex = 1, #applicantsCopy do
                 local applicant = applicantsCopy[applicantIndex]
                 
@@ -423,8 +514,8 @@ local function optimizeAllSpotsAggressive(propertyUID)
                             statsData.totalReplacements = statsData.totalReplacements + 1
                             skippedLowStars = skippedLowStars + 1
                             
-                            log(string.format("[%s] Замена по звездам: %s→%s", 
-                                propertyUID, worstRenter.id, applicant.id), "spot")
+                            log(string.format("[%s] Замена по звездам: %s(%d⭐)→%s(%d⭐)", 
+                                propertyUID, worstRenter.id, worstRenter.stars, applicant.id, applicant.stars), "spot")
                             
                             table.remove(rentersCopy, renterIndex)
                             table.remove(applicantsCopy, applicantIndex)
@@ -443,7 +534,7 @@ local function optimizeAllSpotsAggressive(propertyUID)
         fillAllAvailableSpots(propertyUID)
     end
     
-    return replacementsMade, totalIncomeIncrease, skippedLowStars
+    return replacementsMade, totalIncomeIncrease, skippedLowStars, starUpgrades
 end
 
 -- Основная функция оптимизации одного объекта
@@ -477,9 +568,16 @@ local function optimizeProperty(propertyUID)
     end
     
     if occupiedSpots > 0 then
-        local replaced, incomeIncrease, skipped = optimizeAllSpotsAggressive(propertyUID)
+        local replaced, incomeIncrease, skipped, starUpgrades = optimizeAllSpotsAggressive(propertyUID)
         if replaced > 0 or skipped > 0 then
-            return string.format("replaced|%d|+$%.2f|skipped:%d", replaced, incomeIncrease, skipped)
+            local result = string.format("replaced|%d|+$%.2f", replaced, incomeIncrease)
+            if starUpgrades > 0 then
+                result = result .. string.format("|stars:%d", starUpgrades)
+            end
+            if skipped > 0 then
+                result = result .. string.format("|low_stars:%d", skipped)
+            end
+            return result
         end
     end
     
@@ -490,7 +588,7 @@ local function optimizeProperty(propertyUID)
                 local cacheKey = propertyUID .. "_" .. applicantId
                 if not processedApplicants[cacheKey] then
                     local stars = applicant.Stars or 1
-                    if stars < 3 then
+                    if stars < MIN_STARS_FOR_NEW then
                         local success, message = denyApplicant(propertyUID, applicantId)
                         if success then
                             deniedCount = deniedCount + 1
@@ -531,6 +629,8 @@ local function updateStatistics()
     local propertyCount = 0
     local bestPropertyIncome = 0
     local bestProperty = nil
+    local averageStars = 0
+    local totalRenters = 0
     
     for propertyUID, property in pairs(allProperties) do
         if propertyUID and property then
@@ -550,10 +650,22 @@ local function updateStatistics()
                     District = property.District
                 }
             end
+            
+            -- Считаем средние звезды
+            if property.Renters then
+                for _, renter in pairs(property.Renters) do
+                    local stars = renter.Stars or 1
+                    if isValidStars(stars) then
+                        averageStars = averageStars + stars
+                        totalRenters = totalRenters + 1
+                    end
+                end
+            end
         end
     end
     
     local percentageOccupied = totalSpotsAll > 0 and (occupiedSpotsAll / totalSpotsAll * 100) or 0
+    local avgStars = totalRenters > 0 and (averageStars / totalRenters) or 0
     
     statsData.totalProperties = propertyCount
     statsData.occupiedSpots = occupiedSpotsAll
@@ -561,6 +673,7 @@ local function updateStatistics()
     statsData.totalIncome = totalIncome
     statsData.occupancyRate = percentageOccupied
     statsData.bestProperty = bestProperty
+    statsData.averageStars = avgStars
     
     if _G.UpdateGUIStats then
         _G.UpdateGUIStats(statsData)
@@ -582,6 +695,7 @@ local function optimizeAllProperties()
     local optimizedCount = 0
     local totalFilled = 0
     local totalReplaced = 0
+    local totalStarUpgrades = 0
     
     for propertyUID, property in pairs(allProperties) do
         if property and property.BuildingType and property.BuildingType ~= "Empty" then
@@ -596,7 +710,19 @@ local function optimizeAllProperties()
                 local parts = result:split("|")
                 optimizedCount = optimizedCount + 1
                 totalReplaced = totalReplaced + (tonumber(parts[2]) or 0)
-                log(string.format("Заменено %s арендаторов %s", parts[2], parts[3]), "spot")
+                
+                local logMsg = string.format("Заменено %s арендаторов %s", parts[2], parts[3])
+                
+                -- Добавляем информацию об улучшении звезд
+                for i = 4, #parts do
+                    if parts[i]:find("stars:") then
+                        local starCount = tonumber(parts[i]:match("stars:(%d+)")) or 0
+                        totalStarUpgrades = totalStarUpgrades + starCount
+                        logMsg = logMsg .. string.format(" (улучшено звезд: %d)", starCount)
+                    end
+                end
+                
+                log(logMsg, "spot")
             end
             
             task.wait(0.2)
@@ -606,6 +732,7 @@ local function optimizeAllProperties()
     local incomeAfter = calculateTotalPortfolioIncome()
     local incomeChange = incomeAfter - incomeBefore
     
+    -- Очистка кэша
     for key in pairs(processedRenters) do
         if math.random() < 0.1 then
             processedRenters[key] = nil
@@ -624,7 +751,7 @@ local function optimizeAllProperties()
     
     if incomeChange > 0 then
         log(string.format("Прирост дохода: +$%.2f (%.1f%%)", 
-            incomeChange, (incomeChange / incomeBefore) * 100), "money")
+            incomeChange, (incomeChange / math.max(incomeBefore, 1)) * 100), "money")
     elseif incomeChange < 0 then
         log(string.format("Потеря дохода: -$%.2f", math.abs(incomeChange)), "warning")
     else
@@ -634,12 +761,18 @@ local function optimizeAllProperties()
     log(string.format("Заполненность: %d/%d мест (%.1f%%)", 
         statsData.occupiedSpots, statsData.totalSpots, statsData.occupancyRate), "info")
     
+    log(string.format("Средние звезды: %.1f⭐", statsData.averageStars), "info")
+    
     if totalFilled > 0 then
         log(string.format("Новые принятия: %d арендаторов", totalFilled), "hire")
     end
     
     if totalReplaced > 0 then
         log(string.format("Заменено: %d арендаторов", totalReplaced), "spot")
+    end
+    
+    if totalStarUpgrades > 0 then
+        log(string.format("Улучшено звезд: %d", totalStarUpgrades), "success")
     end
     
     if statsData.totalEvicted > 0 then
@@ -689,7 +822,7 @@ local function setupPortfolioListeners()
                 for applicantId, applicant in pairs(property.Applicants) do
                     if applicantId and applicant then
                         local stars = applicant.Stars or 1
-                        if stars >= MIN_STARS_FOR_NEW then
+                        if stars >= MIN_STARS_FOR_NEW and isValidStars(stars) then
                             if hasAvailableSpots(propertyUID) then
                                 task.wait(0.5)
                                 local success, message = acceptApplicant(propertyUID, applicantId)
@@ -716,7 +849,9 @@ local function startAutoOptimizer()
     
     isRunning = true
     log("АВТООПТИМИЗАТОР ЗАПУЩЕН", "success")
-    log(string.format("Настройки: Замена от %d⭐ | Новые от %d⭐", MIN_STARS, MIN_STARS_FOR_NEW), "info")
+    log(string.format("Настройки: Замена от %d⭐ | Новые от %d⭐ | Макс: %d⭐", 
+        MIN_STARS_FOR_REPLACEMENT, MIN_STARS_FOR_NEW, MAX_STARS), "info")
+    log("Приоритет: улучшение звезд и дохода", "info")
     
     if _G.UpdateAutoStatus then
         _G.UpdateAutoStatus(true)
@@ -774,6 +909,7 @@ local function forceFillAllSpots()
     local allProperties = Portfolio.GetPortfolio()
     local totalFilled = 0
     local totalIncomeGain = 0
+    local bestStarsInCycle = 0
     
     for propertyUID, property in pairs(allProperties) do
         if propertyUID and property and property.BuildingType and property.BuildingType ~= "Empty" then
@@ -781,6 +917,7 @@ local function forceFillAllSpots()
                 local filled, incomeGain = fillAllAvailableSpots(propertyUID)
                 totalFilled = totalFilled + filled
                 totalIncomeGain = totalIncomeGain + incomeGain
+                bestStarsInCycle = math.max(bestStarsInCycle, statsData.totalStarsImproved)
                 task.wait(0.3)
             end
         end
@@ -788,6 +925,9 @@ local function forceFillAllSpots()
     
     if totalFilled > 0 then
         log(string.format("Заполнено %d свободных мест (+$%.2f)", totalFilled, totalIncomeGain), "success")
+        if bestStarsInCycle > 0 then
+            log(string.format("Лучшие звезды в цикле: до %d⭐", bestStarsInCycle), "info")
+        end
         updateStatistics()
     else
         log("Все места уже заполнены или нет подходящих заявок", "info")
@@ -801,18 +941,24 @@ local function aggressiveReplaceAll()
     local allProperties = Portfolio.GetPortfolio()
     local totalReplaced = 0
     local totalIncomeIncrease = 0
+    local totalStarUpgrades = 0
     
     for propertyUID, property in pairs(allProperties) do
         if propertyUID and property and property.BuildingType and property.BuildingType ~= "Empty" then
-            local replaced, incomeIncrease, skipped = optimizeAllSpotsAggressive(propertyUID)
+            local replaced, incomeIncrease, skipped, starUpgrades = optimizeAllSpotsAggressive(propertyUID)
             totalReplaced = totalReplaced + replaced
             totalIncomeIncrease = totalIncomeIncrease + incomeIncrease
+            totalStarUpgrades = totalStarUpgrades + starUpgrades
             task.wait(0.5)
         end
     end
     
     if totalReplaced > 0 then
-        log(string.format("Заменено %d арендаторов (+$%.2f)", totalReplaced, totalIncomeIncrease), "success")
+        local message = string.format("Заменено %d арендаторов (+$%.2f)", totalReplaced, totalIncomeIncrease)
+        if totalStarUpgrades > 0 then
+            message = message .. string.format(" | Улучшено звезд: %d", totalStarUpgrades)
+        end
+        log(message, "success")
         updateStatistics()
     else
         log("Все арендаторы уже оптимальны", "info")
@@ -831,11 +977,12 @@ local function createOptimizedGUI()
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "AutoOptimizerUI"
     ScreenGui.Parent = PlayerGui
+    ScreenGui.ResetOnSpawn = false
     
     -- Основной контейнер
     local MainContainer = Instance.new("Frame")
-    MainContainer.Size = UDim2.new(0, 340, 0, 500)
-    MainContainer.Position = UDim2.new(0.5, -170, 0.5, -250)
+    MainContainer.Size = UDim2.new(0, 360, 0, 550)  -- Увеличил для отображения звезд
+    MainContainer.Position = UDim2.new(0.5, -180, 0.5, -275)
     MainContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
     MainContainer.BackgroundTransparency = 0.05
     MainContainer.BorderSizePixel = 0
@@ -921,7 +1068,7 @@ local function createOptimizedGUI()
     Title.Size = UDim2.new(0.6, 0, 0, 30)
     Title.Position = UDim2.new(0, 65, 0, 8)
     Title.BackgroundTransparency = 1
-    Title.Text = "🤖 АВТООПТИМИЗАТОР"
+    Title.Text = "⭐ АВТООПТИМИЗАТОР v5.2"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.Font = Enum.Font.GothamBold
     Title.TextSize = 16
@@ -933,7 +1080,7 @@ local function createOptimizedGUI()
     Status.Size = UDim2.new(0.6, 0, 0, 20)
     Status.Position = UDim2.new(0, 65, 0, 30)
     Status.BackgroundTransparency = 1
-    Status.Text = "v5.1 | Остановлен"
+    Status.Text = "Остановлен"
     Status.TextColor3 = Color3.fromRGB(180, 200, 255)
     Status.Font = Enum.Font.Gotham
     Status.TextSize = 11
@@ -977,9 +1124,9 @@ local function createOptimizedGUI()
     UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
     UIListLayout.Parent = ContentContainer
     
-    -- Статистика
+    -- Статистика (увеличена для звезд)
     local StatsCard = Instance.new("Frame")
-    StatsCard.Size = UDim2.new(1, -20, 0, 150)
+    StatsCard.Size = UDim2.new(1, -20, 0, 180)  -- Увеличил высоту
     StatsCard.Position = UDim2.new(0, 10, 0, 0)
     StatsCard.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
     StatsCard.BorderSizePixel = 0
@@ -1059,21 +1206,29 @@ local function createOptimizedGUI()
         Color3.fromRGB(100, 200, 255), "🏢", UDim2.new(0.52, 5, 0, 0))
     propertiesFrame.Parent = StatsGrid
     
+    local starsFrame, starsStat = createStatItem("Звезды:", "0.0", 
+        Color3.fromRGB(255, 215, 0), "⭐", UDim2.new(0, 0, 0, 33))
+    starsFrame.Parent = StatsGrid
+    
     local occupancyFrame, occupancyStat = createStatItem("Заполнено:", "0%", 
-        Color3.fromRGB(255, 200, 100), "📈", UDim2.new(0, 0, 0, 33))
+        Color3.fromRGB(100, 255, 255), "📈", UDim2.new(0.52, 5, 0, 33))
     occupancyFrame.Parent = StatsGrid
     
-    local cycleFrame, cycleStat = createStatItem("Цикл:", "#0", 
-        Color3.fromRGB(200, 100, 255), "🔄", UDim2.new(0.52, 5, 0, 33))
-    cycleFrame.Parent = StatsGrid
-    
     local changeFrame, changeStat = createStatItem("Изменение:", "+$0.00", 
-        Color3.fromRGB(255, 255, 100), "📊", UDim2.new(0, 0, 0, 66))
+        Color3.fromRGB(255, 200, 100), "📊", UDim2.new(0, 0, 0, 66))
     changeFrame.Parent = StatsGrid
     
     local timeFrame, timeStat = createStatItem("Время:", "0.00s", 
-        Color3.fromRGB(100, 255, 255), "⏱️", UDim2.new(0.52, 5, 0, 66))
+        Color3.fromRGB(200, 100, 255), "⏱️", UDim2.new(0.52, 5, 0, 66))
     timeFrame.Parent = StatsGrid
+    
+    local cycleFrame, cycleStat = createStatItem("Цикл:", "#0", 
+        Color3.fromRGB(100, 255, 200), "🔄", UDim2.new(0, 0, 0, 99))
+    cycleFrame.Parent = StatsGrid
+    
+    local upgradesFrame, upgradesStat = createStatItem("Улучшено:", "0", 
+        Color3.fromRGB(255, 150, 100), "⬆️", UDim2.new(0.52, 5, 0, 99))
+    upgradesFrame.Parent = StatsGrid
     
     StatsCard.Parent = ContentContainer
     
@@ -1211,6 +1366,8 @@ local function createOptimizedGUI()
             color = Color3.fromRGB(255, 150, 100)
         elseif type == "evict" then
             color = Color3.fromRGB(255, 100, 200)
+        elseif type == "info" then
+            color = Color3.fromRGB(180, 200, 255)
         end
         
         local logFrame = Instance.new("Frame")
@@ -1256,6 +1413,8 @@ local function createOptimizedGUI()
         propertiesStat.Text = tostring(data.totalProperties)
         occupancyStat.Text = string.format("%.1f%%", data.occupancyRate)
         cycleStat.Text = "#" .. tostring(cycleCount)
+        starsStat.Text = string.format("%.1f⭐", data.averageStars or 0)
+        upgradesStat.Text = tostring(data.totalStarsImproved or 0)
         
         if data.lastIncomeChange > 0 then
             changeStat.Text = string.format("+$%.2f", data.lastIncomeChange)
@@ -1275,11 +1434,11 @@ local function createOptimizedGUI()
     _G.UpdateAutoStatus = function(running)
         if running then
             StatusIndicator.BackgroundColor3 = Color3.fromRGB(50, 255, 50)
-            Status.Text = "v5.1 | Работает"
+            Status.Text = "Работает"
             autoButton.Text = "ПАУЗА"
         else
             StatusIndicator.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-            Status.Text = "v5.1 | Остановлен"
+            Status.Text = "Остановлен"
             autoButton.Text = "АВТОРЕЖИМ"
         end
     end
@@ -1294,6 +1453,12 @@ local function createOptimizedGUI()
             dragging = true
             dragStart = input.Position
             startPosition = MainContainer.Position
+            
+            -- Эффект при нажатии
+            local tween = TweenService:Create(Header, TweenInfo.new(0.1), {
+                BackgroundTransparency = 0.2
+            })
+            tween:Play()
         end
     end)
     
@@ -1307,6 +1472,12 @@ local function createOptimizedGUI()
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
+            
+            -- Возвращаем прозрачность
+            local tween = TweenService:Create(Header, TweenInfo.new(0.1), {
+                BackgroundTransparency = 0
+            })
+            tween:Play()
         end
     end)
     
@@ -1315,15 +1486,15 @@ local function createOptimizedGUI()
     MainContainer.Size = UDim2.new(0, 0, 0, 0)
     
     local openTween = TweenService:Create(MainContainer, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0, 340, 0, 500),
+        Size = UDim2.new(0, 360, 0, 550),
         BackgroundTransparency = 0.05
     })
     openTween:Play()
     
     openTween.Completed:Connect(function()
         log("Интерфейс создан", "success")
-        log("Алгоритм: Проверка каждого места", "info")
-        log("Новые заявки: от 3+ звезд", "info")
+        log(string.format("Звезды: %d-%d⭐", MIN_STARS_FOR_NEW, MAX_STARS), "info")
+        log("Приоритет: улучшение звезд и дохода", "info")
     end)
     
     return ScreenGui
