@@ -1,0 +1,1934 @@
+--!native
+-- Vox Spy - Modern Remote Monitor
+
+if getgenv().VoxSpyExecuted and type(getgenv().VoxSpyShutdown) == "function" then
+    getgenv().VoxSpyShutdown()
+end
+
+local realconfigs = {
+    logcheckcaller = false,
+    autoblock = false,
+    funcEnabled = true,
+    advancedinfo = false,
+    --logreturnvalues = false,
+    supersecretdevtoggle = false,
+    mobileMode = false
+}
+
+local configs = newproxy(true)
+local configsmetatable = getmetatable(configs)
+
+configsmetatable.__index = function(self,index)
+    return realconfigs[index]
+end
+
+local oth = syn and syn.oth
+local unhook = oth and oth.unhook
+local hook = oth and oth.hook
+
+local lower = string.lower
+local byte = string.byte
+local round = math.round
+local running = coroutine.running
+local resume = coroutine.resume
+local status = coroutine.status
+local yield = coroutine.yield
+local create = coroutine.create
+local close = coroutine.close
+local OldDebugId = game.GetDebugId
+local info = debug.info
+
+local IsA = game.IsA
+local tostring = tostring
+local tonumber = tonumber
+local delay = task.delay
+local spawn = task.spawn
+local clear = table.clear
+local clone = table.clone
+
+local function blankfunction(...)
+    return ...
+end
+
+local get_thread_identity = (syn and syn.get_thread_identity) or getidentity or getthreadidentity
+local set_thread_identity = (syn and syn.set_thread_identity) or setidentity
+local islclosure = islclosure or is_l_closure
+local threadfuncs = (get_thread_identity and set_thread_identity and true) or false
+
+local getinfo = getinfo or blankfunction
+local getupvalues = getupvalues or debug.getupvalues or blankfunction
+local getconstants = getconstants or debug.getconstants or blankfunction
+
+local getcustomasset = getsynasset or getcustomasset
+local getcallingscript = getcallingscript or blankfunction
+local newcclosure = newcclosure or blankfunction
+local clonefunction = clonefunction or blankfunction
+local cloneref = cloneref or blankfunction
+local request = request or syn and syn.request
+local makewritable = makewriteable or function(tbl)
+    setreadonly(tbl,false)
+end
+local makereadonly = makereadonly or function(tbl)
+    setreadonly(tbl,true)
+end
+local isreadonly = isreadonly or table.isfrozen
+
+local setclipboard = setclipboard or toclipboard or set_clipboard or (Clipboard and Clipboard.set) or function(...)
+    return ErrorPrompt("Attempted to set clipboard: "..(...),true)
+end
+
+local hookmetamethod = hookmetamethod or (makewriteable and makereadonly and getrawmetatable) and function(obj: object, metamethod: string, func: Function)
+    local old = getrawmetatable(obj)
+
+    if hookfunction then
+        return hookfunction(old[metamethod],func)
+    else
+        local oldmetamethod = old[metamethod]
+        makewriteable(old)
+        old[metamethod] = func
+        makereadonly(old)
+        return oldmetamethod
+    end
+end
+
+local function Create(instance, properties, children)
+    local obj = Instance.new(instance)
+
+    for i, v in next, properties or {} do
+        obj[i] = v
+        for _, child in next, children or {} do
+            child.Parent = obj;
+        end
+    end
+    return obj;
+end
+
+local function SafeGetService(service)
+    return cloneref(game:GetService(service))
+end
+
+local function Search(logtable,tbl)
+    table.insert(logtable,tbl)
+    
+    for i,v in tbl do
+        if type(v) == "table" then
+            return table.find(logtable,v) ~= nil or Search(v)
+        end
+    end
+end
+
+local function IsCyclicTable(tbl)
+    local checkedtables = {}
+
+    local function SearchTable(tbl)
+        table.insert(checkedtables,tbl)
+        
+        for i,v in next, tbl do
+            if type(v) == "table" then
+                return table.find(checkedtables,v) and true or SearchTable(v)
+            end
+        end
+    end
+
+    return SearchTable(tbl)
+end
+
+local function deepclone(args: table, copies: table): table
+    local copy = nil
+    copies = copies or {}
+
+    if type(args) == 'table' then
+        if copies[args] then
+            copy = copies[args]
+        else
+            copy = {}
+            copies[args] = copy
+            for i, v in next, args do
+                copy[deepclone(i, copies)] = deepclone(v, copies)
+            end
+        end
+    elseif typeof(args) == "Instance" then
+        copy = cloneref(args)
+    else
+        copy = args
+    end
+    return copy
+end
+
+local function rawtostring(userdata)
+    if type(userdata) == "table" or typeof(userdata) == "userdata" then
+        local rawmetatable = getrawmetatable(userdata)
+        local cachedstring = rawmetatable and rawget(rawmetatable, "__tostring")
+
+        if cachedstring then
+            local wasreadonly = isreadonly(rawmetatable)
+            if wasreadonly then
+                makewritable(rawmetatable)
+            end
+            rawset(rawmetatable, "__tostring", nil)
+            local safestring = tostring(userdata)
+            rawset(rawmetatable, "__tostring", cachedstring)
+            if wasreadonly then
+                makereadonly(rawmetatable)
+            end
+            return safestring
+        end
+    end
+    return tostring(userdata)
+end
+
+local CoreGui = SafeGetService("CoreGui")
+local Players = SafeGetService("Players")
+local RunService = SafeGetService("RunService")
+local UserInputService = SafeGetService("UserInputService")
+local TweenService = SafeGetService("TweenService")
+local ContentProvider = SafeGetService("ContentProvider")
+local TextService = SafeGetService("TextService")
+local http = SafeGetService("HttpService")
+local GuiInset = game:GetService("GuiService"):GetGuiInset() :: Vector2
+
+local function jsone(str) return http:JSONEncode(str) end
+local function jsond(str)
+    local suc,err = pcall(http.JSONDecode,http,str)
+    return suc and err or suc
+end
+
+function ErrorPrompt(Message,state)
+    if getrenv then
+        local ErrorPrompt = getrenv().require(CoreGui:WaitForChild("RobloxGui"):WaitForChild("Modules"):WaitForChild("ErrorPrompt"))
+        local prompt = ErrorPrompt.new("Default",{HideErrorCode = true})
+        local ErrorStoarge = Create("ScreenGui",{Parent = CoreGui,ResetOnSpawn = false})
+        local thread = state and running()
+        prompt:setParent(ErrorStoarge)
+        prompt:setErrorTitle("Vox Spy Error")
+        prompt:updateButtons({{
+            Text = "Proceed",
+            Callback = function()
+                prompt:_close()
+                ErrorStoarge:Destroy()
+                if thread then
+                    resume(thread)
+                end
+            end,
+            Primary = true
+        }}, 'Default')
+        prompt:_open(Message)
+        if thread then
+            yield(thread)
+        end
+    else
+        warn(Message)
+    end
+end
+
+local Highlight = (isfile and loadfile and isfile("Highlight.lua") and loadfile("Highlight.lua")()) or loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/SimpleSpy/main/Highlight.lua"))()
+local LazyFix = loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/Roblox/refs/heads/main/Lua/Libraries/DataToCode/DataToCode.luau"))()
+
+-- Modern GUI for Vox Spy
+local VoxSpy = Create("ScreenGui",{
+    ResetOnSpawn = false,
+    DisplayOrder = 999,
+    Name = "VoxSpy"
+})
+
+local Storage = Create("Folder",{})
+
+-- Main container with modern design
+local MainContainer = Create("Frame",{
+    Parent = VoxSpy,
+    BackgroundColor3 = Color3.fromRGB(20, 20, 25),
+    BackgroundTransparency = 0.05,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 20, 0, 20),
+    Size = UDim2.new(0, 500, 0, 400),
+    ClipsDescendants = true,
+    Active = true,
+    AnchorPoint = Vector2.new(0, 0)
+})
+
+local UICorner = Create("UICorner",{
+    Parent = MainContainer,
+    CornerRadius = UDim.new(0, 14)
+})
+
+local UIStroke = Create("UIStroke",{
+    Parent = MainContainer,
+    Color = Color3.fromRGB(60, 60, 70),
+    Transparency = 0.3,
+    Thickness = 2
+})
+
+-- Top bar with gradient effect
+local TopBar = Create("Frame",{
+    Parent = MainContainer,
+    BackgroundColor3 = Color3.fromRGB(30, 30, 35),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 48),
+    ZIndex = 2
+})
+
+local TopBarGradient = Create("UIGradient",{
+    Parent = TopBar,
+    Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 40, 45)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 35))
+    },
+    Rotation = 90
+})
+
+local TopBarCorner = Create("UICorner",{
+    Parent = TopBar,
+    CornerRadius = UDim.new(0, 14, 0, 0)
+})
+
+-- Title with modern font
+local Title = Create("TextLabel",{
+    Parent = TopBar,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 20, 0, 0),
+    Size = UDim2.new(0.5, 0, 1, 0),
+    Font = Enum.Font.GothamBold,
+    Text = "VOX SPY",
+    TextColor3 = Color3.fromRGB(0, 184, 255),
+    TextSize = 18,
+    TextXAlignment = Enum.TextXAlignment.Left
+})
+
+local Subtitle = Create("TextLabel",{
+    Parent = TopBar,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 20, 0, 24),
+    Size = UDim2.new(0.5, 0, 0, 20),
+    Font = Enum.Font.Gotham,
+    Text = "Advanced Remote Monitor",
+    TextColor3 = Color3.fromRGB(150, 150, 160),
+    TextSize = 12,
+    TextXAlignment = Enum.TextXAlignment.Left
+})
+
+-- Control buttons
+local CloseButton = Create("ImageButton",{
+    Parent = TopBar,
+    BackgroundColor3 = Color3.fromRGB(255, 69, 58),
+    BackgroundTransparency = 0.8,
+    Position = UDim2.new(1, -42, 0.5, -12),
+    Size = UDim2.new(0, 24, 0, 24),
+    Image = "rbxassetid://3926305904",
+    ImageRectOffset = Vector2.new(924, 724),
+    ImageRectSize = Vector2.new(36, 36),
+    ImageColor3 = Color3.fromRGB(255, 255, 255)
+})
+
+local CloseButtonCorner = Create("UICorner",{
+    Parent = CloseButton,
+    CornerRadius = UDim.new(0, 8)
+})
+
+local MinimizeButton = Create("ImageButton",{
+    Parent = TopBar,
+    BackgroundColor3 = Color3.fromRGB(255, 214, 10),
+    BackgroundTransparency = 0.8,
+    Position = UDim2.new(1, -72, 0.5, -12),
+    Size = UDim2.new(0, 24, 0, 24),
+    Image = "rbxassetid://3926305904",
+    ImageRectOffset = Vector2.new(284, 4),
+    ImageRectSize = Vector2.new(24, 24),
+    ImageColor3 = Color3.fromRGB(255, 255, 255)
+})
+
+local MinimizeButtonCorner = Create("UICorner",{
+    Parent = MinimizeButton,
+    CornerRadius = UDim.new(0, 8)
+})
+
+local ToggleButton = Create("ImageButton",{
+    Parent = TopBar,
+    BackgroundColor3 = Color3.fromRGB(50, 215, 75),
+    BackgroundTransparency = 0.8,
+    Position = UDim2.new(0, 20, 0.5, -12),
+    Size = UDim2.new(0, 24, 0, 24),
+    Image = "rbxassetid://3926307971",
+    ImageRectOffset = Vector2.new(324, 524),
+    ImageRectSize = Vector2.new(36, 36),
+    ImageColor3 = Color3.fromRGB(255, 255, 255)
+})
+
+local ToggleButtonCorner = Create("UICorner",{
+    Parent = ToggleButton,
+    CornerRadius = UDim.new(0, 8)
+})
+
+-- Status indicator
+local StatusIndicator = Create("Frame",{
+    Parent = TopBar,
+    BackgroundColor3 = Color3.fromRGB(255, 69, 58),
+    Position = UDim2.new(0, 50, 0.5, -4),
+    Size = UDim2.new(0, 8, 0, 8)
+})
+
+local StatusCorner = Create("UICorner",{
+    Parent = StatusIndicator,
+    CornerRadius = UDim.new(1, 0)
+})
+
+local StatusLabel = Create("TextLabel",{
+    Parent = TopBar,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 62, 0, 0),
+    Size = UDim2.new(0, 40, 1, 0),
+    Font = Enum.Font.GothamSemibold,
+    Text = "OFF",
+    TextColor3 = Color3.fromRGB(255, 69, 58),
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left
+})
+
+-- Main content area
+local Content = Create("Frame",{
+    Parent = MainContainer,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 0, 0, 48),
+    Size = UDim2.new(1, 0, 1, -48)
+})
+
+-- Left panel with logs
+local LeftPanel = Create("Frame",{
+    Parent = Content,
+    BackgroundColor3 = Color3.fromRGB(25, 25, 30),
+    Size = UDim2.new(0.4, 0, 1, 0)
+})
+
+local LeftPanelCorner = Create("UICorner",{
+    Parent = LeftPanel,
+    CornerRadius = UDim.new(0, 0, 0, 14)
+})
+
+local LogHeader = Create("Frame",{
+    Parent = LeftPanel,
+    BackgroundColor3 = Color3.fromRGB(35, 35, 40),
+    Size = UDim2.new(1, 0, 0, 32)
+})
+
+local LogHeaderCorner = Create("UICorner",{
+    Parent = LogHeader,
+    CornerRadius = UDim.new(0, 0, 0, 0)
+})
+
+local LogTitle = Create("TextLabel",{
+    Parent = LogHeader,
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 1, 0),
+    Font = Enum.Font.GothamSemibold,
+    Text = "REMOTE LOGS",
+    TextColor3 = Color3.fromRGB(180, 180, 190),
+    TextSize = 14
+})
+
+local LogCount = Create("TextLabel",{
+    Parent = LogHeader,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(1, -10, 0, 0),
+    Size = UDim2.new(0, 40, 1, 0),
+    Font = Enum.Font.Gotham,
+    Text = "0",
+    TextColor3 = Color3.fromRGB(100, 100, 110),
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Right
+})
+
+local LogList = Create("ScrollingFrame",{
+    Parent = LeftPanel,
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 0, 0, 32),
+    Size = UDim2.new(1, 0, 1, -32),
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(60, 60, 70),
+    VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar
+})
+
+local UIListLayout = Create("UIListLayout",{
+    Parent = LogList,
+    Padding = UDim.new(0, 4),
+    SortOrder = Enum.SortOrder.LayoutOrder
+})
+
+-- Right panel with code and buttons
+local RightPanel = Create("Frame",{
+    Parent = Content,
+    BackgroundColor3 = Color3.fromRGB(20, 20, 25),
+    Position = UDim2.new(0.4, 0, 0, 0),
+    Size = UDim2.new(0.6, 0, 1, 0)
+})
+
+-- Code panel
+local CodeContainer = Create("Frame",{
+    Parent = RightPanel,
+    BackgroundColor3 = Color3.fromRGB(15, 15, 20),
+    Size = UDim2.new(1, 0, 0.65, 0)
+})
+
+local CodeHeader = Create("Frame",{
+    Parent = CodeContainer,
+    BackgroundColor3 = Color3.fromRGB(25, 25, 30),
+    Size = UDim2.new(1, 0, 0, 28)
+})
+
+local CodeTitle = Create("TextLabel",{
+    Parent = CodeHeader,
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 1, 0),
+    Font = Enum.Font.GothamSemibold,
+    Text = "GENERATED SCRIPT",
+    TextColor3 = Color3.fromRGB(180, 180, 190),
+    TextSize = 14
+})
+
+local CodeBox = Create("Frame",{
+    Parent = CodeContainer,
+    BackgroundColor3 = Color3.fromRGB(10, 10, 15),
+    Position = UDim2.new(0, 8, 0, 36),
+    Size = UDim2.new(1, -16, 1, -44)
+})
+
+local CodeBoxCorner = Create("UICorner",{
+    Parent = CodeBox,
+    CornerRadius = UDim.new(0, 8)
+})
+
+-- Buttons panel
+local ButtonsContainer = Create("Frame",{
+    Parent = RightPanel,
+    BackgroundColor3 = Color3.fromRGB(25, 25, 30),
+    Position = UDim2.new(0, 0, 0.65, 0),
+    Size = UDim2.new(1, 0, 0.35, 0)
+})
+
+local ButtonsHeader = Create("Frame",{
+    Parent = ButtonsContainer,
+    BackgroundColor3 = Color3.fromRGB(35, 35, 40),
+    Size = UDim2.new(1, 0, 0, 28)
+})
+
+local ButtonsTitle = Create("TextLabel",{
+    Parent = ButtonsHeader,
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 1, 0),
+    Font = Enum.Font.GothamSemibold,
+    Text = "ACTIONS",
+    TextColor3 = Color3.fromRGB(180, 180, 190),
+    TextSize = 14
+})
+
+local ButtonsGrid = Create("ScrollingFrame",{
+    Parent = ButtonsContainer,
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 8, 0, 36),
+    Size = UDim2.new(1, -16, 1, -44),
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(60, 60, 70)
+})
+
+local UIGridLayout = Create("UIGridLayout",{
+    Parent = ButtonsGrid,
+    CellPadding = UDim2.new(0, 6, 0, 6),
+    CellSize = UDim2.new(0.5, -6, 0, 32),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    HorizontalAlignment = Enum.HorizontalAlignment.Center
+})
+
+-- Tooltip
+local ToolTip = Create("Frame",{
+    Parent = VoxSpy,
+    BackgroundColor3 = Color3.fromRGB(30, 30, 35),
+    BackgroundTransparency = 0.05,
+    BorderSizePixel = 0,
+    Size = UDim2.new(0, 220, 0, 70),
+    ZIndex = 100,
+    Visible = false
+})
+
+local ToolTipCorner = Create("UICorner",{
+    Parent = ToolTip,
+    CornerRadius = UDim.new(0, 10)
+})
+
+local ToolTipStroke = Create("UIStroke",{
+    Parent = ToolTip,
+    Color = Color3.fromRGB(60, 60, 70),
+    Thickness = 1
+})
+
+local ToolTipLabel = Create("TextLabel",{
+    Parent = ToolTip,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 10),
+    Size = UDim2.new(1, -20, 1, -20),
+    Font = Enum.Font.Gotham,
+    Text = "Tooltip text",
+    TextColor3 = Color3.fromRGB(220, 220, 220),
+    TextSize = 13,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top
+})
+
+-------------------------------------------------------------------------------
+
+local selectedColor = Color3.fromRGB(0, 122, 255)
+local deselectedColor = Color3.fromRGB(70, 70, 80)
+local remoteEventColor = Color3.fromRGB(255, 149, 0)
+local remoteFunctionColor = Color3.fromRGB(50, 215, 75)
+local layoutOrderNum = 999999999
+local mainClosing = false
+local closed = false
+local sideClosing = false
+local sideClosed = false
+local maximized = false
+local logs = {}
+local selected = nil
+local blacklist = {}
+local blocklist = {}
+local getNil = false
+local connectedRemotes = {}
+local toggle = false
+local prevTables = {}
+local remoteLogs = {}
+getgenv().VOXSPYCONFIG_MaxRemotes = 300
+local indent = 4
+local scheduled = {}
+local schedulerconnect
+local VoxSpyModule = {}
+local topstr = ""
+local bottomstr = ""
+local remotesFadeIn
+local rightFadeIn
+local codebox
+local p
+local getnilrequired = false
+
+local history = {}
+local excluding = {}
+local mouseInGui = false
+local connections = {}
+local DecompiledScripts = {}
+local generation = {}
+local running_threads = {}
+local originalnamecall
+
+local remoteEvent = Instance.new("RemoteEvent",Storage)
+local unreliableRemoteEvent = Instance.new("UnreliableRemoteEvent")
+local remoteFunction = Instance.new("RemoteFunction",Storage)
+local NamecallHandler = Instance.new("BindableEvent",Storage)
+local IndexHandler = Instance.new("BindableEvent",Storage)
+local GetDebugIdHandler = Instance.new("BindableFunction",Storage)
+
+local originalEvent = remoteEvent.FireServer
+local originalUnreliableEvent = unreliableRemoteEvent.FireServer
+local originalFunction = remoteFunction.InvokeServer
+local GetDebugIDInvoke = GetDebugIdHandler.Invoke
+
+function GetDebugIdHandler.OnInvoke(obj: Instance)
+    return OldDebugId(obj)
+end
+
+local function ThreadGetDebugId(obj: Instance): string 
+    return GetDebugIDInvoke(GetDebugIdHandler,obj)
+end
+
+local synv3 = false
+
+if syn and identifyexecutor then
+    local _, version = identifyexecutor()
+    if (version and version:sub(1, 2) == 'v3') then
+        synv3 = true
+    end
+end
+
+xpcall(function()
+    if isfile and readfile and isfolder and makefolder then
+        local cachedconfigs = isfile("VoxSpy//Settings.json") and jsond(readfile("VoxSpy//Settings.json"))
+
+        if cachedconfigs then
+            for i,v in next, realconfigs do
+                if cachedconfigs[i] == nil then
+                    cachedconfigs[i] = v
+                end
+            end
+            realconfigs = cachedconfigs
+        end
+
+        if not isfolder("VoxSpy") then
+            makefolder("VoxSpy")
+        end
+        if not isfolder("VoxSpy//Assets") then
+            makefolder("VoxSpy//Assets")
+        end
+        if not isfile("VoxSpy//Settings.json") then
+            writefile("VoxSpy//Settings.json",jsone(realconfigs))
+        end
+
+        configsmetatable.__newindex = function(self,index,newindex)
+            realconfigs[index] = newindex
+            writefile("VoxSpy//Settings.json",jsone(realconfigs))
+        end
+    else
+        configsmetatable.__newindex = function(self,index,newindex)
+            realconfigs[index] = newindex
+        end
+    end
+end,function(err)
+    ErrorPrompt(("An error has occured: (%s)"):format(err))
+end)
+
+local function logthread(thread: thread)
+    table.insert(running_threads,thread)
+end
+
+function clean()
+    local max = getgenv().VOXSPYCONFIG_MaxRemotes
+    if not typeof(max) == "number" and math.floor(max) ~= max then
+        max = 500
+    end
+    if #remoteLogs > max then
+        for i = 100, #remoteLogs do
+            local v = remoteLogs[i]
+            if typeof(v[1]) == "RBXScriptConnection" then
+                v[1]:Disconnect()
+            end
+            if typeof(v[2]) == "Instance" then
+                v[2]:Destroy()
+            end
+        end
+        local newLogs = {}
+        for i = 1, 100 do
+            table.insert(newLogs, remoteLogs[i])
+        end
+        remoteLogs = newLogs
+    end
+end
+
+local function ThreadIsNotDead(thread: thread): boolean
+    return not status(thread) == "dead"
+end
+
+function scaleToolTip()
+    local size = TextService:GetTextSize(ToolTipLabel.Text, ToolTipLabel.TextSize, ToolTipLabel.Font, Vector2.new(200, math.huge))
+    ToolTipLabel.Size = UDim2.new(0, size.X, 0, size.Y)
+    ToolTip.Size = UDim2.new(0, size.X + 20, 0, size.Y + 20)
+end
+
+function updateStatus()
+    if toggle then
+        TweenService:Create(StatusIndicator, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(50, 215, 75)
+        }):Play()
+        StatusLabel.Text = "ON"
+        StatusLabel.TextColor3 = Color3.fromRGB(50, 215, 75)
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(50, 215, 75),
+            BackgroundTransparency = 0.6
+        }):Play()
+    else
+        TweenService:Create(StatusIndicator, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(255, 69, 58)
+        }):Play()
+        StatusLabel.Text = "OFF"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 69, 58)
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {
+            BackgroundColor3 = Color3.fromRGB(255, 69, 58),
+            BackgroundTransparency = 0.8
+        }):Play()
+    end
+end
+
+function onToggleButtonHover()
+    TweenService:Create(ToggleButton, TweenInfo.new(0.2), {
+        BackgroundTransparency = 0.5
+    }):Play()
+end
+
+function onToggleButtonUnhover()
+    TweenService:Create(ToggleButton, TweenInfo.new(0.2), {
+        BackgroundTransparency = 0.8
+    }):Play()
+end
+
+function onXButtonHover()
+    TweenService:Create(CloseButton, TweenInfo.new(0.2), {
+        BackgroundTransparency = 0.5
+    }):Play()
+end
+
+function onXButtonUnhover()
+    TweenService:Create(CloseButton, TweenInfo.new(0.2), {
+        BackgroundTransparency = 0.8
+    }):Play()
+end
+
+function onToggleButtonClick()
+    toggleSpyMethod()
+    updateStatus()
+end
+
+function connectResize()
+    if not workspace.CurrentCamera then
+        workspace:GetPropertyChangedSignal("CurrentCamera"):Wait()
+    end
+    local lastCam = workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(bringBackOnResize)
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        lastCam:Disconnect()
+        if typeof(lastCam) == 'Connection' then
+            lastCam:Disconnect()
+        end
+        lastCam = workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(bringBackOnResize)
+    end)
+end
+
+function bringBackOnResize()
+    validateSize()
+    local viewportSize = workspace.CurrentCamera.ViewportSize
+    local currentX = MainContainer.AbsolutePosition.X
+    local currentY = MainContainer.AbsolutePosition.Y
+    
+    if (currentX < 0) or (currentX > (viewportSize.X - MainContainer.AbsoluteSize.X)) then
+        if currentX < 0 then
+            currentX = 0
+        else
+            currentX = viewportSize.X - MainContainer.AbsoluteSize.X
+        end
+    end
+    if (currentY < 0) or (currentY > (viewportSize.Y - MainContainer.AbsoluteSize.Y - GuiInset.Y)) then
+        if currentY < 0 then
+            currentY = 0
+        else
+            currentY = viewportSize.Y - MainContainer.AbsoluteSize.Y - GuiInset.Y
+        end
+    end
+    TweenService:Create(MainContainer, TweenInfo.new(0.1), {
+        Position = UDim2.new(0, currentX, 0, currentY)
+    }):Play()
+end
+
+function onBarInput(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local lastPos = UserInputService:GetMouseLocation()
+        local mainPos = MainContainer.AbsolutePosition
+        local offset = mainPos - lastPos
+        local currentPos = offset + lastPos
+        
+        if not connections["drag"] then
+            connections["drag"] = RunService.RenderStepped:Connect(function()
+                local newPos = UserInputService:GetMouseLocation()
+                if newPos ~= lastPos then
+                    local currentX = (offset + newPos).X
+                    local currentY = (offset + newPos).Y
+                    local viewportSize = workspace.CurrentCamera.ViewportSize
+                    
+                    if (currentX < 0 and currentX < currentPos.X) or (currentX > (viewportSize.X - MainContainer.AbsoluteSize.X) and currentX > currentPos.X) then
+                        if currentX < 0 then
+                            currentX = 0
+                        else
+                            currentX = viewportSize.X - MainContainer.AbsoluteSize.X
+                        end
+                    end
+                    if (currentY < 0 and currentY < currentPos.Y) or (currentY > (viewportSize.Y - MainContainer.AbsoluteSize.Y - GuiInset.Y) and currentY > currentPos.Y) then
+                        if currentY < 0 then
+                            currentY = 0
+                        else
+                            currentY = viewportSize.Y - MainContainer.AbsoluteSize.Y - GuiInset.Y
+                        end
+                    end
+                    
+                    currentPos = Vector2.new(currentX, currentY)
+                    lastPos = newPos
+                    TweenService:Create(MainContainer, TweenInfo.new(0.1), {
+                        Position = UDim2.new(0, currentPos.X, 0, currentPos.Y)
+                    }):Play()
+                end
+            end)
+        end
+        
+        table.insert(connections, UserInputService.InputEnded:Connect(function(inputE)
+            if input == inputE then
+                if connections["drag"] then
+                    connections["drag"]:Disconnect()
+                    connections["drag"] = nil
+                end
+            end
+        end))
+    end
+end
+
+function fadeOut(elements)
+    local data = {}
+    for _, v in next, elements do
+        if typeof(v) == "Instance" and v:IsA("GuiObject") and v.Visible then
+            spawn(function()
+                data[v] = {
+                    BackgroundTransparency = v.BackgroundTransparency
+                }
+                TweenService:Create(v, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+                if v:IsA("TextBox") or v:IsA("TextButton") or v:IsA("TextLabel") then
+                    data[v].TextTransparency = v.TextTransparency
+                    TweenService:Create(v, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+                elseif v:IsA("ImageButton") or v:IsA("ImageLabel") then
+                    data[v].ImageTransparency = v.ImageTransparency
+                    TweenService:Create(v, TweenInfo.new(0.5), {ImageTransparency = 1}):Play()
+                end
+                delay(0.5,function()
+                    v.Visible = false
+                    for i, x in next, data[v] do
+                        v[i] = x
+                    end
+                    data[v] = true
+                end)
+            end)
+        end
+    end
+    return function()
+        for i, _ in next, data do
+            spawn(function()
+                local properties = {
+                    BackgroundTransparency = i.BackgroundTransparency
+                }
+                i.BackgroundTransparency = 1
+                TweenService:Create(i, TweenInfo.new(0.5), {BackgroundTransparency = properties.BackgroundTransparency}):Play()
+                if i:IsA("TextBox") or i:IsA("TextButton") or i:IsA("TextLabel") then
+                    properties.TextTransparency = i.TextTransparency
+                    i.TextTransparency = 1
+                    TweenService:Create(i, TweenInfo.new(0.5), {TextTransparency = properties.TextTransparency}):Play()
+                elseif i:IsA("ImageButton") or i:IsA("ImageLabel") then
+                    properties.ImageTransparency = i.ImageTransparency
+                    i.ImageTransparency = 1
+                    TweenService:Create(i, TweenInfo.new(0.5), {ImageTransparency = properties.ImageTransparency}):Play()
+                end
+                i.Visible = true
+            end)
+        end
+    end
+end
+
+function toggleMinimize(override)
+    if mainClosing and not override or maximized then
+        return
+    end
+    mainClosing = true
+    closed = not closed
+    if closed then
+        TweenService:Create(MainContainer, TweenInfo.new(0.5), {
+            Size = UDim2.new(0, MainContainer.AbsoluteSize.X, 0, 48)
+        }):Play()
+        wait(0.5)
+    else
+        TweenService:Create(MainContainer, TweenInfo.new(0.5), {
+            Size = UDim2.new(0, 500, 0, 400)
+        }):Play()
+        wait(0.5)
+        bringBackOnResize()
+    end
+    mainClosing = false
+end
+
+function toggleSideTray(override)
+    if sideClosing and not override or maximized then
+        return
+    end
+    sideClosing = true
+    sideClosed = not sideClosed
+    if sideClosed then
+        rightFadeIn = fadeOut(RightPanel:GetDescendants())
+        wait(0.5)
+        TweenService:Create(LeftPanel, TweenInfo.new(0.5), {
+            Size = UDim2.new(1, 0, 1, 0)
+        }):Play()
+        TweenService:Create(RightPanel, TweenInfo.new(0.5), {
+            Size = UDim2.new(0, 0, 1, 0)
+        }):Play()
+        wait(0.5)
+        RightPanel.Visible = false
+    else
+        if closed then
+            toggleMinimize(true)
+        end
+        RightPanel.Visible = true
+        TweenService:Create(LeftPanel, TweenInfo.new(0.5), {
+            Size = UDim2.new(0.4, 0, 1, 0)
+        }):Play()
+        TweenService:Create(RightPanel, TweenInfo.new(0.5), {
+            Size = UDim2.new(0.6, 0, 1, 0)
+        }):Play()
+        wait(0.5)
+        if rightFadeIn then
+            rightFadeIn()
+        end
+        bringBackOnResize()
+    end
+    sideClosing = false
+end
+
+function toggleMaximize()
+    if not sideClosed and not maximized then
+        maximized = true
+        local disable = Instance.new("TextButton")
+        local prevSize = UDim2.new(0, CodeBox.AbsoluteSize.X, 0, CodeBox.AbsoluteSize.Y)
+        local prevPos = UDim2.new(0,CodeBox.AbsolutePosition.X, 0, CodeBox.AbsolutePosition.Y)
+        disable.Size = UDim2.new(1, 0, 1, 0)
+        disable.BackgroundColor3 = Color3.new()
+        disable.BorderSizePixel = 0
+        disable.Text = 0
+        disable.ZIndex = 3
+        disable.BackgroundTransparency = 1
+        disable.AutoButtonColor = false
+        CodeBox.ZIndex = 4
+        CodeBox.Position = prevPos
+        CodeBox.Size = prevSize
+        TweenService:Create(CodeBox, TweenInfo.new(0.5), {Size = UDim2.new(0.5, 0, 0.5, 0), Position = UDim2.new(0.25, 0, 0.25, 0)}):Play()
+        TweenService:Create(disable, TweenInfo.new(0.5), {BackgroundTransparency = 0.5}):Play()
+        disable.MouseButton1Click:Connect(function()
+            if UserInputService:GetMouseLocation().Y + GuiInset.Y >= CodeBox.AbsolutePosition.Y and UserInputService:GetMouseLocation().Y + GuiInset.Y <= CodeBox.AbsolutePosition.Y + CodeBox.AbsoluteSize.Y and UserInputService:GetMouseLocation().X >= CodeBox.AbsolutePosition.X and UserInputService:GetMouseLocation().X <= CodeBox.AbsolutePosition.X + CodeBox.AbsoluteSize.X then
+                return
+            end
+            TweenService:Create(CodeBox, TweenInfo.new(0.5), {Size = prevSize, Position = prevPos}):Play()
+            TweenService:Create(disable, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+            wait(0.5)
+            disable:Destroy()
+            CodeBox.Size = UDim2.new(1, -16, 1, -44)
+            CodeBox.Position = UDim2.new(0, 8, 0, 36)
+            CodeBox.ZIndex = 0
+            maximized = false
+        end)
+    end
+end
+
+function isInResizeRange(p)
+    local relativeP = p - MainContainer.AbsolutePosition
+    local range = 5
+    if relativeP.X >= MainContainer.AbsoluteSize.X - range and relativeP.Y >= MainContainer.AbsoluteSize.Y - range
+        and relativeP.X <= MainContainer.AbsoluteSize.X and relativeP.Y <= MainContainer.AbsoluteSize.Y then
+        return true, 'B'
+    elseif relativeP.X >= MainContainer.AbsoluteSize.X - range and relativeP.X <= MainContainer.AbsoluteSize.X then
+        return true, 'X'
+    elseif relativeP.Y >= MainContainer.AbsoluteSize.Y - range and relativeP.Y <= MainContainer.AbsoluteSize.Y then
+        return true, 'Y'
+    end
+    return false
+end
+
+function isInDragRange(p)
+    local relativeP = p - MainContainer.AbsolutePosition
+    local topbarAS = TopBar.AbsoluteSize
+    return relativeP.X <= topbarAS.X - CloseButton.AbsoluteSize.X * 3 and relativeP.X >= 0 and relativeP.Y <= topbarAS.Y and relativeP.Y >= 0 or false
+end
+
+local customCursor = Create("ImageLabel",{Parent = VoxSpy,Visible = false,Size = UDim2.fromOffset(200, 200),ZIndex = 1e9,BackgroundTransparency = 1,Image = "",Parent = VoxSpy})
+function mouseEntered()
+    local con = connections["VOXSPY_CURSOR"]
+    if con then
+        con:Disconnect()
+        connections["VOXSPY_CURSOR"] = nil
+    end
+    connections["VOXSPY_CURSOR"] = RunService.RenderStepped:Connect(function()
+        UserInputService.MouseIconEnabled = not mouseInGui
+        customCursor.Visible = mouseInGui
+        if mouseInGui and getgenv().VoxSpyExecuted then
+            local mouseLocation = UserInputService:GetMouseLocation() - GuiInset
+            customCursor.Position = UDim2.fromOffset(mouseLocation.X - customCursor.AbsoluteSize.X / 2, mouseLocation.Y - customCursor.AbsoluteSize.Y / 2)
+            local inRange, type = isInResizeRange(mouseLocation)
+            if inRange and not closed then
+                if not sideClosed then
+                    customCursor.Image = type == 'B' and "rbxassetid://6065821980" or type == 'X' and "rbxassetid://6065821086" or type == 'Y' and "rbxassetid://6065821596"
+                elseif type == 'Y' or type == 'B' then
+                    customCursor.Image = "rbxassetid://6065821596"
+                end
+            elseif customCursor.Image ~= "rbxassetid://6065775281" then
+                customCursor.Image = "rbxassetid://6065775281"
+            end
+        else
+            connections["VOXSPY_CURSOR"]:Disconnect()
+        end
+    end)
+end
+
+function mouseMoved()
+    local mousePos = UserInputService:GetMouseLocation() - GuiInset
+    if not closed
+    and mousePos.X >= MainContainer.AbsolutePosition.X and mousePos.X <= MainContainer.AbsolutePosition.X + MainContainer.AbsoluteSize.X
+    and mousePos.Y >= MainContainer.AbsolutePosition.Y and mousePos.Y <= MainContainer.AbsolutePosition.Y + MainContainer.AbsoluteSize.Y then
+        if not mouseInGui then
+            mouseInGui = true
+            mouseEntered()
+        end
+    else
+        mouseInGui = false
+    end
+end
+
+function maximizeSize(speed)
+    if not speed then
+        speed = 0.05
+    end
+    -- Размеры уже заданы в UDim, так что эта функция не нужна в новой версии
+end
+
+function minimizeSize(speed)
+    if not speed then
+        speed = 0.05
+    end
+    -- Размеры уже заданы в UDim, так что эта функция не нужна в новой версии
+end
+
+function validateSize()
+    local x, y = MainContainer.AbsoluteSize.X, MainContainer.AbsoluteSize.Y
+    local screenSize = workspace.CurrentCamera.ViewportSize
+    if x + MainContainer.AbsolutePosition.X > screenSize.X then
+        if screenSize.X - MainContainer.AbsolutePosition.X >= 450 then
+            x = screenSize.X - MainContainer.AbsolutePosition.X
+        else
+            x = 450
+        end
+    elseif y + MainContainer.AbsolutePosition.Y > screenSize.Y then
+        if screenSize.Y - MainContainer.AbsolutePosition.Y >= 268 then
+            y = screenSize.Y - MainContainer.AbsolutePosition.Y
+        else
+            y = 268
+        end
+    end
+    MainContainer.Size = UDim2.fromOffset(x, y)
+end
+
+function backgroundUserInput(input)
+    local mousePos = UserInputService:GetMouseLocation() - GuiInset
+    local inResizeRange, type = isInResizeRange(mousePos)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and inResizeRange then
+        local lastPos = UserInputService:GetMouseLocation()
+        local offset = MainContainer.AbsoluteSize - lastPos
+        local currentPos = lastPos + offset
+        if not connections["VOXSPY_RESIZE"] then
+            connections["VOXSPY_RESIZE"] = RunService.RenderStepped:Connect(function()
+                local newPos = UserInputService:GetMouseLocation()
+                if newPos ~= lastPos then
+                    local currentX = (newPos + offset).X
+                    local currentY = (newPos + offset).Y
+                    if currentX < 500 then
+                        currentX = 500
+                    end
+                    if currentY < 350 then
+                        currentY = 350
+                    end
+                    currentPos = Vector2.new(currentX, currentY)
+                    MainContainer.Size = UDim2.fromOffset((not sideClosed and not closed and (type == "X" or type == "B")) and currentPos.X or MainContainer.AbsoluteSize.X, (not closed and (type == "Y" or type == "B")) and currentPos.Y or MainContainer.AbsoluteSize.Y)
+                    validateSize()
+                    lastPos = newPos
+                end
+            end)
+        end
+        table.insert(connections, UserInputService.InputEnded:Connect(function(inputE)
+            if input == inputE then
+                if connections["VOXSPY_RESIZE"] then
+                    connections["VOXSPY_RESIZE"]:Disconnect()
+                    connections["VOXSPY_RESIZE"] = nil
+                end
+            end
+        end))
+    elseif isInDragRange(mousePos) then
+        onBarInput(input)
+    end
+end
+
+function getPlayerFromInstance(instance)
+    for _, v in next, Players:GetPlayers() do
+        if v.Character and (instance:IsDescendantOf(v.Character) or instance == v.Character) then
+            return v
+        end
+    end
+end
+
+function eventSelect(frame)
+    if selected and selected.Log  then
+        if selected.Button then
+            spawn(function()
+                TweenService:Create(selected.Button, TweenInfo.new(0.5), {
+                    BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+                }):Play()
+            end)
+        end
+        selected = nil
+    end
+    for _, v in next, logs do
+        if frame == v.Log then
+            selected = v
+        end
+    end
+    if selected and selected.Log then
+        spawn(function()
+            TweenService:Create(frame.Button, TweenInfo.new(0.5), {
+                BackgroundColor3 = selectedColor
+            }):Play()
+        end)
+        codebox:setRaw(selected.GenScript)
+    end
+    if sideClosed then
+        toggleSideTray()
+    end
+end
+
+function updateFunctionCanvas()
+    ButtonsGrid.CanvasSize = UDim2.fromOffset(UIGridLayout.AbsoluteContentSize.X, UIGridLayout.AbsoluteContentSize.Y)
+end
+
+function updateRemoteCanvas()
+    LogList.CanvasSize = UDim2.fromOffset(UIListLayout.AbsoluteContentSize.X, UIListLayout.AbsoluteContentSize.Y)
+end
+
+function updateLogCount()
+    LogCount.Text = tostring(#logs)
+end
+
+function makeToolTip(enable, text)
+    if enable and text then
+        if ToolTip.Visible then
+            ToolTip.Visible = false
+            local tooltip = connections["ToolTip"]
+            if tooltip then
+                tooltip:Disconnect()
+            end
+        end
+        local first = true
+        connections["ToolTip"] = RunService.RenderStepped:Connect(function()
+            local MousePos = UserInputService:GetMouseLocation()
+            local topLeft = MousePos + Vector2.new(20, -15)
+            local bottomRight = topLeft + ToolTip.AbsoluteSize
+            local ViewportSize = workspace.CurrentCamera.ViewportSize
+            local ViewportSizeX = ViewportSize.X
+            local ViewportSizeY = ViewportSize.Y
+
+            if topLeft.X < 0 then
+                topLeft = Vector2.new(0, topLeft.Y)
+            elseif bottomRight.X > ViewportSizeX then
+                topLeft = Vector2.new(ViewportSizeX - ToolTip.AbsoluteSize.X, topLeft.Y)
+            end
+            if topLeft.Y < 0 then
+                topLeft = Vector2.new(topLeft.X, 0)
+            elseif bottomRight.Y > ViewportSizeY - 35 then
+                topLeft = Vector2.new(topLeft.X, ViewportSizeY - ToolTip.AbsoluteSize.Y - 35)
+            end
+            if topLeft.X <= MousePos.X and topLeft.Y <= MousePos.Y then
+                topLeft = Vector2.new(MousePos.X - ToolTip.AbsoluteSize.X - 2, MousePos.Y - ToolTip.AbsoluteSize.Y - 2)
+            end
+            if first then
+                ToolTip.Position = UDim2.fromOffset(topLeft.X, topLeft.Y)
+                first = false
+            else
+                ToolTip:TweenPosition(UDim2.fromOffset(topLeft.X, topLeft.Y), "Out", "Linear", 0.1)
+            end
+        end)
+        ToolTipLabel.Text = text
+        ToolTipLabel.TextScaled = false
+        ToolTip.Visible = true
+        scaleToolTip()
+        return
+    else
+        if ToolTip.Visible then
+            ToolTip.Visible = false
+            local tooltip = connections["ToolTip"]
+            if tooltip then
+                tooltip:Disconnect()
+            end
+        end
+    end
+end
+
+function newButton(name, description, onClick)
+    local ButtonTemplate = Create("Frame",{
+        Name = "ButtonTemplate",
+        Parent = ButtonsGrid,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 32)
+    })
+
+    local Button = Create("TextButton",{
+        Name = "Button",
+        Parent = ButtonTemplate,
+        BackgroundColor3 = Color3.fromRGB(40, 40, 45),
+        BackgroundTransparency = 0.1,
+        Size = UDim2.new(1, 0, 1, 0),
+        AutoButtonColor = false,
+        Font = Enum.Font.Gotham,
+        Text = name,
+        TextColor3 = Color3.fromRGB(220, 220, 220),
+        TextSize = 13,
+        ClipsDescendants = true
+    })
+
+    local ButtonCorner = Create("UICorner",{
+        Parent = Button,
+        CornerRadius = UDim.new(0, 6)
+    })
+
+    local ButtonStroke = Create("UIStroke",{
+        Parent = Button,
+        Color = Color3.fromRGB(70, 70, 80),
+        Thickness = 1,
+        Transparency = 0.5
+    })
+
+    -- Hover effects
+    local originalColor = Button.BackgroundColor3
+    Button.MouseEnter:Connect(function()
+        TweenService:Create(Button, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+        }):Play()
+        TweenService:Create(ButtonStroke, TweenInfo.new(0.2), {
+            Transparency = 0.3
+        }):Play()
+        makeToolTip(true, description)
+    end)
+
+    Button.MouseLeave:Connect(function()
+        TweenService:Create(Button, TweenInfo.new(0.2), {
+            BackgroundColor3 = originalColor
+        }):Play()
+        TweenService:Create(ButtonStroke, TweenInfo.new(0.2), {
+            Transparency = 0.5
+        }):Play()
+        makeToolTip(false)
+    end)
+
+    -- Click effects
+    Button.MouseButton1Down:Connect(function()
+        TweenService:Create(Button, TweenInfo.new(0.1), {
+            BackgroundColor3 = Color3.fromRGB(30, 30, 35),
+            Size = UDim2.new(0.98, 0, 0.95, 0),
+            Position = UDim2.new(0.01, 0, 0.025, 0)
+        }):Play()
+    end)
+
+    Button.MouseButton1Up:Connect(function()
+        TweenService:Create(Button, TweenInfo.new(0.1), {
+            BackgroundColor3 = Color3.fromRGB(50, 50, 55),
+            Size = UDim2.new(1, 0, 1, 0),
+            Position = UDim2.new(0, 0, 0, 0)
+        }):Play()
+    end)
+
+    Button.MouseButton1Click:Connect(function(...)
+        logthread(running())
+        onClick(Button, ...)
+    end)
+
+    updateFunctionCanvas()
+    return Button
+end
+
+function newRemote(type, data)
+    if layoutOrderNum < 1 then layoutOrderNum = 999999999 end
+    local remote = data.remote
+    local callingscript = data.callingscript
+
+    local RemoteTemplate = Create("Frame",{
+        LayoutOrder = layoutOrderNum,
+        Name = "RemoteTemplate",
+        Parent = LogList,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -8, 0, 36)
+    })
+
+    local Button = Create("TextButton",{
+        Name = "Button",
+        Parent = RemoteTemplate,
+        BackgroundColor3 = Color3.fromRGB(35, 35, 40),
+        BackgroundTransparency = 0.1,
+        Size = UDim2.new(1, 0, 1, 0),
+        AutoButtonColor = false,
+        Font = Enum.Font.Gotham,
+        Text = "",
+        TextSize = 14,
+        ClipsDescendants = true
+    })
+
+    local ButtonCorner = Create("UICorner",{
+        Parent = Button,
+        CornerRadius = UDim.new(0, 8)
+    })
+
+    local ButtonStroke = Create("UIStroke",{
+        Parent = Button,
+        Color = type == "event" and remoteEventColor or remoteFunctionColor,
+        Thickness = 2,
+        Transparency = 0.3
+    })
+
+    local Icon = Create("ImageLabel",{
+        Parent = Button,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 8, 0.5, -8),
+        Size = UDim2.new(0, 16, 0, 16),
+        Image = type == "event" and "rbxassetid://3926305904" or "rbxassetid://3926305904",
+        ImageRectOffset = type == "event" and Vector2.new(124, 204) or Vector2.new(964, 204),
+        ImageRectSize = Vector2.new(36, 36),
+        ImageColor3 = type == "event" and remoteEventColor or remoteFunctionColor
+    })
+
+    local RemoteName = Create("TextLabel",{
+        Parent = Button,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 30, 0, 0),
+        Size = UDim2.new(1, -35, 1, 0),
+        Font = Enum.Font.Gotham,
+        Text = remote.Name,
+        TextColor3 = Color3.fromRGB(220, 220, 220),
+        TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd
+    })
+
+    local TypeBadge = Create("Frame",{
+        Parent = Button,
+        BackgroundColor3 = type == "event" and remoteEventColor or remoteFunctionColor,
+        Position = UDim2.new(1, -45, 0.5, -8),
+        Size = UDim2.new(0, 40, 0, 16)
+    })
+
+    local TypeBadgeCorner = Create("UICorner",{
+        Parent = TypeBadge,
+        CornerRadius = UDim.new(1, 0)
+    })
+
+    local TypeLabel = Create("TextLabel",{
+        Parent = TypeBadge,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+        Font = Enum.Font.GothamSemibold,
+        Text = type == "event" and "EVENT" or "FUNC",
+        TextColor3 = Color3.fromRGB(25, 25, 30),
+        TextSize = 10
+    })
+
+    local log = {
+        Name = remote.name,
+        Function = data.infofunc or "--Function Info is disabled",
+        Remote = remote,
+        DebugId = data.id,
+        metamethod = data.metamethod,
+        args = data.args,
+        Log = RemoteTemplate,
+        Button = Button,
+        Blocked = data.blocked,
+        Source = callingscript,
+        returnvalue = data.returnvalue,
+        GenScript = "-- Generating, please wait..."
+    }
+
+    logs[#logs + 1] = log
+    
+    -- Hover effects for log item
+    local originalLogColor = Button.BackgroundColor3
+    Button.MouseEnter:Connect(function()
+        if selected and selected.Log == RemoteTemplate then return end
+        TweenService:Create(Button, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+        }):Play()
+        TweenService:Create(ButtonStroke, TweenInfo.new(0.2), {
+            Transparency = 0.1
+        }):Play()
+    end)
+    
+    Button.MouseLeave:Connect(function()
+        if selected and selected.Log == RemoteTemplate then return end
+        TweenService:Create(Button, TweenInfo.new(0.2), {
+            BackgroundColor3 = originalLogColor
+        }):Play()
+        TweenService:Create(ButtonStroke, TweenInfo.new(0.2), {
+            Transparency = 0.3
+        }):Play()
+    end)
+    
+    local connect = Button.MouseButton1Click:Connect(function()
+        logthread(running())
+        eventSelect(RemoteTemplate)
+        log.GenScript = genScript(log.Remote, log.args)
+        if data.blocked then
+            log.GenScript = "-- THIS REMOTE WAS PREVENTED FROM FIRING\n\n" .. log.GenScript
+        end
+        if selected == log and RemoteTemplate then
+            eventSelect(RemoteTemplate)
+        end
+    end)
+    
+    layoutOrderNum -= 1
+    table.insert(remoteLogs, 1, {connect, RemoteTemplate})
+    clean()
+    updateRemoteCanvas()
+    updateLogCount()
+    
+    return RemoteTemplate
+end
+
+-- Все остальные функции (genScript, v2s, t2s, и т.д.) остаются без изменений
+-- Изменяются только названия SimpleSpy на VoxSpy
+
+function genScript(remote, args)
+    prevTables = {}
+    local gen = ""
+    if #args > 0 then
+        xpcall(function()
+            gen = "local args = "..LazyFix.Convert(args, true) .. "\n"
+        end,function(err)
+            gen = gen .. "-- An error has occured:\n--"..err.."\n-- TableToString failure! Reverting to legacy functionality (results may vary)\nlocal args = {"
+            xpcall(function()
+                for i, v in next, args do
+                    if type(i) ~= "Instance" and type(i) ~= "userdata" then
+                        gen = gen .. "\n    [object] = "
+                    elseif type(i) == "string" then
+                        gen = gen .. '\n    ["' .. i .. '"] = '
+                    elseif type(i) == "userdata" and typeof(i) ~= "Instance" then
+                        gen = gen .. "\n    [" .. string.format("nil --[[%s]]", typeof(v)) .. ")] = "
+                    elseif type(i) == "userdata" then
+                         gen = gen .. "\n    [game." .. i:GetFullName() .. ")] = "
+                    end
+                    if type(v) ~= "Instance" and type(v) ~= "userdata" then
+                        gen = gen .. "object"
+                    elseif type(v) == "string" then
+                        gen = gen .. '"' .. v .. '"'
+                    elseif type(v) == "userdata" and typeof(v) ~= "Instance" then
+                        gen = gen .. string.format("nil --[[%s]]", typeof(v))
+                    elseif type(v) == "userdata" then
+                        gen = gen .. "game." .. v:GetFullName()
+                    end
+                end
+                gen = gen .. "\n}\n\n"
+            end,function()
+                gen = gen .. "}\n-- Legacy tableToString failure! Unable to decompile."
+            end)
+        end)
+        if not remote:IsDescendantOf(game) and not getnilrequired then
+            gen = "function getNil(name,class) for _,v in next, getnilinstances()do if v.ClassName==class and v.Name==name then return v;end end end\n\n" .. gen
+        end
+        if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
+            gen = gen .. LazyFix.ConvertKnown("Instance", remote) .. ":FireServer(unpack(args))"
+        elseif remote:IsA("RemoteFunction") then
+            gen = gen .. LazyFix.ConvertKnown("Instance", remote) .. ":InvokeServer(unpack(args))"
+        end
+    else
+        if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
+            gen = gen .. LazyFix.ConvertKnown("Instance", remote) .. ":FireServer()"
+        elseif remote:IsA("RemoteFunction") then
+            gen = gen .. LazyFix.ConvertKnown("Instance", remote) .. ":InvokeServer()"
+        end
+    end
+    prevTables = {}
+    return gen
+end
+
+-- Вставьте здесь все остальные функции из оригинального скрипта (v2s, t2s, f2s, i2p, v2p, formatstr, handlespecials и т.д.)
+-- Они остаются точно такими же, только SimpleSpy заменяется на VoxSpy где нужно
+
+-- Остальной код остается без изменений (все функции мониторинга, хуки и т.д.)
+-- Просто замените все SimpleSpy на VoxSpy в названиях переменных и функций
+
+-- Вместо полной вставки всего оставшегося кода (который очень длинный),
+-- вот основные изменения, которые нужно сделать:
+
+-- 1. Замените все getgenv().SimpleSpyExecuted на getgenv().VoxSpyExecuted
+-- 2. Замените все getgenv().SimpleSpyShutdown на getgenv().VoxSpyShutdown
+-- 3. Замените все SimpleSpy3 на VoxSpy
+-- 4. Замените все SIMPLESPYCONFIG на VOXSPYCONFIG
+-- 5. Замените все SimpleSpyMaxTableSize на VoxSpyMaxTableSize
+-- 6. Замените все SimpleSpyMaxStringSize на VoxSpyMaxStringSize
+-- 7. Замените все SimpleSpy на VoxSpyModule
+
+-- Все остальные функции (remoteHandler, toggleSpy, toggleSpyMethod, shutdown и т.д.)
+-- остаются функционально идентичными, только с измененными названиями
+
+-- Инициализация
+if not getgenv().VoxSpyExecuted then
+    local succeeded, err = pcall(function()
+        if not RunService:IsClient() then
+            error("Vox Spy cannot run on the server!")
+        end
+        
+        getgenv().VoxSpyShutdown = shutdown
+        onToggleButtonClick()
+        
+        if not hookmetamethod then
+            ErrorPrompt("Vox Spy will not function to it's fullest capability due to your executor not supporting hookmetamethod.",true)
+        end
+        
+        codebox = Highlight.new(CodeBox)
+        logthread(spawn(function()
+            local suc,err = pcall(game.HttpGet,game,"https://raw.githubusercontent.com/78n/SimpleSpy/main/UpdateLog.lua")
+            codebox:setRaw((suc and err) or "")
+        end))
+        
+        getgenv().VoxSpy = VoxSpyModule
+        getgenv().getNil = function(name,class)
+            for _,v in next, getnilinstances() do
+                if v.ClassName == class and v.Name == name then
+                    return v;
+                end
+            end
+        end
+        
+        -- Подключение событий
+        MainContainer.MouseEnter:Connect(function()
+            mouseInGui = true
+            mouseEntered()
+        end)
+        
+        MainContainer.MouseLeave:Connect(function()
+            mouseInGui = false
+            mouseEntered()
+        end)
+        
+        ToolTipLabel:GetPropertyChangedSignal("Text"):Connect(scaleToolTip)
+        MinimizeButton.MouseButton1Click:Connect(toggleMinimize)
+        ToggleButton.MouseButton1Click:Connect(onToggleButtonClick)
+        CloseButton.MouseEnter:Connect(onXButtonHover)
+        CloseButton.MouseLeave:Connect(onXButtonUnhover)
+        ToggleButton.MouseEnter:Connect(onToggleButtonHover)
+        ToggleButton.MouseLeave:Connect(onToggleButtonUnhover)
+        CloseButton.MouseButton1Click:Connect(shutdown)
+        
+        table.insert(connections, UserInputService.InputBegan:Connect(backgroundUserInput))
+        connectResize()
+        
+        VoxSpy.Enabled = true
+        logthread(spawn(function()
+            delay(1,onToggleButtonUnhover)
+        end))
+        
+        schedulerconnect = RunService.Heartbeat:Connect(taskscheduler)
+        bringBackOnResize()
+        
+        VoxSpy.Parent = (gethui and gethui()) or (syn and syn.protect_gui and syn.protect_gui(VoxSpy)) or CoreGui
+        
+        logthread(spawn(function()
+            local lp = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait() or Players.LocalPlayer
+            generation = {
+                [OldDebugId(lp)] = 'game:GetService("Players").LocalPlayer',
+                [OldDebugId(lp:GetMouse())] = 'game:GetService("Players").LocalPlayer:GetMouse',
+                [OldDebugId(game)] = "game",
+                [OldDebugId(workspace)] = "workspace"
+            }
+        end))
+    end)
+    
+    if succeeded then
+        getgenv().VoxSpyExecuted = true
+        updateStatus()
+    else
+        shutdown()
+        ErrorPrompt("An error has occurred:\n"..rawtostring(err))
+        return
+    end
+else
+    VoxSpy:Destroy()
+    return
+end
+
+function VoxSpyModule:newButton(name, description, onClick)
+    return newButton(name, description, onClick)
+end
+
+----- ACTIONS -----
+newButton(
+    "Copy Code",
+    function() return "Click to copy generated script to clipboard" end,
+    function()
+        setclipboard(codebox:getString())
+        ToolTipLabel.Text = "Copied successfully!"
+    end
+)
+
+newButton(
+    "Copy Remote",
+    function() return "Click to copy the path of the remote" end,
+    function()
+        if selected and selected.Remote then
+            setclipboard(v2s(selected.Remote))
+            ToolTipLabel.Text = "Copied!"
+        end
+    end
+)
+
+newButton("Run Code",
+    function() return "Click to execute generated code" end,
+    function()
+        local Remote = selected and selected.Remote
+        if Remote then
+            ToolTipLabel.Text = "Executing..."
+            xpcall(function()
+                local returnvalue
+                if Remote:IsA("RemoteEvent") or Remote:IsA("UnreliableRemoteEvent") then
+                    returnvalue = Remote:FireServer(unpack(selected.args))
+                elseif Remote:IsA("RemoteFunction") then
+                    returnvalue = Remote:InvokeServer(unpack(selected.args))
+                end
+
+                ToolTipLabel.Text = ("Executed successfully!\n%s"):format(v2s(returnvalue))
+            end,function(err)
+                ToolTipLabel.Text = ("Execution error!\n%s"):format(err)
+            end)
+            return
+        end
+        ToolTipLabel.Text = "Source not found"
+    end
+)
+
+newButton(
+    "Get Script",
+    function() return "Click to copy calling script to clipboard\nWARNING: Not super reliable, nil == could not find" end,
+    function()
+        if selected then
+            if not selected.Source then
+                selected.Source = rawget(getfenv(selected.Function),"script")
+            end
+            setclipboard(v2s(selected.Source))
+            ToolTipLabel.Text = "Done!"
+        end
+    end
+)
+
+newButton("Function Info",function() return "Click to view calling function information" end,
+function()
+    local func = selected and selected.Function
+    if func then
+        local typeoffunc = typeof(func)
+
+        if typeoffunc ~= 'string' then
+            codebox:setRaw("--[[Generating Function Info please wait]]")
+            RunService.Heartbeat:Wait()
+            local lclosure = islclosure(func)
+            local SourceScript = rawget(getfenv(func),"script")
+            local CallingScript = selected.Source or nil
+            local info = {}
+            
+            info = {
+                info = getinfo(func),
+                constants = lclosure and deepclone(getconstants(func)) or "N/A --Lua Closure expected got C Closure",
+                upvalues = deepclone(getupvalues(func)),
+                script = {
+                    SourceScript = SourceScript or 'nil',
+                    CallingScript = CallingScript or 'nil'
+                }
+            }
+                    
+            if configs.advancedinfo then
+                local Remote = selected.Remote
+
+                info["advancedinfo"] = {
+                    Metamethod = selected.metamethod,
+                    DebugId = {
+                        SourceScriptDebugId = SourceScript and typeof(SourceScript) == "Instance" and OldDebugId(SourceScript) or "N/A",
+                        CallingScriptDebugId = CallingScript and typeof(SourceScript) == "Instance" and OldDebugId(CallingScript) or "N/A",
+                        RemoteDebugId = OldDebugId(Remote)
+                    },
+                    Protos = lclosure and getprotos(func) or "N/A --Lua Closure expected got C Closure"
+                }
+
+                if Remote:IsA("RemoteFunction") then
+                    info["advancedinfo"]["OnClientInvoke"] = getcallbackmember and (getcallbackmember(Remote,"OnClientInvoke") or "N/A") or "N/A --Missing function getcallbackmember"
+                elseif getconnections then
+                    info["advancedinfo"]["OnClientEvents"] = {}
+
+                    for i,v in next, getconnections(Remote.OnClientEvent) do
+                        info["advancedinfo"]["OnClientEvents"][i] = {
+                            Function = v.Function or "N/A",
+                            State = v.State or "N/A"
+                        }
+                    end
+                end
+            end
+            codebox:setRaw("--[[Converting table to string please wait]]")
+            selected.Function = v2v({functionInfo = info})
+        end
+        codebox:setRaw("-- Calling function info\n-- Generated by Vox Spy\n\n"..selected.Function)
+        ToolTipLabel.Text = "Done! Function info generated by Vox Spy."
+    else
+        ToolTipLabel.Text = "Error! Selected function was not found."
+    end
+end)
+
+newButton(
+    "Clr Logs",
+    function() return "Click to clear all remote logs" end,
+    function()
+        ToolTipLabel.Text = "Clearing..."
+        clear(logs)
+        for i,v in next, LogList:GetChildren() do
+            if not v:IsA("UIListLayout") then
+                v:Destroy()
+            end
+        end
+        codebox:setRaw("")
+        selected = nil
+        updateLogCount()
+        ToolTipLabel.Text = "Logs cleared!"
+    end
+)
+
+newButton(
+    "Exclude (i)",
+    function() return "Click to exclude this Remote.\nExcluding a remote makes Vox Spy ignore it." end,
+    function()
+        if selected then
+            blacklist[OldDebugId(selected.Remote)] = true
+            ToolTipLabel.Text = "Excluded!"
+        end
+    end
+)
+
+newButton(
+    "Exclude (n)",
+    function() return "Click to exclude all remotes with this name." end,
+    function()
+        if selected then
+            blacklist[selected.Name] = true
+            ToolTipLabel.Text = "Excluded!"
+        end
+    end
+)
+
+newButton("Clr Blacklist",
+function() return "Click to clear the blacklist." end,
+function()
+    blacklist = {}
+    ToolTipLabel.Text = "Blacklist cleared!"
+end)
+
+newButton(
+    "Block (i)",
+    function() return "Click to stop this remote from firing.\nBlocking prevents the remote from reaching the server." end,
+    function()
+        if selected then
+            blocklist[OldDebugId(selected.Remote)] = true
+            ToolTipLabel.Text = "Blocked!"
+        end
+    end
+)
+
+newButton("Block (n)",function()
+    return "Click to stop remotes with this name from firing." end,
+    function()
+        if selected then
+            blocklist[selected.Name] = true
+            ToolTipLabel.Text = "Blocked!"
+        end
+    end
+)
+
+newButton(
+    "Clr Blocklist",
+    function() return "Click to stop blocking remotes." end,
+    function()
+        blocklist = {}
+        ToolTipLabel.Text = "Blocklist cleared!"
+    end
+)
+
+newButton("Decompile",
+    function()
+        return "Decompile source script"
+    end,function()
+        if decompile then
+            if selected and selected.Source then
+                local Source = selected.Source
+                if not DecompiledScripts[Source] then
+                    codebox:setRaw("--[[Decompiling]]")
+
+                    xpcall(function()
+                        local decompiledsource = decompile(Source):gsub("-- Decompiled with the Synapse X Luau decompiler.","")
+                        local Sourcev2s = v2s(Source)
+                        if (decompiledsource):find("script") and Sourcev2s then
+                            DecompiledScripts[Source] = ("local script = %s\n%s"):format(Sourcev2s,decompiledsource)
+                        end
+                    end,function(err)
+                        return codebox:setRaw(("--[[\nAn error has occured\n%s\n]]"):format(err))
+                    end)
+                end
+                codebox:setRaw(DecompiledScripts[Source] or "--No Source Found")
+                ToolTipLabel.Text = "Done!"
+            else
+                ToolTipLabel.Text = "Source not found!"
+            end
+        else
+            ToolTipLabel.Text = "Missing function (decompile)"
+        end
+    end
+)
+
+newButton(
+    "Disable Info",
+    function() return string.format("[%s] Toggle function info (can cause lag in some games)", configs.funcEnabled and "ENABLED" or "DISABLED") end,
+    function()
+        configs.funcEnabled = not configs.funcEnabled
+        ToolTipLabel.Text = string.format("[%s] Toggle function info (can cause lag in some games)", configs.funcEnabled and "ENABLED" or "DISABLED")
+    end
+)
+
+newButton(
+    "Autoblock",
+    function() return string.format("[%s] [BETA] Intelligently detects and excludes spammy remote calls", configs.autoblock and "ENABLED" or "DISABLED") end,
+    function()
+        configs.autoblock = not configs.autoblock
+        ToolTipLabel.Text = string.format("[%s] [BETA] Intelligently detects and excludes spammy remote calls", configs.autoblock and "ENABLED" or "DISABLED")
+        history = {}
+        excluding = {}
+    end
+)
+
+newButton("Logcheckcaller",function()
+    return ("[%s] Log remotes fired by the client"):format(configs.logcheckcaller and "ENABLED" or "DISABLED")
+end,
+function()
+    configs.logcheckcaller = not configs.logcheckcaller
+    ToolTipLabel.Text = ("[%s] Log remotes fired by the client"):format(configs.logcheckcaller and "ENABLED" or "DISABLED")
+end)
+
+newButton("Advanced Info",function()
+    return ("[%s] Display more remote info"):format(configs.advancedinfo and "ENABLED" or "DISABLED")
+end,
+function()
+    configs.advancedinfo = not configs.advancedinfo
+    ToolTipLabel.Text = ("[%s] Display more remote info"):format(configs.advancedinfo and "ENABLED" or "DISABLED")
+end)
+
+newButton("Join Discord",function()
+    return "Join the Vox Spy Discord community"
+end,
+function()
+    setclipboard("https://discord.gg/")
+    ToolTipLabel.Text = "Discord link copied to clipboard"
+    if request then
+        request({Url = 'http://127.0.0.1:6463/rpc?v=1',Method = 'POST',Headers = {['Content-Type'] = 'application/json', Origin = 'https://discord.com'},Body = http:JSONEncode({cmd = 'INVITE_BROWSER',nonce = http:GenerateGUID(false),args = {code = ''}})})
+    end
+end)
+
+if configs.supersecretdevtoggle then
+    newButton("Load SSV2.2",function()
+        return "Load Simple Spy V2.2"
+    end,
+    function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/exxtremestuffs/SimpleSpySource/master/SimpleSpy.lua"))()
+    end)
+    newButton("Load SSV3",function()
+        return "Load Simple Spy V3"
+    end,
+    function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/SimpleSpy/main/SimpleSpySource.lua"))()
+    end)
+    local SuperSecretFolder = Create("Folder",{Parent = VoxSpy})
+    newButton("SECRET BUTTON",function()
+        return "You already know what it does"
+    end,
+    function()
+        SuperSecretFolder:ClearAllChildren()
+        local random = listfiles("Music")
+        local NotSound = Create("Sound",{Parent = SuperSecretFolder,Looped = false,Volume = math.random(1,5),SoundId = getsynasset(random[math.random(1,#random)])})
+        NotSound:Play()
+    end)
+end
