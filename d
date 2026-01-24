@@ -1,4 +1,3 @@
-
 --!native
 --50/50 this breaks but it's a beta for a reason!
 
@@ -185,7 +184,7 @@ local TweenService = SafeGetService("TweenService")
 local ContentProvider = SafeGetService("ContentProvider")
 local TextService = SafeGetService("TextService")
 local http = SafeGetService("HttpService")
-local GuiInset = game:GetService("GuiService"):GetGuiInset() :: Vector2 -- pulled from rewrite
+local GuiInset = game:GetService("GuiService"):GetGuiInset() :: Vector2
 
 local function jsone(str) return http:JSONEncode(str) end
 local function jsond(str)
@@ -195,7 +194,7 @@ end
 
 function ErrorPrompt(Message,state)
     if getrenv then
-        local ErrorPrompt = getrenv().require(CoreGui:WaitForChild("RobloxGui"):WaitForChild("Modules"):WaitForChild("ErrorPrompt")) -- File can be located in your roblox folder (C:\Users\%Username%\AppData\Local\Roblox\Versions\whateverversionitis\ExtraContent\scripts\CoreScripts\Modules)
+        local ErrorPrompt = getrenv().require(CoreGui:WaitForChild("RobloxGui"):WaitForChild("Modules"):WaitForChild("ErrorPrompt"))
         local prompt = ErrorPrompt.new("Default",{HideErrorCode = true})
         local ErrorStoarge = Create("ScreenGui",{Parent = CoreGui,ResetOnSpawn = false})
         local thread = state and running()
@@ -222,10 +221,10 @@ function ErrorPrompt(Message,state)
 end
 
 local Highlight = (isfile and loadfile and isfile("Highlight.lua") and loadfile("Highlight.lua")()) or loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/SimpleSpy/main/Highlight.lua"))()
-local LazyFix = loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/Roblox/refs/heads/main/Lua/Libraries/DataToCode/DataToCode.luau"))() -- Very lazy fix as I'm legit just pasting it from the rewrite
+local LazyFix = loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/Roblox/refs/heads/main/Lua/Libraries/DataToCode/DataToCode.luau"))()
 
 -- ===========================================
--- ОБНОВЛЕННЫЙ GUI ДЛЯ МОБИЛЬНЫХ УСТРОЙСТВ
+-- МИНИМАЛИСТИЧНЫЙ НОВОГОДНИЙ GUI
 -- ===========================================
 local SimpleSpy3 = Create("ScreenGui",{
     ResetOnSpawn = false,
@@ -235,256 +234,190 @@ local SimpleSpy3 = Create("ScreenGui",{
 
 local Storage = Create("Folder",{})
 
--- Основной контейнер
+-- Главный контейнер
 local MainContainer = Create("Frame",{
     Parent = SimpleSpy3,
-    BackgroundColor3 = Color3.fromRGB(18, 18, 24),
+    BackgroundColor3 = Color3.fromRGB(10, 10, 10),
     BackgroundTransparency = 0.05,
     BorderSizePixel = 0,
-    Position = UDim2.new(0.5, -225, 0.5, -134),
-    Size = UDim2.new(0, 450, 0, 268),
+    Position = UDim2.new(0.5, -200, 0.5, -150),
+    Size = UDim2.new(0, 400, 0, 300),
     AnchorPoint = Vector2.new(0.5, 0.5),
     ClipsDescendants = true
 })
 
 -- Новогоднее свечение
-local GlowEffect = Create("UIGradient",{
+local HolidayGlow = Create("Frame",{
     Parent = MainContainer,
-    Rotation = 90,
-    Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 50, 50)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(50, 255, 50)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(50, 50, 255))
-    },
-    Transparency = NumberSequence.new{
-        NumberSequenceKeypoint.new(0, 0.9),
-        NumberSequenceKeypoint.new(0.5, 0.7),
-        NumberSequenceKeypoint.new(1, 0.9)
-    }
+    BackgroundColor3 = Color3.fromRGB(200, 30, 30),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 0.95,
+    ZIndex = 0
 })
 
--- Верхняя панель с новогодним стилем
-local TopBar = Create("Frame",{
+-- Минималистичный заголовок
+local Header = Create("Frame",{
     Parent = MainContainer,
-    BackgroundColor3 = Color3.fromRGB(25, 25, 35),
+    BackgroundColor3 = Color3.fromRGB(15, 15, 15),
     BorderSizePixel = 0,
-    Size = UDim2.new(1, 0, 0, 40),
+    Size = UDim2.new(1, 0, 0, 36),
     ZIndex = 2
 })
 
--- Декоративные снежинки
-local Snowflake1 = Create("ImageLabel",{
-    Parent = TopBar,
-    BackgroundTransparency = 1,
-    Image = "rbxassetid://6031075931",
-    Size = UDim2.new(0, 20, 0, 20),
-    Position = UDim2.new(0, 10, 0.5, -10),
-    ImageColor3 = Color3.fromRGB(100, 200, 255)
+-- Акцентная линия
+local AccentLine = Create("Frame",{
+    Parent = Header,
+    BackgroundColor3 = Color3.fromRGB(255, 60, 60),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 2),
+    Position = UDim2.new(0, 0, 1, 0)
 })
 
-local Snowflake2 = Create("ImageLabel",{
-    Parent = TopBar,
+-- Логотип
+local Logo = Create("TextLabel",{
+    Parent = Header,
     BackgroundTransparency = 1,
-    Image = "rbxassetid://6031075931",
-    Size = UDim2.new(0, 16, 0, 16),
-    Position = UDim2.new(1, -35, 0.5, -8),
-    ImageColor3 = Color3.fromRGB(255, 100, 100)
-})
-
--- Заголовок
-local Title = Create("TextLabel",{
-    Parent = TopBar,
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 40, 0, 0),
-    Size = UDim2.new(0.5, -40, 1, 0),
+    Position = UDim2.new(0, 12, 0, 0),
+    Size = UDim2.new(0, 120, 1, 0),
     Font = Enum.Font.GothamBold,
-    Text = "❄️ SimpleSpy V3 ❄️",
+    Text = "❄️ SIMPLE SPY",
     TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextSize = 18,
+    TextSize = 16,
     TextXAlignment = Enum.TextXAlignment.Left
 })
 
--- Кнопки управления
-local CloseButton = Create("ImageButton",{
-    Parent = TopBar,
+-- Статус
+local StatusIndicator = Create("Frame",{
+    Parent = Header,
     BackgroundColor3 = Color3.fromRGB(255, 60, 60),
     BorderSizePixel = 0,
-    Position = UDim2.new(1, -35, 0.5, -12),
-    Size = UDim2.new(0, 24, 0, 24),
-    Image = "rbxassetid://6031097226",
-    ImageColor3 = Color3.fromRGB(255, 255, 255)
+    Position = UDim2.new(1, -80, 0.5, -6),
+    Size = UDim2.new(0, 12, 0, 12),
+    ZIndex = 3
 })
 
-local MaximizeButton = Create("ImageButton",{
-    Parent = TopBar,
-    BackgroundColor3 = Color3.fromRGB(60, 150, 255),
-    BorderSizePixel = 0,
-    Position = UDim2.new(1, -65, 0.5, -12),
-    Size = UDim2.new(0, 24, 0, 24),
-    Image = "rbxassetid://6031094678",
-    ImageColor3 = Color3.fromRGB(255, 255, 255)
-})
-
-local MinimizeButton = Create("ImageButton",{
-    Parent = TopBar,
-    BackgroundColor3 = Color3.fromRGB(60, 200, 80),
-    BorderSizePixel = 0,
-    Position = UDim2.new(1, -95, 0.5, -12),
-    Size = UDim2.new(0, 24, 0, 24),
-    Image = "rbxassetid://6031097226",
-    ImageColor3 = Color3.fromRGB(255, 255, 255),
-    Rotation = 180
-})
-
--- Кнопка переключения режима
-local ToggleButton = Create("TextButton",{
-    Parent = TopBar,
-    BackgroundColor3 = Color3.fromRGB(80, 80, 120),
-    BorderSizePixel = 0,
-    Position = UDim2.new(0.5, -50, 0.5, -12),
-    Size = UDim2.new(0, 100, 0, 24),
+local StatusLabel = Create("TextLabel",{
+    Parent = Header,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(1, -64, 0, 0),
+    Size = UDim2.new(0, 50, 1, 0),
     Font = Enum.Font.GothamMedium,
-    Text = "ACTIVE",
-    TextColor3 = Color3.fromRGB(255, 255, 255),
+    Text = "OFF",
+    TextColor3 = Color3.fromRGB(255, 60, 60),
     TextSize = 14
+})
+
+-- Минималистичные кнопки управления
+local CloseButton = Create("TextButton",{
+    Parent = Header,
+    BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -32, 0.5, -10),
+    Size = UDim2.new(0, 20, 0, 20),
+    Font = Enum.Font.GothamMedium,
+    Text = "×",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 18,
+    ZIndex = 3
+})
+
+local ToggleButton = Create("TextButton",{
+    Parent = Header,
+    BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -58, 0.5, -10),
+    Size = UDim2.new(0, 20, 0, 20),
+    Font = Enum.Font.GothamMedium,
+    Text = "▶",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 14,
+    ZIndex = 3
 })
 
 -- Основное содержимое
 local ContentArea = Create("Frame",{
     Parent = MainContainer,
-    BackgroundColor3 = Color3.fromRGB(30, 30, 40),
+    BackgroundColor3 = Color3.fromRGB(18, 18, 18),
     BorderSizePixel = 0,
-    Position = UDim2.new(0, 0, 0, 40),
-    Size = UDim2.new(1, 0, 1, -40)
+    Position = UDim2.new(0, 0, 0, 36),
+    Size = UDim2.new(1, 0, 1, -36)
 })
 
--- Левая панель с логами
-local LeftPanel = Create("Frame",{
+-- Панель логов
+local LogsPanel = Create("ScrollingFrame",{
     Parent = ContentArea,
-    BackgroundColor3 = Color3.fromRGB(25, 25, 35),
-    BorderSizePixel = 0,
-    Size = UDim2.new(0.3, 0, 1, 0),
-    ClipsDescendants = true
-})
-
-local LogsTitle = Create("TextLabel",{
-    Parent = LeftPanel,
-    BackgroundColor3 = Color3.fromRGB(40, 40, 50),
-    BorderSizePixel = 0,
-    Size = UDim2.new(1, 0, 0, 30),
-    Font = Enum.Font.GothamMedium,
-    Text = "📋 Remote Logs",
-    TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextSize = 14
-})
-
-local LogList = Create("ScrollingFrame",{
-    Parent = LeftPanel,
     Active = true,
-    BackgroundColor3 = Color3.fromRGB(20, 20, 30),
+    BackgroundColor3 = Color3.fromRGB(15, 15, 15),
     BorderSizePixel = 0,
-    Position = UDim2.new(0, 0, 0, 30),
-    Size = UDim2.new(1, 0, 1, -30),
+    Size = UDim2.new(0.4, -1, 1, 0),
     CanvasSize = UDim2.new(0, 0, 0, 0),
-    ScrollBarThickness = 6,
-    ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255),
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(255, 60, 60),
     ClipsDescendants = true
 })
 
-local UIListLayout = Create("UIListLayout",{
-    Parent = LogList,
-    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+local LogsLayout = Create("UIListLayout",{
+    Parent = LogsPanel,
     SortOrder = Enum.SortOrder.LayoutOrder,
-    Padding = UDim.new(0, 2)
+    Padding = UDim2.new(0, 0, 0, 1)
 })
 
 -- Правая панель
 local RightPanel = Create("Frame",{
     Parent = ContentArea,
-    BackgroundColor3 = Color3.fromRGB(35, 35, 45),
+    BackgroundColor3 = Color3.fromRGB(20, 20, 20),
     BorderSizePixel = 0,
-    Position = UDim2.new(0.3, 0, 0, 0),
-    Size = UDim2.new(0.7, 0, 1, 0),
-    ClipsDescendants = true
+    Position = UDim2.new(0.4, 0, 0, 0),
+    Size = UDim2.new(0.6, 0, 1, 0)
 })
 
 -- Кодовая панель
 local CodePanel = Create("Frame",{
     Parent = RightPanel,
-    BackgroundColor3 = Color3.fromRGB(20, 20, 25),
+    BackgroundColor3 = Color3.fromRGB(12, 12, 12),
     BorderSizePixel = 0,
-    Size = UDim2.new(1, 0, 0.6, 0)
-})
-
-local CodeTitle = Create("TextLabel",{
-    Parent = CodePanel,
-    BackgroundColor3 = Color3.fromRGB(40, 40, 50),
-    BorderSizePixel = 0,
-    Size = UDim2.new(1, 0, 0, 30),
-    Font = Enum.Font.GothamMedium,
-    Text = "📝 Generated Script",
-    TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextSize = 14
+    Size = UDim2.new(1, 0, 0.7, 0)
 })
 
 local CodeBox = Create("Frame",{
     Parent = CodePanel,
-    BackgroundColor3 = Color3.fromRGB(15, 15, 20),
+    BackgroundColor3 = Color3.fromRGB(8, 8, 8),
     BorderSizePixel = 0,
-    Position = UDim2.new(0, 0, 0, 30),
-    Size = UDim2.new(1, 0, 1, -30)
+    Position = UDim2.new(0, 8, 0, 8),
+    Size = UDim2.new(1, -16, 1, -16)
 })
 
--- Панель кнопок
-local ButtonsPanel = Create("Frame",{
+-- Панель инструментов
+local ToolsPanel = Create("ScrollingFrame",{
     Parent = RightPanel,
-    BackgroundColor3 = Color3.fromRGB(25, 25, 35),
-    BorderSizePixel = 0,
-    Position = UDim2.new(0, 0, 0.6, 0),
-    Size = UDim2.new(1, 0, 0.4, 0)
-})
-
-local ButtonsTitle = Create("TextLabel",{
-    Parent = ButtonsPanel,
-    BackgroundColor3 = Color3.fromRGB(40, 40, 50),
-    BorderSizePixel = 0,
-    Size = UDim2.new(1, 0, 0, 30),
-    Font = Enum.Font.GothamMedium,
-    Text = "🛠️ Tools",
-    TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextSize = 14
-})
-
-local ScrollingFrame = Create("ScrollingFrame",{
-    Parent = ButtonsPanel,
     Active = true,
-    BackgroundColor3 = Color3.fromRGB(20, 20, 30),
+    BackgroundColor3 = Color3.fromRGB(15, 15, 15),
     BorderSizePixel = 0,
-    Position = UDim2.new(0, 0, 0, 30),
-    Size = UDim2.new(1, 0, 1, -30),
+    Position = UDim2.new(0, 0, 0.7, 0),
+    Size = UDim2.new(1, 0, 0.3, 0),
     CanvasSize = UDim2.new(0, 0, 0, 0),
-    ScrollBarThickness = 6,
-    ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255)
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(255, 60, 60)
 })
 
-local UIGridLayout = Create("UIGridLayout",{
-    Parent = ScrollingFrame,
+local ToolsGrid = Create("UIGridLayout",{
+    Parent = ToolsPanel,
     HorizontalAlignment = Enum.HorizontalAlignment.Center,
     VerticalAlignment = Enum.VerticalAlignment.Center,
     SortOrder = Enum.SortOrder.LayoutOrder,
-    CellPadding = UDim2.new(0, 8, 0, 8),
-    CellSize = UDim2.new(0.48, -12, 0, 40),
+    CellPadding = UDim2.new(0, 4, 0, 4),
+    CellSize = UDim2.new(0.33, -8, 0, 30),
     StartCorner = Enum.StartCorner.TopLeft
 })
 
--- Подсказка
+-- Минималистичная подсказка
 local ToolTip = Create("Frame",{
     Parent = SimpleSpy3,
-    BackgroundColor3 = Color3.fromRGB(30, 30, 40),
-    BackgroundTransparency = 0.1,
-    BorderColor3 = Color3.fromRGB(100, 150, 255),
-    BorderSizePixel = 2,
-    Size = UDim2.new(0, 250, 0, 60),
+    BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+    BorderSizePixel = 1,
+    BorderColor3 = Color3.fromRGB(255, 60, 60),
+    Size = UDim2.new(0, 200, 0, 40),
     ZIndex = 100,
     Visible = false,
     AnchorPoint = Vector2.new(0, 1)
@@ -493,29 +426,30 @@ local ToolTip = Create("Frame",{
 local ToolTipLabel = Create("TextLabel",{
     Parent = ToolTip,
     BackgroundTransparency = 1,
-    Position = UDim2.new(0, 8, 0, 8),
-    Size = UDim2.new(1, -16, 1, -16),
+    Position = UDim2.new(0, 6, 0, 6),
+    Size = UDim2.new(1, -12, 1, -12),
     Font = Enum.Font.Gotham,
-    Text = "Tooltip text",
-    TextColor3 = Color3.fromRGB(255, 255, 255),
-    TextSize = 13,
+    Text = "",
+    TextColor3 = Color3.fromRGB(240, 240, 240),
+    TextSize = 12,
     TextWrapped = true,
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top
 })
 
--- Адаптивный корректор для мобильных устройств
-local MobileAdapter = Create("Frame",{
-    Parent = SimpleSpy3,
-    Size = UDim2.new(1, 0, 1, 0),
-    BackgroundTransparency = 1,
-    Visible = false
+-- Разделитель
+local Divider = Create("Frame",{
+    Parent = ContentArea,
+    BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.4, 0, 0, 0),
+    Size = UDim2.new(0, 1, 1, 0)
 })
 
 -------------------------------------------------------------------------------
 
-local selectedColor = Color3.fromRGB(80, 120, 255)
-local deselectedColor = Color3.fromRGB(60, 60, 80)
+local selectedColor = Color3.fromRGB(255, 60, 60)
+local deselectedColor = Color3.fromRGB(40, 40, 40)
 local layoutOrderNum = 999999999
 local mainClosing = false
 local closed = false
@@ -650,40 +584,44 @@ local function ThreadIsNotDead(thread: thread): boolean
 end
 
 function scaleToolTip()
-    local size = TextService:GetTextSize(ToolTipLabel.Text, ToolTipLabel.TextSize, ToolTipLabel.Font, Vector2.new(234, math.huge))
+    local size = TextService:GetTextSize(ToolTipLabel.Text, ToolTipLabel.TextSize, ToolTipLabel.Font, Vector2.new(188, math.huge))
     ToolTipLabel.Size = UDim2.new(0, size.X, 0, size.Y)
-    ToolTip.Size = UDim2.new(0, size.X + 16, 0, size.Y + 16)
+    ToolTip.Size = UDim2.new(0, size.X + 12, 0, size.Y + 12)
 end
 
-function onToggleButtonHover()
-    if not toggle then
-        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(255, 80, 80)}):Play()
+function updateStatus()
+    if toggle then
+        TweenService:Create(StatusIndicator, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(60, 255, 100)}):Play()
+        StatusLabel.Text = "ON"
+        StatusLabel.TextColor3 = Color3.fromRGB(60, 255, 100)
+        ToggleButton.Text = "❚❚"
     else
-        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(80, 200, 120)}):Play()
+        TweenService:Create(StatusIndicator, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(255, 60, 60)}):Play()
+        StatusLabel.Text = "OFF"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
+        ToggleButton.Text = "▶"
     end
 end
 
+function onToggleButtonHover()
+    TweenService:Create(ToggleButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 60, 60)}):Play()
+end
+
 function onToggleButtonUnhover()
-    TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(80, 80, 120)}):Play()
+    TweenService:Create(ToggleButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(20, 20, 20)}):Play()
 end
 
 function onXButtonHover()
-    TweenService:Create(CloseButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 100, 100)}):Play()
+    TweenService:Create(CloseButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 60, 60)}):Play()
 end
 
 function onXButtonUnhover()
-    TweenService:Create(CloseButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 60, 60)}):Play()
+    TweenService:Create(CloseButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(20, 20, 20)}):Play()
 end
 
 function onToggleButtonClick()
     toggleSpyMethod()
-    if toggle then
-        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(80, 200, 120)}):Play()
-        ToggleButton.Text = "ACTIVE"
-    else
-        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(255, 80, 80)}):Play()
-        ToggleButton.Text = "INACTIVE"
-    end
+    updateStatus()
 end
 
 function connectResize()
@@ -710,18 +648,18 @@ function bringBackOnResize()
     local currentX = MainContainer.AbsolutePosition.X
     local currentY = MainContainer.AbsolutePosition.Y
     local viewportSize = workspace.CurrentCamera.ViewportSize
-    if (currentX < 0) or (currentX > (viewportSize.X - (sideClosed and 131 or MainContainer.AbsoluteSize.X))) then
+    if (currentX < 0) or (currentX > (viewportSize.X - MainContainer.AbsoluteSize.X)) then
         if currentX < 0 then
             currentX = 0
         else
-            currentX = viewportSize.X - (sideClosed and 131 or MainContainer.AbsoluteSize.X)
+            currentX = viewportSize.X - MainContainer.AbsoluteSize.X
         end
     end
-    if (currentY < 0) or (currentY > (viewportSize.Y - (closed and 19 or MainContainer.AbsoluteSize.Y) - GuiInset.Y)) then
+    if (currentY < 0) or (currentY > (viewportSize.Y - MainContainer.AbsoluteSize.Y - GuiInset.Y)) then
         if currentY < 0 then
             currentY = 0
         else
-            currentY = viewportSize.Y - (closed and 19 or MainContainer.AbsoluteSize.Y) - GuiInset.Y
+            currentY = viewportSize.Y - MainContainer.AbsoluteSize.Y - GuiInset.Y
         end
     end
     TweenService:Create(MainContainer, TweenInfo.new(0.1), {Position = UDim2.new(0, currentX, 0, currentY)}):Play()
@@ -729,43 +667,31 @@ end
 
 function onBarInput(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        local lastPos
-        if input.UserInputType == Enum.UserInputType.Touch then
-            lastPos = input.Position
-        else
-            lastPos = UserInputService:GetMouseLocation()
-        end
-        
+        local lastPos = input.UserInputType == Enum.UserInputType.Touch and input.Position or UserInputService:GetMouseLocation()
         local mainPos = MainContainer.AbsolutePosition
         local offset = mainPos - lastPos
         local currentPos = offset + lastPos
         
         if not connections["drag"] then
             connections["drag"] = RunService.RenderStepped:Connect(function()
-                local newPos
-                if input.UserInputType == Enum.UserInputType.Touch then
-                    newPos = UserInputService:GetMouseLocation()
-                else
-                    newPos = UserInputService:GetMouseLocation()
-                end
-                
+                local newPos = UserInputService:GetMouseLocation()
                 if newPos ~= lastPos then
                     local currentX = (offset + newPos).X
                     local currentY = (offset + newPos).Y
                     local viewportSize = workspace.CurrentCamera.ViewportSize
                     
-                    if (currentX < 0 and currentX < currentPos.X) or (currentX > (viewportSize.X - (sideClosed and 131 or TopBar.AbsoluteSize.X)) and currentX > currentPos.X) then
+                    if (currentX < 0 and currentX < currentPos.X) or (currentX > (viewportSize.X - MainContainer.AbsoluteSize.X) and currentX > currentPos.X) then
                         if currentX < 0 then
                             currentX = 0
                         else
-                            currentX = viewportSize.X - (sideClosed and 131 or TopBar.AbsoluteSize.X)
+                            currentX = viewportSize.X - MainContainer.AbsoluteSize.X
                         end
                     end
-                    if (currentY < 0 and currentY < currentPos.Y) or (currentY > (viewportSize.Y - (closed and 19 or MainContainer.AbsoluteSize.Y) - GuiInset.Y) and currentY > currentPos.Y) then
+                    if (currentY < 0 and currentY < currentPos.Y) or (currentY > (viewportSize.Y - MainContainer.AbsoluteSize.Y - GuiInset.Y) and currentY > currentPos.Y) then
                         if currentY < 0 then
                             currentY = 0
                         else
-                            currentY = viewportSize.Y - (closed and 19 or MainContainer.AbsoluteSize.Y) - GuiInset.Y
+                            currentY = viewportSize.Y - MainContainer.AbsoluteSize.Y - GuiInset.Y
                         end
                     end
                     currentPos = Vector2.new(currentX, currentY)
@@ -845,12 +771,12 @@ function toggleMinimize(override)
         if not sideClosed then
             toggleSideTray(true)
         end
-        LeftPanel.Visible = true
-        remotesFadeIn = fadeOut(LeftPanel:GetDescendants())
-        TweenService:Create(LeftPanel, TweenInfo.new(0.5), {Size = UDim2.new(0, 0, 1, 0)}):Play()
+        LogsPanel.Visible = true
+        remotesFadeIn = fadeOut(LogsPanel:GetDescendants())
+        TweenService:Create(LogsPanel, TweenInfo.new(0.5), {Size = UDim2.new(0, 0, 1, 0)}):Play()
         wait(0.5)
     else
-        TweenService:Create(LeftPanel, TweenInfo.new(0.5), {Size = UDim2.new(0.3, 0, 1, 0)}):Play()
+        TweenService:Create(LogsPanel, TweenInfo.new(0.5), {Size = UDim2.new(0.4, -1, 1, 0)}):Play()
         wait(0.5)
         if remotesFadeIn then
             remotesFadeIn()
@@ -888,151 +814,43 @@ function toggleSideTray(override)
     sideClosing = false
 end
 
-function toggleMaximize()
-    if not sideClosed and not maximized then
-        maximized = true
-        local disable = Instance.new("TextButton")
-        local prevSize = UDim2.new(0, CodeBox.AbsoluteSize.X, 0, CodeBox.AbsoluteSize.Y)
-        local prevPos = UDim2.new(0,CodeBox.AbsolutePosition.X, 0, CodeBox.AbsolutePosition.Y)
-        disable.Size = UDim2.new(1, 0, 1, 0)
-        disable.BackgroundColor3 = Color3.new()
-        disable.BorderSizePixel = 0
-        disable.Text = ""
-        disable.ZIndex = 99
-        disable.BackgroundTransparency = 1
-        disable.AutoButtonColor = false
-        CodeBox.ZIndex = 100
-        CodeBox.Position = prevPos
-        CodeBox.Size = prevSize
-        TweenService:Create(CodeBox, TweenInfo.new(0.5), {Size = UDim2.new(0.8, 0, 0.8, 0), Position = UDim2.new(0.1, 0, 0.1, 0)}):Play()
-        TweenService:Create(disable, TweenInfo.new(0.5), {BackgroundTransparency = 0.5}):Play()
-        disable.MouseButton1Click:Connect(function()
-            if UserInputService:GetMouseLocation().Y + GuiInset.Y >= CodeBox.AbsolutePosition.Y and UserInputService:GetMouseLocation().Y + GuiInset.Y <= CodeBox.AbsolutePosition.Y + CodeBox.AbsoluteSize.Y and UserInputService:GetMouseLocation().X >= CodeBox.AbsolutePosition.X and UserInputService:GetMouseLocation().X <= CodeBox.AbsolutePosition.X + CodeBox.AbsoluteSize.X then
-                return
-            end
-            TweenService:Create(CodeBox, TweenInfo.new(0.5), {Size = prevSize, Position = prevPos}):Play()
-            TweenService:Create(disable, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
-            wait(0.5)
-            disable:Destroy()
-            CodeBox.Size = UDim2.new(1, 0, 0.6, 0)
-            CodeBox.Position = UDim2.new(0, 0, 0, 30)
-            CodeBox.ZIndex = 0
-            maximized = false
-        end)
-    end
-end
-
-function isInResizeRange(p)
-    local relativeP = p - MainContainer.AbsolutePosition
-    local range = 10
-    if relativeP.X >= TopBar.AbsoluteSize.X - range and relativeP.Y >= MainContainer.AbsoluteSize.Y - range
-        and relativeP.X <= TopBar.AbsoluteSize.X and relativeP.Y <= MainContainer.AbsoluteSize.Y then
-        return true, 'B'
-    elseif relativeP.X >= TopBar.AbsoluteSize.X - range and relativeP.X <= MainContainer.AbsoluteSize.X then
-        return true, 'X'
-    elseif relativeP.Y >= MainContainer.AbsoluteSize.Y - range and relativeP.Y <= MainContainer.AbsoluteSize.Y then
-        return true, 'Y'
-    end
-    return false
-end
-
-function isInDragRange(p)
-    local relativeP = p - MainContainer.AbsolutePosition
-    local topbarAS = TopBar.AbsoluteSize
-    return relativeP.X <= topbarAS.X - CloseButton.AbsoluteSize.X * 3 and relativeP.X >= 0 and relativeP.Y <= topbarAS.Y and relativeP.Y >= 0 or false
-end
-
-local customCursor = Create("ImageLabel",{
-    Parent = SimpleSpy3,
-    Visible = false,
-    Size = UDim2.fromOffset(32, 32),
-    ZIndex = 1e9,
-    BackgroundTransparency = 1,
-    Image = "rbxassetid://6065775281"
-})
-
-function mouseEntered()
-    local con = connections["SIMPLESPY_CURSOR"]
-    if con then
-        con:Disconnect()
-        connections["SIMPLESPY_CURSOR"] = nil
-    end
-    connections["SIMPLESPY_CURSOR"] = RunService.RenderStepped:Connect(function()
-        UserInputService.MouseIconEnabled = not mouseInGui
-        customCursor.Visible = mouseInGui
-        if mouseInGui and getgenv().SimpleSpyExecuted then
-            local mouseLocation = UserInputService:GetMouseLocation() - GuiInset
-            customCursor.Position = UDim2.fromOffset(mouseLocation.X - customCursor.AbsoluteSize.X / 2, mouseLocation.Y - customCursor.AbsoluteSize.Y / 2)
-            local inRange, type = isInResizeRange(mouseLocation)
-            if inRange and not closed then
-                if not sideClosed then
-                    customCursor.Image = type == 'B' and "rbxassetid://6065821980" or type == 'X' and "rbxassetid://6065821086" or type == 'Y' and "rbxassetid://6065821596"
-                elseif type == 'Y' or type == 'B' then
-                    customCursor.Image = "rbxassetid://6065821596"
-                end
-            elseif customCursor.Image ~= "rbxassetid://6065775281" then
-                customCursor.Image = "rbxassetid://6065775281"
-            end
-        else
-            connections["SIMPLESPY_CURSOR"]:Disconnect()
-        end
-    end)
-end
-
-function mouseMoved()
-    local mousePos = UserInputService:GetMouseLocation() - GuiInset
-    if not closed
-    and mousePos.X >= TopBar.AbsolutePosition.X and mousePos.X <= TopBar.AbsolutePosition.X + TopBar.AbsoluteSize.X
-    and mousePos.Y >= MainContainer.AbsolutePosition.Y and mousePos.Y <= MainContainer.AbsolutePosition.Y + MainContainer.AbsoluteSize.Y then
-        if not mouseInGui then
-            mouseInGui = true
-            mouseEntered()
-        end
-    else
-        mouseInGui = false
-    end
-end
-
 function maximizeSize(speed)
     if not speed then
         speed = 0.05
     end
-    TweenService:Create(LeftPanel, TweenInfo.new(speed), {Size = UDim2.new(0.3, 0, 1, 0)}):Play()
-    TweenService:Create(RightPanel, TweenInfo.new(speed), {Size = UDim2.new(0.7, 0, 1, 0), Position = UDim2.new(0.3, 0, 0, 0)}):Play()
-    TweenService:Create(CodePanel, TweenInfo.new(speed), {Size = UDim2.new(1, 0, 0.6, 0)}):Play()
-    TweenService:Create(ButtonsPanel, TweenInfo.new(speed), {Size = UDim2.new(1, 0, 0.4, 0), Position = UDim2.new(0, 0, 0.6, 0)}):Play()
-    TweenService:Create(LogList, TweenInfo.new(speed), {Size = UDim2.new(1, 0, 1, -30)}):Play()
+    TweenService:Create(LogsPanel, TweenInfo.new(speed), {Size = UDim2.new(0.4, -1, 1, 0)}):Play()
+    TweenService:Create(RightPanel, TweenInfo.new(speed), {Size = UDim2.new(0.6, 0, 1, 0), Position = UDim2.new(0.4, 0, 0, 0)}):Play()
+    TweenService:Create(Divider, TweenInfo.new(speed), {Position = UDim2.new(0.4, 0, 0, 0)}):Play()
 end
 
 function minimizeSize(speed)
     if not speed then
         speed = 0.05
     end
-    TweenService:Create(LeftPanel, TweenInfo.new(speed), {Size = UDim2.new(1, 0, 1, 0)}):Play()
+    TweenService:Create(LogsPanel, TweenInfo.new(speed), {Size = UDim2.new(1, 0, 1, 0)}):Play()
     TweenService:Create(RightPanel, TweenInfo.new(speed), {Size = UDim2.new(0, 0, 1, 0), Position = UDim2.new(1, 0, 0, 0)}):Play()
-    TweenService:Create(LogList, TweenInfo.new(speed), {Size = UDim2.new(1, 0, 1, -30)}):Play()
+    TweenService:Create(Divider, TweenInfo.new(speed), {Position = UDim2.new(1, 0, 0, 0)}):Play()
 end
 
 function validateSize()
     local x, y = MainContainer.AbsoluteSize.X, MainContainer.AbsoluteSize.Y
     local screenSize = workspace.CurrentCamera.ViewportSize
     
-    -- Адаптация для мобильных устройств
     if screenSize.X < 500 or screenSize.Y < 500 then
-        x = math.min(screenSize.X * 0.95, 450)
-        y = math.min(screenSize.Y * 0.8, 500)
+        x = math.min(screenSize.X * 0.95, 400)
+        y = math.min(screenSize.Y * 0.85, 400)
     else
         if x + MainContainer.AbsolutePosition.X > screenSize.X then
-            if screenSize.X - MainContainer.AbsolutePosition.X >= 450 then
+            if screenSize.X - MainContainer.AbsolutePosition.X >= 400 then
                 x = screenSize.X - MainContainer.AbsolutePosition.X
             else
-                x = 450
+                x = 400
             end
         elseif y + MainContainer.AbsolutePosition.Y > screenSize.Y then
-            if screenSize.Y - MainContainer.AbsolutePosition.Y >= 268 then
+            if screenSize.Y - MainContainer.AbsolutePosition.Y >= 300 then
                 y = screenSize.Y - MainContainer.AbsolutePosition.Y
             else
-                y = 268
+                y = 300
             end
         end
     end
@@ -1040,59 +858,26 @@ function validateSize()
     MainContainer.Size = UDim2.fromOffset(x, y)
 end
 
-function backgroundUserInput(input)
+function mouseMoved()
     local mousePos = UserInputService:GetMouseLocation() - GuiInset
-    local inResizeRange, type = isInResizeRange(mousePos)
-    
-    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and inResizeRange then
-        local lastPos = UserInputService:GetMouseLocation()
-        local offset = MainContainer.AbsoluteSize - lastPos
-        local currentPos = lastPos + offset
-        
-        if not connections["SIMPLESPY_RESIZE"] then
-            connections["SIMPLESPY_RESIZE"] = RunService.RenderStepped:Connect(function()
-                local newPos = UserInputService:GetMouseLocation()
-                if newPos ~= lastPos then
-                    local currentX = (newPos + offset).X
-                    local currentY = (newPos + offset).Y
-                    
-                    -- Минимальные размеры для мобильных устройств
-                    local minWidth = 300
-                    local minHeight = 200
-                    
-                    if currentX < minWidth then
-                        currentX = minWidth
-                    end
-                    if currentY < minHeight then
-                        currentY = minHeight
-                    end
-                    
-                    currentPos = Vector2.new(currentX, currentY)
-                    MainContainer.Size = UDim2.fromOffset(
-                        (not sideClosed and not closed and (type == "X" or type == "B")) and currentPos.X or MainContainer.AbsoluteSize.X,
-                        (not closed and (type == "Y" or type == "B")) and currentPos.Y or MainContainer.AbsoluteSize.Y
-                    )
-                    validateSize()
-                    if sideClosed then
-                        minimizeSize()
-                    else
-                        maximizeSize()
-                    end
-                    lastPos = newPos
-                end
-            end)
+    if not closed
+    and mousePos.X >= Header.AbsolutePosition.X and mousePos.X <= Header.AbsolutePosition.X + Header.AbsoluteSize.X
+    and mousePos.Y >= MainContainer.AbsolutePosition.Y and mousePos.Y <= MainContainer.AbsolutePosition.Y + Header.AbsoluteSize.Y then
+        if not mouseInGui then
+            mouseInGui = true
         end
-        
-        table.insert(connections, UserInputService.InputEnded:Connect(function(inputE)
-            if input == inputE then
-                if connections["SIMPLESPY_RESIZE"] then
-                    connections["SIMPLESPY_RESIZE"]:Disconnect()
-                    connections["SIMPLESPY_RESIZE"] = nil
-                end
-            end
-        end))
-    elseif isInDragRange(mousePos) then
-        onBarInput(input)
+    else
+        mouseInGui = false
+    end
+end
+
+function backgroundUserInput(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        local mousePos = UserInputService:GetMouseLocation() - GuiInset
+        if mousePos.X >= Header.AbsolutePosition.X and mousePos.X <= Header.AbsolutePosition.X + Header.AbsoluteSize.X
+        and mousePos.Y >= MainContainer.AbsolutePosition.Y and mousePos.Y <= MainContainer.AbsolutePosition.Y + Header.AbsoluteSize.Y then
+            onBarInput(input)
+        end
     end
 end
 
@@ -1108,7 +893,7 @@ function eventSelect(frame)
     if selected and selected.Log then
         if selected.Button then
             spawn(function()
-                TweenService:Create(selected.Button, TweenInfo.new(0.3), {BackgroundColor3 = deselectedColor}):Play()
+                TweenService:Create(selected.Button, TweenInfo.new(0.2), {BackgroundColor3 = deselectedColor}):Play()
             end)
         end
         selected = nil
@@ -1122,7 +907,7 @@ function eventSelect(frame)
     
     if selected and selected.Log then
         spawn(function()
-            TweenService:Create(frame.Button, TweenInfo.new(0.3), {BackgroundColor3 = selectedColor}):Play()
+            TweenService:Create(frame.Button, TweenInfo.new(0.2), {BackgroundColor3 = selectedColor}):Play()
         end)
         codebox:setRaw(selected.GenScript)
     end
@@ -1132,12 +917,12 @@ function eventSelect(frame)
     end
 end
 
-function updateFunctionCanvas()
-    ScrollingFrame.CanvasSize = UDim2.fromOffset(UIGridLayout.AbsoluteContentSize.X, UIGridLayout.AbsoluteContentSize.Y)
+function updateToolsCanvas()
+    ToolsPanel.CanvasSize = UDim2.new(0, ToolsGrid.AbsoluteCellCount * (ToolsGrid.CellSize.X.Offset + ToolsGrid.CellPadding.X.Offset), 0, 0)
 end
 
-function updateRemoteCanvas()
-    LogList.CanvasSize = UDim2.fromOffset(UIListLayout.AbsoluteContentSize.X, UIListLayout.AbsoluteContentSize.Y)
+function updateLogsCanvas()
+    LogsPanel.CanvasSize = UDim2.new(0, 0, 0, LogsLayout.AbsoluteContentSize.Y)
 end
 
 function makeToolTip(enable, text)
@@ -1156,18 +941,16 @@ function makeToolTip(enable, text)
             local topLeft = MousePos + Vector2.new(20, 20)
             local bottomRight = topLeft + ToolTip.AbsoluteSize
             local ViewportSize = workspace.CurrentCamera.ViewportSize
-            local ViewportSizeX = ViewportSize.X
-            local ViewportSizeY = ViewportSize.Y
-
+            
             if topLeft.X < 0 then
                 topLeft = Vector2.new(0, topLeft.Y)
-            elseif bottomRight.X > ViewportSizeX then
-                topLeft = Vector2.new(ViewportSizeX - ToolTip.AbsoluteSize.X, topLeft.Y)
+            elseif bottomRight.X > ViewportSize.X then
+                topLeft = Vector2.new(ViewportSize.X - ToolTip.AbsoluteSize.X, topLeft.Y)
             end
             if topLeft.Y < 0 then
                 topLeft = Vector2.new(topLeft.X, 0)
-            elseif bottomRight.Y > ViewportSizeY - 35 then
-                topLeft = Vector2.new(topLeft.X, ViewportSizeY - ToolTip.AbsoluteSize.Y - 35)
+            elseif bottomRight.Y > ViewportSize.Y - 35 then
+                topLeft = Vector2.new(topLeft.X, ViewportSize.Y - ToolTip.AbsoluteSize.Y - 35)
             end
             
             if topLeft.X <= MousePos.X and topLeft.Y <= MousePos.Y then
@@ -1198,69 +981,41 @@ function makeToolTip(enable, text)
 end
 
 function newButton(name, description, onClick)
-    local ButtonTemplate = Create("Frame",{
-        Name = "ButtonTemplate",
-        Parent = ScrollingFrame,
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 40)
-    })
-    
     local Button = Create("TextButton",{
-        Name = "Button",
-        Parent = ButtonTemplate,
-        BackgroundColor3 = Color3.fromRGB(50, 50, 70),
+        Name = name,
+        Parent = ToolsPanel,
+        BackgroundColor3 = Color3.fromRGB(30, 30, 30),
         BorderSizePixel = 0,
         Size = UDim2.new(1, 0, 1, 0),
         Font = Enum.Font.GothamMedium,
         Text = name,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
+        TextColor3 = Color3.fromRGB(240, 240, 240),
+        TextSize = 12,
         AutoButtonColor = false
     })
     
-    -- Новогодний градиент для кнопок
-    local ButtonGradient = Create("UIGradient",{
-        Parent = Button,
-        Rotation = 90,
-        Color = ColorSequence.new{
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(70, 120, 200)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(50, 100, 180))
-        }
-    })
-    
-    local ButtonCorner = Create("UICorner",{
-        Parent = Button,
-        CornerRadius = UDim.new(0, 8)
-    })
-    
     Button.MouseEnter:Connect(function()
-        TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(70, 130, 220)}):Play()
+        TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 60, 60)}):Play()
         makeToolTip(true, description())
     end)
     
     Button.MouseLeave:Connect(function()
-        TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(50, 50, 70)}):Play()
-        makeToolTip(false)
-    end)
-    
-    ButtonTemplate.AncestryChanged:Connect(function()
+        TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(30, 30, 30)}):Play()
         makeToolTip(false)
     end)
     
     Button.MouseButton1Click:Connect(function(...)
         logthread(running())
-        onClick(ButtonTemplate, ...)
+        onClick(Button, ...)
     end)
     
-    -- Touch поддержка для мобильных устройств
     Button.TouchTap:Connect(function()
         logthread(running())
-        onClick(ButtonTemplate)
+        onClick(Button)
     end)
     
-    updateFunctionCanvas()
-    return ButtonTemplate
+    updateToolsCanvas()
+    return Button
 end
 
 function newRemote(type, data)
@@ -1268,40 +1023,38 @@ function newRemote(type, data)
     local remote = data.remote
     local callingscript = data.callingscript
 
-    local RemoteTemplate = Create("Frame",{
+    local RemoteItem = Create("Frame",{
         LayoutOrder = layoutOrderNum,
-        Name = "RemoteTemplate",
-        Parent = LogList,
+        Name = "RemoteItem",
+        Parent = LogsPanel,
         BackgroundColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, -10, 0, 40)
+        Size = UDim2.new(1, -8, 0, 32)
     })
     
     local Button = Create("TextButton",{
         Name = "Button",
-        Parent = RemoteTemplate,
+        Parent = RemoteItem,
         BackgroundColor3 = deselectedColor,
         BorderSizePixel = 0,
         Size = UDim2.new(1, 0, 1, 0),
         AutoButtonColor = false,
         Font = Enum.Font.Gotham,
         Text = "",
-        TextColor3 = Color3.new(0, 0, 0),
+        TextColor3 = Color3.new(1, 1, 1),
         TextSize = 14
     })
     
-    local ButtonCorner = Create("UICorner",{
-        Parent = Button,
-        CornerRadius = UDim.new(0, 6)
-    })
-    
-    local Icon = Create("ImageLabel",{
+    local Icon = Create("TextLabel",{
         Parent = Button,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 8, 0.5, -12),
-        Size = UDim2.new(0, 24, 0, 24),
-        Image = type == "event" and "rbxassetid://6031097226" or "rbxassetid://6031094678",
-        ImageColor3 = type == "event" and Color3.fromRGB(255, 200, 50) or Color3.fromRGB(100, 150, 255)
+        Position = UDim2.new(0, 8, 0, 0),
+        Size = UDim2.new(0, 24, 1, 0),
+        Font = Enum.Font.GothamMedium,
+        Text = type == "event" and "⚡" or "⚙️",
+        TextColor3 = Color3.fromRGB(255, 60, 60),
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left
     })
     
     local Text = Create("TextLabel",{
@@ -1310,12 +1063,12 @@ function newRemote(type, data)
         Parent = Button,
         BackgroundColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 40, 0, 0),
-        Size = UDim2.new(1, -45, 1, 0),
+        Position = UDim2.new(0, 32, 0, 0),
+        Size = UDim2.new(1, -40, 1, 0),
         Font = Enum.Font.Gotham,
         Text = remote.Name,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        TextSize = 14,
+        TextColor3 = Color3.fromRGB(240, 240, 240),
+        TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Left
     })
 
@@ -1326,44 +1079,43 @@ function newRemote(type, data)
         DebugId = data.id,
         metamethod = data.metamethod,
         args = data.args,
-        Log = RemoteTemplate,
+        Log = RemoteItem,
         Button = Button,
         Blocked = data.blocked,
         Source = callingscript,
         returnvalue = data.returnvalue,
-        GenScript = "-- Generating, please wait...\n-- (If this message persists, the remote args are likely extremely long)"
+        GenScript = "-- Generating, please wait..."
     }
 
     logs[#logs + 1] = log
     local connect = Button.MouseButton1Click:Connect(function()
         logthread(running())
-        eventSelect(RemoteTemplate)
+        eventSelect(RemoteItem)
         log.GenScript = genScript(log.Remote, log.args)
         if data.blockcheck then
             log.GenScript = "-- THIS REMOTE WAS PREVENTED FROM FIRING TO THE SERVER BY SIMPLESPY\n\n" .. log.GenScript
         end
-        if selected == log and RemoteTemplate then
-            eventSelect(RemoteTemplate)
+        if selected == log and RemoteItem then
+            eventSelect(RemoteItem)
         end
     end)
     
-    -- Touch поддержка
     Button.TouchTap:Connect(function()
         logthread(running())
-        eventSelect(RemoteTemplate)
+        eventSelect(RemoteItem)
         log.GenScript = genScript(log.Remote, log.args)
         if data.blockcheck then
             log.GenScript = "-- THIS REMOTE WAS PREVENTED FROM FIRING TO THE SERVER BY SIMPLESPY\n\n" .. log.GenScript
         end
-        if selected == log and RemoteTemplate then
-            eventSelect(RemoteTemplate)
+        if selected == log and RemoteItem then
+            eventSelect(RemoteItem)
         end
     end)
     
     layoutOrderNum -= 1
-    table.insert(remoteLogs, 1, {connect, RemoteTemplate})
+    table.insert(remoteLogs, 1, {connect, RemoteItem})
     clean()
-    updateRemoteCanvas()
+    updateLogsCanvas()
 end
 
 function genScript(remote, args)
@@ -1624,10 +1376,6 @@ function v2v(t)
         ret = ret .. bottomstr
     end
     return ret
-end
-
-function tabletostring(tbl: table,format: boolean)
-    
 end
 
 function t2s(t, l, p, n, vtv, i, pt, path, tables, tI)
@@ -2197,7 +1945,7 @@ if not getgenv().SimpleSpyExecuted then
         end
         getgenv().SimpleSpyShutdown = shutdown
         
-        -- Автоматическая адаптация для мобильных устройств
+        -- Адаптация для мобильных устройств
         local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
         if isMobile then
             MainContainer.Size = UDim2.new(0.95, 0, 0.8, 0)
@@ -2206,7 +1954,8 @@ if not getgenv().SimpleSpyExecuted then
             validateSize()
         end
         
-        onToggleButtonClick()
+        toggleSpyMethod()
+        updateStatus()
         
         if not hookmetamethod then
             ErrorPrompt("Simple Spy V3 will not function to it's fullest capablity due to your executor not supporting hookmetamethod.",true)
@@ -2229,43 +1978,22 @@ if not getgenv().SimpleSpyExecuted then
         end
         
         -- Подключение событий
-        MainContainer.MouseEnter:Connect(function()
-            mouseInGui = true
-            mouseEntered()
-        end)
-        
-        MainContainer.MouseLeave:Connect(function()
-            mouseInGui = false
-            mouseEntered()
-        end)
-        
         ToolTipLabel:GetPropertyChangedSignal("Text"):Connect(scaleToolTip)
-        
-        MinimizeButton.MouseButton1Click:Connect(toggleMinimize)
-        MinimizeButton.TouchTap:Connect(toggleMinimize)
-        
-        MaximizeButton.MouseButton1Click:Connect(toggleSideTray)
-        MaximizeButton.TouchTap:Connect(toggleSideTray)
         
         ToggleButton.MouseButton1Click:Connect(onToggleButtonClick)
         ToggleButton.TouchTap:Connect(onToggleButtonClick)
-        
-        CloseButton.MouseEnter:Connect(onXButtonHover)
-        CloseButton.MouseLeave:Connect(onXButtonUnhover)
-        CloseButton.MouseButton1Click:Connect(shutdown)
-        CloseButton.TouchTap:Connect(shutdown)
-        
         ToggleButton.MouseEnter:Connect(onToggleButtonHover)
         ToggleButton.MouseLeave:Connect(onToggleButtonUnhover)
+        
+        CloseButton.MouseButton1Click:Connect(shutdown)
+        CloseButton.TouchTap:Connect(shutdown)
+        CloseButton.MouseEnter:Connect(onXButtonHover)
+        CloseButton.MouseLeave:Connect(onXButtonUnhover)
         
         table.insert(connections, UserInputService.InputBegan:Connect(backgroundUserInput))
         
         connectResize()
         SimpleSpy3.Enabled = true
-        
-        logthread(spawn(function()
-            delay(1,onToggleButtonUnhover)
-        end))
         
         schedulerconnect = RunService.Heartbeat:Connect(taskscheduler)
         bringBackOnResize()
@@ -2299,34 +2027,34 @@ function SimpleSpy:newButton(name, description, onClick)
     return newButton(name, description, onClick)
 end
 
------ ADD ONS -----
+----- ИНСТРУМЕНТЫ -----
 newButton(
-    "📋 Copy Code",
-    function() return "Click to copy generated code to clipboard" end,
+    "Copy",
+    function() return "Copy generated code" end,
     function()
         setclipboard(codebox:getString())
-        ToolTipLabel.Text = "✅ Code copied successfully!"
+        ToolTipLabel.Text = "✓ Code copied"
     end
 )
 
 newButton(
-    "🔗 Copy Remote",
-    function() return "Click to copy remote path to clipboard" end,
+    "Remote",
+    function() return "Copy remote path" end,
     function()
         if selected and selected.Remote then
             setclipboard(v2s(selected.Remote))
-            ToolTipLabel.Text = "✅ Remote path copied!"
+            ToolTipLabel.Text = "✓ Remote copied"
         end
     end
 )
 
 newButton(
-    "▶️ Run Code",
-    function() return "Execute the generated script" end,
+    "Run",
+    function() return "Execute script" end,
     function()
         local Remote = selected and selected.Remote
         if Remote then
-            ToolTipLabel.Text = "⏳ Executing..."
+            ToolTipLabel.Text = "▶ Executing..."
             xpcall(function()
                 local returnvalue
                 if Remote:IsA("RemoteEvent") or Remote:IsA("UnreliableRemoteEvent") then
@@ -2334,60 +2062,55 @@ newButton(
                 elseif Remote:IsA("RemoteFunction") then
                     returnvalue = Remote:InvokeServer(unpack(selected.args))
                 end
-
-                ToolTipLabel.Text = ("✅ Executed successfully!\n%s"):format(v2s(returnvalue))
+                ToolTipLabel.Text = ("✓ Executed\n%s"):format(v2s(returnvalue))
             end,function(err)
-                ToolTipLabel.Text = ("❌ Execution error!\n%s"):format(err)
+                ToolTipLabel.Text = ("✗ Error\n%s"):format(err)
             end)
             return
         end
-        ToolTipLabel.Text = "❌ Source not found"
+        ToolTipLabel.Text = "✗ No remote"
     end
 )
 
 newButton(
-    "📜 Get Script",
-    function() return "Get the calling script (may not always work)" end,
+    "Script",
+    function() return "Get calling script" end,
     function()
         if selected then
             if not selected.Source then
                 selected.Source = rawget(getfenv(selected.Function),"script")
             end
             setclipboard(v2s(selected.Source))
-            ToolTipLabel.Text = "✅ Done!"
+            ToolTipLabel.Text = "✓ Script copied"
         end
     end
 )
 
 newButton(
-    "ℹ️ Function Info",
-    function() return "View detailed information about the calling function" end,
+    "Info",
+    function() return "Function info" end,
     function()
         local func = selected and selected.Function
         if func then
             local typeoffunc = typeof(func)
-
             if typeoffunc ~= 'string' then
-                codebox:setRaw("--[[Generating Function Info please wait]]")
+                codebox:setRaw("--[[Generating...]]")
                 RunService.Heartbeat:Wait()
                 local lclosure = islclosure(func)
                 local SourceScript = rawget(getfenv(func),"script")
                 local CallingScript = selected.Source or nil
                 local info = {}
-                
                 info = {
                     info = getinfo(func),
-                    constants = lclosure and deepclone(getconstants(func)) or "N/A --Lua Closure expected got C Closure",
+                    constants = lclosure and deepclone(getconstants(func)) or "N/A",
                     upvalues = deepclone(getupvalues(func)),
                     script = {
                         SourceScript = SourceScript or 'nil',
                         CallingScript = CallingScript or 'nil'
                     }
                 }
-                        
                 if configs.advancedinfo then
                     local Remote = selected.Remote
-
                     info["advancedinfo"] = {
                         Metamethod = selected.metamethod,
                         DebugId = {
@@ -2395,14 +2118,12 @@ newButton(
                             CallingScriptDebugId = CallingScript and typeof(SourceScript) == "Instance" and OldDebugId(CallingScript) or "N/A",
                             RemoteDebugId = OldDebugId(Remote)
                         },
-                        Protos = lclosure and getprotos(func) or "N/A --Lua Closure expected got C Closure"
+                        Protos = lclosure and getprotos(func) or "N/A"
                     }
-
                     if Remote:IsA("RemoteFunction") then
-                        info["advancedinfo"]["OnClientInvoke"] = getcallbackmember and (getcallbackmember(Remote,"OnClientInvoke") or "N/A") or "N/A --Missing function getcallbackmember"
+                        info["advancedinfo"]["OnClientInvoke"] = getcallbackmember and (getcallbackmember(Remote,"OnClientInvoke") or "N/A") or "N/A"
                     elseif getconnections then
                         info["advancedinfo"]["OnClientEvents"] = {}
-
                         for i,v in next, getconnections(Remote.OnClientEvent) do
                             info["advancedinfo"]["OnClientEvents"][i] = {
                                 Function = v.Function or "N/A",
@@ -2411,106 +2132,74 @@ newButton(
                         end
                     end
                 end
-                codebox:setRaw("--[[Converting table to string please wait]]")
+                codebox:setRaw("--[[Converting...]]")
                 selected.Function = v2v({functionInfo = info})
             end
-            codebox:setRaw("-- Calling function info\n-- Generated by the SimpleSpy V3 serializer\n\n"..selected.Function)
-            ToolTipLabel.Text = "✅ Done! Function info generated."
+            codebox:setRaw("-- Function info\n\n"..selected.Function)
+            ToolTipLabel.Text = "✓ Info generated"
         else
-            ToolTipLabel.Text = "❌ Error! Selected function was not found."
+            ToolTipLabel.Text = "✗ No function"
         end
     end
 )
 
 newButton(
-    "🗑️ Clear Logs",
-    function() return "Clear all remote logs" end,
+    "Clear",
+    function() return "Clear logs" end,
     function()
-        ToolTipLabel.Text = "⏳ Clearing..."
+        ToolTipLabel.Text = "Clearing..."
         clear(logs)
-        for i,v in next, LogList:GetChildren() do
+        for i,v in next, LogsPanel:GetChildren() do
             if not v:IsA("UIListLayout") then
                 v:Destroy()
             end
         end
         codebox:setRaw("")
         selected = nil
-        ToolTipLabel.Text = "✅ Logs cleared!"
+        ToolTipLabel.Text = "✓ Logs cleared"
     end
 )
 
 newButton(
-    "🚫 Exclude (i)",
-    function() return "Exclude this specific remote from logging" end,
+    "Excl",
+    function() return "Exclude remote" end,
     function()
         if selected then
             blacklist[OldDebugId(selected.Remote)] = true
-            ToolTipLabel.Text = "✅ Remote excluded!"
+            ToolTipLabel.Text = "✓ Remote excluded"
         end
     end
 )
 
 newButton(
-    "🚫 Exclude (n)",
-    function() return "Exclude all remotes with this name" end,
-    function()
-        if selected then
-            blacklist[selected.Name] = true
-            ToolTipLabel.Text = "✅ All remotes with this name excluded!"
-        end
-    end
-)
-
-newButton(
-    "🔄 Clear Blacklist",
-    function() return "Clear all excluded remotes" end,
-    function()
-        blacklist = {}
-        ToolTipLabel.Text = "✅ Blacklist cleared!"
-    end
-)
-
-newButton(
-    "⛔ Block (i)",
-    function() return "Block this remote from firing" end,
+    "Block",
+    function() return "Block remote" end,
     function()
         if selected then
             blocklist[OldDebugId(selected.Remote)] = true
-            ToolTipLabel.Text = "✅ Remote blocked!"
+            ToolTipLabel.Text = "✓ Remote blocked"
         end
     end
 )
 
 newButton(
-    "⛔ Block (n)",
-    function() return "Block all remotes with this name" end,
-    function()
-        if selected then
-            blocklist[selected.Name] = true
-            ToolTipLabel.Text = "✅ All remotes with this name blocked!"
-        end
-    end
-)
-
-newButton(
-    "🔄 Clear Blocklist",
-    function() return "Clear all blocked remotes" end,
+    "ClrB",
+    function() return "Clear blocklist" end,
     function()
         blocklist = {}
-        ToolTipLabel.Text = "✅ Blocklist cleared!"
+        ToolTipLabel.Text = "✓ Blocklist cleared"
     end
 )
 
 newButton(
-    "🔧 Decompile",
-    function() return "Decompile source script (requires decompile function)" end,
+    "Decmp",
+    function() return "Decompile script" end,
     function()
         if decompile then
             if selected and selected.Source then
                 local Source = selected.Source
                 if not DecompiledScripts[Source] then
                     codebox:setRaw("--[[Decompiling]]")
-
                     xpcall(function()
                         local decompiledsource = decompile(Source):gsub("-- Decompiled with the Synapse X Luau decompiler.","")
                         local Sourcev2s = v2s(Source)
@@ -2518,64 +2207,64 @@ newButton(
                             DecompiledScripts[Source] = ("local script = %s\n%s"):format(Sourcev2s,decompiledsource)
                         end
                     end,function(err)
-                        return codebox:setRaw(("--[[\nAn error has occured\n%s\n]]"):format(err))
+                        return codebox:setRaw(("--[[\nError:\n%s\n]]"):format(err))
                     end)
                 end
-                codebox:setRaw(DecompiledScripts[Source] or "--No Source Found")
-                ToolTipLabel.Text = "✅ Done!"
+                codebox:setRaw(DecompiledScripts[Source] or "--No source")
+                ToolTipLabel.Text = "✓ Decompiled"
             else
-                ToolTipLabel.Text = "❌ Source not found!"
+                ToolTipLabel.Text = "✗ No source"
             end
         else
-            ToolTipLabel.Text = "❌ Missing function (decompile)"
+            ToolTipLabel.Text = "✗ No decompile"
         end
     end
 )
 
 newButton(
-    "ℹ️ Disable Info",
-    function() return string.format("[%s] Toggle function info (can cause lag)", configs.funcEnabled and "ENABLED" or "DISABLED") end,
+    "Func",
+    function() return string.format("[%s] Toggle function info", configs.funcEnabled and "ON" : "OFF") end,
     function()
         configs.funcEnabled = not configs.funcEnabled
-        ToolTipLabel.Text = string.format("[%s] Toggle function info (can cause lag)", configs.funcEnabled and "ENABLED" or "DISABLED")
+        ToolTipLabel.Text = string.format("[%s] Function info", configs.funcEnabled and "ON" : "OFF")
     end
 )
 
 newButton(
-    "🤖 Autoblock",
-    function() return string.format("[%s] [BETA] Intelligent spam detection", configs.autoblock and "ENABLED" or "DISABLED") end,
+    "Auto",
+    function() return string.format("[%s] Auto-block spam", configs.autoblock and "ON" : "OFF") end,
     function()
         configs.autoblock = not configs.autoblock
-        ToolTipLabel.Text = string.format("[%s] [BETA] Intelligent spam detection", configs.autoblock and "ENABLED" or "DISABLED")
+        ToolTipLabel.Text = string.format("[%s] Auto-block", configs.autoblock and "ON" : "OFF")
         history = {}
         excluding = {}
     end
 )
 
 newButton(
-    "👁️ Log Checkcaller",
-    function() return ("[%s] Log client-fired remotes"):format(configs.logcheckcaller and "ENABLED" or "DISABLED") end,
+    "Caller",
+    function() return ("[%s] Log client calls"):format(configs.logcheckcaller and "ON" : "OFF") end,
     function()
         configs.logcheckcaller = not configs.logcheckcaller
-        ToolTipLabel.Text = ("[%s] Log client-fired remotes"):format(configs.logcheckcaller and "ENABLED" or "DISABLED")
+        ToolTipLabel.Text = ("[%s] Log calls"):format(configs.logcheckcaller and "ON" : "OFF")
     end
 )
 
 newButton(
-    "🔍 Advanced Info",
-    function() return ("[%s] Display detailed remote information"):format(configs.advancedinfo and "ENABLED" or "DISABLED") end,
+    "Adv",
+    function() return ("[%s] Advanced info"):format(configs.advancedinfo and "ON" : "OFF") end,
     function()
         configs.advancedinfo = not configs.advancedinfo
-        ToolTipLabel.Text = ("[%s] Display detailed remote information"):format(configs.advancedinfo and "ENABLED" or "DISABLED")
+        ToolTipLabel.Text = ("[%s] Advanced"):format(configs.advancedinfo and "ON" : "OFF")
     end
 )
 
 newButton(
-    "📢 Join Discord",
-    function() return "Join the Simple Spy Discord community" end,
+    "Discord",
+    function() return "Join Discord" end,
     function()
         setclipboard("https://discord.com/invite/AWS6ez9")
-        ToolTipLabel.Text = "✅ Discord invite copied to clipboard!"
+        ToolTipLabel.Text = "✓ Discord invite copied"
         if request then
             request({
                 Url = 'http://127.0.0.1:6463/rpc?v=1',
@@ -2596,32 +2285,15 @@ newButton(
 
 if configs.supersecretdevtoggle then
     newButton(
-        "🔄 Load SSV2.2",
-        function() return "Load Simple Spy V2.2" end,
+        "SS",
+        function() return "Secret button" end,
         function()
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/exxtremestuffs/SimpleSpySource/master/SimpleSpy.lua"))()
-        end
-    )
-    
-    newButton(
-        "🔄 Load SSV3",
-        function() return "Load Simple Spy V3" end,
-        function()
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/SimpleSpy/main/SimpleSpySource.lua"))()
-        end
-    )
-    
-    local SuperSecretFolder = Create("Folder",{Parent = SimpleSpy3})
-    newButton(
-        "🎁 Secret Button",
-        function() return "You know what this does..." end,
-        function()
-            SuperSecretFolder:ClearAllChildren()
+            local SuperSecretFolder = Create("Folder",{Parent = SimpleSpy3})
             local random = listfiles("Music")
             local NotSound = Create("Sound",{
                 Parent = SuperSecretFolder,
                 Looped = false,
-                Volume = math.random(1,5),
+                Volume = 2,
                 SoundId = getsynasset(random[math.random(1,#random)])
             })
             NotSound:Play()
