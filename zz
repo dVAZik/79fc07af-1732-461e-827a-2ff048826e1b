@@ -1,0 +1,1134 @@
+-- Auto Optimizer Pro v7.0 - Полная интеграция с игровой механикой
+-- Автор: AI Assistant
+-- Версия: 7.0 (Полная синхронизация с игрой + 5-6⭐ фильтр)
+
+-- Получаем необходимые модули
+local Portfolio = require(game:GetService("ReplicatedStorage").Modules.Game.PortfolioController)
+local Building = require(game:GetService("ReplicatedStorage").Modules.Data.Building)
+local PlayerDataClient = require(game:GetService("ReplicatedStorage").Modules.PlayerDataClient)
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+
+-- Пути к RemoteEvents и Functions
+local NetworkPath = game:GetService("ReplicatedStorage").Modules.NetworkClient
+
+-- Конфигурация (ТОЛЬКО 5-6 звезды)
+local MIN_STARS_FOR_REPLACEMENT = 5  -- Минимальные звезды для замены существующих
+local MIN_STARS_FOR_NEW = 5         -- Минимальные звезды для новых арендаторов
+local MAX_STARS = 6                 -- Максимальное количество звезд
+local CHECK_INTERVAL = 5           -- Интервал проверки (5 секунд)
+local AUTO_DENY_BAD_APPLICANTS = true
+local AUTO_ACCEPT_GOOD_APPLICANTS = true
+local AGGRESSIVE_REPLACEMENT = true
+local PRIORITIZE_HIGHER_STARS = true
+local ONLY_5_6_STARS = true         -- Только арендаторы с 5-6 звездами
+
+-- Глобальные переменные
+local isRunning = false
+local isGUIVisible = true
+local cycleCount = 0
+local processedRenters = {}
+local processedApplicants = {}
+local lastUpdateTime = 0
+local guiElements = {}
+local dataUpdateConnection = nil
+
+-- Статистика в реальном времени
+local statsData = {
+    -- Портфель
+    totalProperties = 0,
+    totalValue = 0,
+    totalIncome = 0,
+    totalExpenses = 0,
+    netProfit = 0,
+    
+    -- Арендаторы
+    totalRenters = 0,
+    occupiedSpots = 0,
+    totalSpots = 0,
+    occupancyRate = 0,
+    averageStars = 0,
+    fiveStarRenters = 0,
+    sixStarRenters = 0,
+    
+    -- Деньги
+    cashBalance = 0,
+    bankBalance = 0,
+    bankToCollect = 0,
+    totalBankDeposits = 0,
+    sessionProfit = 0,
+    
+    -- Здания
+    buildingTypes = {},
+    totalBuildings = 0,
+    underConstruction = 0,
+    
+    -- Оптимизация
+    totalReplacements = 0,
+    totalAccepted = 0,
+    totalEvicted = 0,
+    totalStarsImproved = 0,
+    lastOptimizationTime = 0,
+    cycleTime = 0
+}
+
+-- Функция форматирования чисел
+local function formatNumber(num)
+    if not num then return "0" end
+    num = tonumber(num) or 0
+    
+    if num >= 1000000000000 then
+        return string.format("%.2fT", num / 1000000000000)
+    elseif num >= 1000000000 then
+        return string.format("%.2fB", num / 1000000000)
+    elseif num >= 1000000 then
+        return string.format("%.2fM", num / 1000000)
+    elseif num >= 1000 then
+        return string.format("%.2fK", num / 1000)
+    else
+        return string.format("%.0f", num)
+    end
+end
+
+-- Функция логирования
+local function log(message, type)
+    local timestamp = os.date("%H:%M:%S")
+    local formattedMessage = string.format("[%s] %s", timestamp, message)
+    
+    print(string.format("[AutoOptimizer] %s", message))
+    
+    if _G.GUILogger then
+        _G.GUILogger(formattedMessage, type)
+    end
+end
+
+-- Функция получения реальных данных из игры
+local function updateGameData()
+    pcall(function()
+        -- Получаем данные игрока
+        statsData.cashBalance = PlayerDataClient.Get("Cash") or 0
+        statsData.bankBalance = PlayerDataClient.Get("BankBalance") or 0
+        statsData.bankToCollect = PlayerDataClient.Get("BankToCollect") or 0
+        
+        -- Получаем портфель
+        local portfolio = Portfolio.GetPortfolio() or {}
+        local totalProperties = 0
+        local totalValue = 0
+        local totalIncome = 0
+        local totalExpenses = 0
+        local totalRenters = 0
+        local occupiedSpots = 0
+        local totalSpots = 0
+        local totalStars = 0
+        local fiveStarCount = 0
+        local sixStarCount = 0
+        local buildingTypes = {}
+        
+        for propertyUID, property in pairs(portfolio) do
+            if property and property.BuildingType and property.BuildingType ~= "Empty" then
+                totalProperties = totalProperties + 1
+                totalValue = totalValue + (property.Value or 0)
+                totalIncome = totalIncome + (property.Income or 0)
+                totalExpenses = totalExpenses + (property.Expenses or 0)
+                
+                -- Подсчет арендаторов
+                if property.Renters then
+                    for renterId, renter in pairs(property.Renters) do
+                        totalRenters = totalRenters + 1
+                        local stars = renter.Stars or 1
+                        totalStars = totalStars + stars
+                        
+                        if stars == 5 then
+                            fiveStarCount = fiveStarCount + 1
+                        elseif stars == 6 then
+                            sixStarCount = sixStarCount + 1
+                        end
+                    end
+                end
+                
+                -- Подсчет мест
+                local buildingData = Building[property.BuildingType]
+                if buildingData then
+                    local spots = buildingData.Spots or 0
+                    if property.Built then
+                        for _, upgrade in ipairs(property.Built) do
+                            if upgrade ~= "Main" and buildingData.Upgrades and buildingData.Upgrades[upgrade] then
+                                spots = spots + (buildingData.Upgrades[upgrade].AddedRenters or 0)
+                            end
+                        end
+                    end
+                    totalSpots = totalSpots + spots
+                    
+                    -- Считаем занятые места
+                    if property.Renters then
+                        occupiedSpots = occupiedSpots + (table.getn(property.Renters) or 0)
+                    end
+                end
+                
+                -- Типы зданий
+                local buildingType = property.BuildingType
+                buildingTypes[buildingType] = (buildingTypes[buildingType] or 0) + 1
+            end
+        end
+        
+        -- Обновляем статистику
+        statsData.totalProperties = totalProperties
+        statsData.totalValue = totalValue
+        statsData.totalIncome = totalIncome
+        statsData.totalExpenses = totalExpenses
+        statsData.netProfit = totalIncome - totalExpenses
+        statsData.totalRenters = totalRenters
+        statsData.occupiedSpots = occupiedSpots
+        statsData.totalSpots = totalSpots
+        statsData.occupancyRate = totalSpots > 0 and (occupiedSpots / totalSpots * 100) or 0
+        statsData.averageStars = totalRenters > 0 and (totalStars / totalRenters) or 0
+        statsData.fiveStarRenters = fiveStarCount
+        statsData.sixStarRenters = sixStarCount
+        statsData.buildingTypes = buildingTypes
+        statsData.totalBuildings = totalProperties
+        
+        -- Обновляем GUI
+        updateGUI()
+    end)
+end
+
+-- Функция обновления GUI
+local function updateGUI()
+    if not guiElements.initialized then return end
+    
+    pcall(function()
+        -- Деньги
+        if guiElements.cashLabel then
+            guiElements.cashLabel.Text = string.format("$%s", formatNumber(statsData.cashBalance))
+        end
+        if guiElements.bankLabel then
+            guiElements.bankLabel.Text = string.format("$%s", formatNumber(statsData.bankBalance))
+        end
+        if guiElements.bankToCollectLabel then
+            guiElements.bankToCollectLabel.Text = string.format("$%s", formatNumber(statsData.bankToCollect))
+        end
+        if guiElements.totalIncomeLabel then
+            guiElements.totalIncomeLabel.Text = string.format("$%s/час", formatNumber(statsData.totalIncome))
+        end
+        if guiElements.netProfitLabel then
+            guiElements.netProfitLabel.Text = string.format("$%s/час", formatNumber(statsData.netProfit))
+        end
+        
+        -- Портфель
+        if guiElements.propertiesLabel then
+            guiElements.propertiesLabel.Text = tostring(statsData.totalProperties)
+        end
+        if guiElements.totalValueLabel then
+            guiElements.totalValueLabel.Text = string.format("$%s", formatNumber(statsData.totalValue))
+        end
+        if guiElements.occupancyLabel then
+            guiElements.occupancyLabel.Text = string.format("%.1f%%", statsData.occupancyRate)
+        end
+        
+        -- Арендаторы
+        if guiElements.totalRentersLabel then
+            guiElements.totalRentersLabel.Text = tostring(statsData.totalRenters)
+        end
+        if guiElements.averageStarsLabel then
+            guiElements.averageStarsLabel.Text = string.format("%.1f", statsData.averageStars)
+        end
+        if guiElements.fiveStarLabel then
+            guiElements.fiveStarLabel.Text = tostring(statsData.fiveStarRenters)
+        end
+        if guiElements.sixStarLabel then
+            guiElements.sixStarLabel.Text = tostring(statsData.sixStarRenters)
+        end
+        if guiElements.occupiedSpotsLabel then
+            guiElements.occupiedSpotsLabel.Text = string.format("%d/%d", statsData.occupiedSpots, statsData.totalSpots)
+        end
+        
+        -- Оптимизация
+        if guiElements.replacementsLabel then
+            guiElements.replacementsLabel.Text = tostring(statsData.totalReplacements)
+        end
+        if guiElements.acceptedLabel then
+            guiElements.acceptedLabel.Text = tostring(statsData.totalAccepted)
+        end
+        if guiElements.evictedLabel then
+            guiElements.evictedLabel.Text = tostring(statsData.totalEvicted)
+        end
+        if guiElements.cycleCountLabel then
+            guiElements.cycleCountLabel.Text = tostring(cycleCount)
+        end
+        
+        -- Время
+        if guiElements.lastUpdateLabel then
+            local timeDiff = os.time() - lastUpdateTime
+            local minutes = math.floor(timeDiff / 60)
+            local seconds = timeDiff % 60
+            guiElements.lastUpdateLabel.Text = string.format("%d:%02d", minutes, seconds)
+        end
+    end)
+end
+
+-- Функция расчета мест в здании
+local function calculateTotalSpots(property)
+    if not property or property.BuildingType == "Empty" then return 0 end
+    
+    local buildingData = Building[property.BuildingType]
+    if not buildingData then return 0 end
+    
+    local totalSpots = buildingData.Spots or 0
+    
+    if property.Built then
+        for _, upgrade in ipairs(property.Built) do
+            if upgrade ~= "Main" and buildingData.Upgrades and buildingData.Upgrades[upgrade] then
+                totalSpots = totalSpots + (buildingData.Upgrades[upgrade].AddedRenters or 0)
+            end
+        end
+    end
+    
+    return totalSpots
+end
+
+-- Функция проверки звезд (только 5-6)
+local function isValidStars(stars)
+    if not stars then return false end
+    return stars >= 5 and stars <= 6
+end
+
+-- Функция получения заявок (только 5-6 звезды)
+local function getAllApplicantsSorted(propertyUID)
+    if not propertyUID then return {} end
+    
+    local property = Portfolio.GetAll(propertyUID)
+    if not property or not property.Applicants then return {} end
+    
+    local applicants = {}
+    
+    for applicantId, applicant in pairs(property.Applicants) do
+        if applicantId and applicant then
+            local cacheKey = propertyUID .. "_" .. applicantId
+            if not processedApplicants[cacheKey] then
+                local stars = applicant.Stars or 1
+                if isValidStars(stars) then
+                    table.insert(applicants, {
+                        id = applicantId,
+                        stars = stars,
+                        data = applicant
+                    })
+                end
+            end
+        end
+    end
+    
+    -- Сортировка по звездам (6⭐ сначала)
+    if #applicants > 0 then
+        table.sort(applicants, function(a, b)
+            if a.stars ~= b.stars then
+                return a.stars > b.stars
+            end
+            return a.id < b.id
+        end)
+    end
+    
+    return applicants
+end
+
+-- Функция получения арендаторов
+local function getAllRentersSorted(propertyUID)
+    if not propertyUID then return {} end
+    
+    local property = Portfolio.GetAll(propertyUID)
+    if not property or not property.Renters then return {} end
+    
+    local renters = {}
+    
+    for renterId, renter in pairs(property.Renters) do
+        if renterId and renter then
+            local cacheKey = propertyUID .. "_" .. renterId
+            if not processedRenters[cacheKey] then
+                local stars = renter.Stars or 1
+                if isValidStars(stars) then
+                    table.insert(renters, {
+                        id = renterId,
+                        stars = stars,
+                        data = renter
+                    })
+                end
+            end
+        end
+    end
+    
+    -- Сортировка по звездам (сначала худшие)
+    if #renters > 0 then
+        table.sort(renters, function(a, b)
+            return a.stars < b.stars
+        end)
+    end
+    
+    return renters
+end
+
+-- Функция принятия арендатора
+local function acceptApplicant(propertyUID, applicantId)
+    if not propertyUID or not applicantId then return false, "Invalid params" end
+    
+    local args = {[1] = propertyUID, [2] = applicantId}
+    local success, result = pcall(function()
+        return NetworkPath.FunctionMap.Tenancy.SelectTenant:InvokeServer(unpack(args))
+    end)
+    
+    if success then
+        processedApplicants[propertyUID .. "_" .. applicantId] = true
+        statsData.totalAccepted = statsData.totalAccepted + 1
+        return true, "Accepted"
+    else
+        return false, "Error: " .. tostring(result)
+    end
+end
+
+-- Функция выселения арендатора
+local function evictRenter(propertyUID, renterId)
+    if not propertyUID or not renterId then return false, "Invalid params" end
+    
+    local args = {[1] = propertyUID, [2] = renterId}
+    local success, result = pcall(function()
+        return NetworkPath.FunctionMap.Tenancy.Evict:InvokeServer(unpack(args))
+    end)
+    
+    if success then
+        processedRenters[propertyUID .. "_" .. renterId] = true
+        statsData.totalEvicted = statsData.totalEvicted + 1
+        return true, "Evicted"
+    else
+        return false, "Error: " .. tostring(result)
+    end
+end
+
+-- Функция отклонения заявки
+local function denyApplicant(propertyUID, applicantId)
+    if not propertyUID or not applicantId then return false, "Invalid params" end
+    
+    local args = {[1] = propertyUID, [2] = applicantId}
+    local success, result = pcall(function()
+        return NetworkPath.EventMap.DenyApplicant:FireServer(unpack(args))
+    end)
+    
+    if success then
+        processedApplicants[propertyUID .. "_" .. applicantId] = true
+        return true, "Denied"
+    else
+        return false, "Error: " .. tostring(result)
+    end
+end
+
+-- Функция оптимизации здания
+local function optimizeProperty(propertyUID)
+    if not propertyUID then return "error" end
+    
+    local property = Portfolio.GetAll(propertyUID)
+    if not property or property.BuildingType == "Empty" then return "skip_empty" end
+    
+    local totalSpots = calculateTotalSpots(property)
+    local currentRenters = getAllRentersSorted(propertyUID)
+    local currentApplicants = getAllApplicantsSorted(propertyUID)
+    
+    -- Заполняем свободные места
+    if #currentRenters < totalSpots and #currentApplicants > 0 then
+        local spotsToFill = totalSpots - #currentRenters
+        local filled = 0
+        
+        for i = 1, math.min(spotsToFill, #currentApplicants) do
+            local applicant = currentApplicants[i]
+            if applicant and applicant.stars >= MIN_STARS_FOR_NEW then
+                local success, msg = acceptApplicant(propertyUID, applicant.id)
+                if success then
+                    filled = filled + 1
+                    log(string.format("%s: Принят %d⭐", propertyUID, applicant.stars), "hire")
+                    task.wait(0.3)
+                end
+            end
+        end
+        
+        if filled > 0 then
+            return string.format("filled|%d", filled)
+        end
+    end
+    
+    -- Заменяем арендаторов на лучших
+    if #currentRenters > 0 and #currentApplicants > 0 then
+        local replaced = 0
+        
+        for _, renter in ipairs(currentRenters) do
+            for _, applicant in ipairs(currentApplicants) do
+                if applicant.stars > renter.stars then
+                    -- Выселяем старого
+                    local success1, msg1 = evictRenter(propertyUID, renter.id)
+                    if success1 then
+                        task.wait(0.5)
+                        
+                        -- Принимаем нового
+                        local success2, msg2 = acceptApplicant(propertyUID, applicant.id)
+                        if success2 then
+                            replaced = replaced + 1
+                            statsData.totalReplacements = statsData.totalReplacements + 1
+                            statsData.totalStarsImproved = statsData.totalStarsImproved + (applicant.stars - renter.stars)
+                            
+                            log(string.format("%s: Замена %d⭐ → %d⭐", 
+                                propertyUID, renter.stars, applicant.stars), "spot")
+                            
+                            task.wait(0.3)
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        
+        if replaced > 0 then
+            return string.format("replaced|%d", replaced)
+        end
+    end
+    
+    -- Отклоняем плохих арендаторов
+    if AUTO_DENY_BAD_APPLICANTS then
+        local denied = 0
+        for applicantId, applicant in pairs(property.Applicants or {}) do
+            local stars = applicant.Stars or 1
+            if stars < 5 then
+                local success, msg = denyApplicant(propertyUID, applicantId)
+                if success then
+                    denied = denied + 1
+                end
+            end
+        end
+        
+        if denied > 0 then
+            return string.format("denied|%d", denied)
+        end
+    end
+    
+    return "no_changes"
+end
+
+-- Основная функция оптимизации
+local function optimizeAllProperties()
+    local cycleStartTime = tick()
+    cycleCount = cycleCount + 1
+    
+    log(string.format("ЦИКЛ #%d - ТОЛЬКО 5-6⭐", cycleCount), "info")
+    
+    -- Обновляем данные
+    updateGameData()
+    
+    local optimizedCount = 0
+    local totalFilled = 0
+    local totalReplaced = 0
+    
+    -- Оптимизируем все здания
+    local portfolio = Portfolio.GetPortfolio() or {}
+    for propertyUID, property in pairs(portfolio) do
+        if property and property.BuildingType and property.BuildingType ~= "Empty" then
+            local result = optimizeProperty(propertyUID)
+            
+            if result:find("filled|") then
+                local filled = tonumber(result:match("filled|(%d+)")) or 0
+                optimizedCount = optimizedCount + 1
+                totalFilled = totalFilled + filled
+            elseif result:find("replaced|") then
+                local replaced = tonumber(result:match("replaced|(%d+)")) or 0
+                optimizedCount = optimizedCount + 1
+                totalReplaced = totalReplaced + replaced
+            end
+            
+            task.wait(0.1)
+        end
+    end
+    
+    -- Обновляем статистику
+    statsData.cycleTime = tick() - cycleStartTime
+    statsData.lastOptimizationTime = os.time()
+    lastUpdateTime = os.time()
+    
+    -- Логируем результаты
+    if totalFilled > 0 then
+        log(string.format("Заполнено: %d мест", totalFilled), "success")
+    end
+    if totalReplaced > 0 then
+        log(string.format("Заменено: %d арендаторов", totalReplaced), "spot")
+    end
+    if optimizedCount == 0 then
+        log("Все здания оптимизированы", "info")
+    end
+    
+    updateGUI()
+    
+    return optimizedCount
+end
+
+-- Создание современного GUI
+local function createModernGUI()
+    local PlayerGui = Player:WaitForChild("PlayerGui")
+    
+    -- Удаляем старый GUI
+    local oldGUI = PlayerGui:FindFirstChild("AutoOptimizerPro")
+    if oldGUI then oldGUI:Destroy() end
+    
+    -- Создаем ScreenGui
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "AutoOptimizerPro"
+    ScreenGui.Parent = PlayerGui
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.IgnoreGuiInset = true
+    
+    -- Основной контейнер
+    local MainContainer = Instance.new("Frame")
+    MainContainer.Size = UDim2.new(0.4, 0, 0.8, 0)
+    MainContainer.Position = UDim2.new(0.6, 0, 0.1, 0)
+    MainContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+    MainContainer.BackgroundTransparency = 0.05
+    MainContainer.BorderSizePixel = 0
+    MainContainer.ClipsDescendants = true
+    MainContainer.Parent = ScreenGui
+    
+    -- Скругление углов
+    local ContainerCorner = Instance.new("UICorner")
+    ContainerCorner.CornerRadius = UDim.new(0, 12)
+    ContainerCorner.Parent = MainContainer
+    
+    -- Верхняя панель
+    local TopBar = Instance.new("Frame")
+    TopBar.Size = UDim2.new(1, 0, 0, 50)
+    TopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+    TopBar.BorderSizePixel = 0
+    TopBar.Parent = MainContainer
+    
+    local TopBarCorner = Instance.new("UICorner")
+    TopBarCorner.CornerRadius = UDim.new(0, 12)
+    TopBarCorner.Parent = TopBar
+    
+    -- Заголовок
+    local Title = Instance.new("TextLabel")
+    Title.Size = UDim2.new(0.6, 0, 1, 0)
+    Title.BackgroundTransparency = 1
+    Title.Text = "⚡ OPTIMIZER PRO v7.0"
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 18
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = TopBar
+    
+    local TitlePadding = Instance.new("UIPadding")
+    TitlePadding.PaddingLeft = UDim.new(0, 15)
+    TitlePadding.Parent = Title
+    
+    -- Кнопки управления GUI
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Size = UDim2.new(0, 40, 0, 40)
+    CloseButton.Position = UDim2.new(1, -45, 0.5, -20)
+    CloseButton.BackgroundTransparency = 1
+    CloseButton.Text = "✕"
+    CloseButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+    CloseButton.Font = Enum.Font.GothamBold
+    CloseButton.TextSize = 20
+    CloseButton.Parent = TopBar
+    
+    local MinimizeButton = Instance.new("TextButton")
+    MinimizeButton.Size = UDim2.new(0, 40, 0, 40)
+    MinimizeButton.Position = UDim2.new(1, -90, 0.5, -20)
+    MinimizeButton.BackgroundTransparency = 1
+    MinimizeButton.Text = "🗕"
+    MinimizeButton.TextColor3 = Color3.fromRGB(200, 200, 255)
+    MinimizeButton.Font = Enum.Font.GothamBold
+    MinimizeButton.TextSize = 16
+    MinimizeButton.Parent = TopBar
+    
+    -- Статус
+    local StatusLabel = Instance.new("TextLabel")
+    StatusLabel.Size = UDim2.new(0.3, 0, 1, 0)
+    StatusLabel.Position = UDim2.new(0.65, 0, 0, 0)
+    StatusLabel.BackgroundTransparency = 1
+    StatusLabel.Text = "⏹ СТОП"
+    StatusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    StatusLabel.Font = Enum.Font.GothamBold
+    StatusLabel.TextSize = 14
+    StatusLabel.TextXAlignment = Enum.TextXAlignment.Right
+    StatusLabel.Parent = TopBar
+    
+    guiElements.statusLabel = StatusLabel
+    
+    -- Основной контент (ScrollingFrame)
+    local MainScroll = Instance.new("ScrollingFrame")
+    MainScroll.Size = UDim2.new(1, 0, 1, -60)
+    MainScroll.Position = UDim2.new(0, 0, 0, 50)
+    MainScroll.BackgroundTransparency = 1
+    MainScroll.BorderSizePixel = 0
+    MainScroll.ScrollBarThickness = 4
+    MainScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255)
+    MainScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    MainScroll.Parent = MainContainer
+    
+    local ContentLayout = Instance.new("UIListLayout")
+    ContentLayout.Padding = UDim.new(0, 10)
+    ContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    ContentLayout.Parent = MainScroll
+    
+    -- Функция создания секции
+    local function createSection(title, height)
+        local section = Instance.new("Frame")
+        section.Size = UDim2.new(1, -20, 0, height)
+        section.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        section.BorderSizePixel = 0
+        section.LayoutOrder = 1
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 10)
+        corner.Parent = section
+        
+        local sectionTitle = Instance.new("TextLabel")
+        sectionTitle.Size = UDim2.new(1, 0, 0, 30)
+        sectionTitle.BackgroundTransparency = 1
+        sectionTitle.Text = "  " .. title
+        sectionTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+        sectionTitle.Font = Enum.Font.GothamBold
+        sectionTitle.TextSize = 16
+        sectionTitle.TextXAlignment = Enum.TextXAlignment.Left
+        sectionTitle.Parent = section
+        
+        return section
+    end
+    
+    -- Функция создания карточки данных
+    local function createDataCard(parent, label, value, isMoney, layoutOrder)
+        local card = Instance.new("Frame")
+        card.Size = UDim2.new(0.48, -5, 0, 40)
+        card.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+        card.BorderSizePixel = 0
+        card.LayoutOrder = layoutOrder
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = card
+        
+        local labelText = Instance.new("TextLabel")
+        labelText.Size = UDim2.new(0.6, -5, 1, 0)
+        labelText.Position = UDim2.new(0, 10, 0, 0)
+        labelText.BackgroundTransparency = 1
+        labelText.Text = label
+        labelText.TextColor3 = Color3.fromRGB(200, 210, 230)
+        labelText.Font = Enum.Font.Gotham
+        labelText.TextSize = 12
+        labelText.TextXAlignment = Enum.TextXAlignment.Left
+        labelText.Parent = card
+        
+        local valueText = Instance.new("TextLabel")
+        valueText.Size = UDim2.new(0.4, 0, 1, 0)
+        valueText.Position = UDim2.new(0.6, 0, 0, 0)
+        valueText.BackgroundTransparency = 1
+        valueText.Text = isMoney and "$0" or "0"
+        valueText.TextColor3 = isMoney and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 255, 200)
+        valueText.Font = Enum.Font.GothamBold
+        valueText.TextSize = 14
+        valueText.TextXAlignment = Enum.TextXAlignment.Right
+        valueText.Parent = card
+        
+        local padding = Instance.new("UIPadding")
+        padding.PaddingRight = UDim.new(0, 10)
+        padding.Parent = valueText
+        
+        card.Parent = parent
+        
+        return valueText
+    end
+    
+    -- Секция: ДЕНЬГИ
+    local moneySection = createSection("💰 ДЕНЬГИ", 140)
+    moneySection.Parent = MainScroll
+    
+    local moneyGrid = Instance.new("Frame")
+    moneyGrid.Size = UDim2.new(1, -20, 1, -40)
+    moneyGrid.Position = UDim2.new(0, 10, 0, 35)
+    moneyGrid.BackgroundTransparency = 1
+    moneyGrid.Parent = moneySection
+    
+    local moneyLayout = Instance.new("UIGridLayout")
+    moneyLayout.CellSize = UDim2.new(0.5, -5, 0, 40)
+    moneyLayout.CellPadding = UDim2.new(0, 10, 0, 10)
+    moneyLayout.StartCorner = Enum.StartCorner.TopLeft
+    moneyLayout.Parent = moneyGrid
+    
+    guiElements.cashLabel = createDataCard(moneyGrid, "Наличные:", "0", true, 1)
+    guiElements.bankLabel = createDataCard(moneyGrid, "Банк:", "0", true, 2)
+    guiElements.bankToCollectLabel = createDataCard(moneyGrid, "Банк %:", "0", true, 3)
+    guiElements.totalIncomeLabel = createDataCard(moneyGrid, "Доход/час:", "0", true, 4)
+    guiElements.netProfitLabel = createDataCard(moneyGrid, "Чистая прибыль:", "0", true, 5)
+    
+    -- Секция: ПОРТФЕЛЬ
+    local portfolioSection = createSection("🏢 ПОРТФЕЛЬ", 140)
+    portfolioSection.Parent = MainScroll
+    
+    local portfolioGrid = Instance.new("Frame")
+    portfolioGrid.Size = UDim2.new(1, -20, 1, -40)
+    portfolioGrid.Position = UDim2.new(0, 10, 0, 35)
+    portfolioGrid.BackgroundTransparency = 1
+    portfolioGrid.Parent = portfolioSection
+    
+    local portfolioLayout = Instance.new("UIGridLayout")
+    portfolioLayout.CellSize = UDim2.new(0.5, -5, 0, 40)
+    portfolioLayout.CellPadding = UDim2.new(0, 10, 0, 10)
+    portfolioLayout.StartCorner = Enum.StartCorner.TopLeft
+    portfolioLayout.Parent = portfolioGrid
+    
+    guiElements.propertiesLabel = createDataCard(portfolioGrid, "Объекты:", "0", false, 1)
+    guiElements.totalValueLabel = createDataCard(portfolioGrid, "Стоимость:", "0", true, 2)
+    guiElements.occupiedSpotsLabel = createDataCard(portfolioGrid, "Занято:", "0/0", false, 3)
+    guiElements.occupancyLabel = createDataCard(portfolioGrid, "Заполненность:", "0%", false, 4)
+    
+    -- Секция: АРЕНДАТОРЫ
+    local rentersSection = createSection("👥 АРЕНДАТОРЫ (5-6⭐)", 180)
+    rentersSection.Parent = MainScroll
+    
+    local rentersGrid = Instance.new("Frame")
+    rentersGrid.Size = UDim2.new(1, -20, 1, -40)
+    rentersGrid.Position = UDim2.new(0, 10, 0, 35)
+    rentersGrid.BackgroundTransparency = 1
+    rentersGrid.Parent = rentersSection
+    
+    local rentersLayout = Instance.new("UIGridLayout")
+    rentersLayout.CellSize = UDim2.new(0.5, -5, 0, 40)
+    rentersLayout.CellPadding = UDim2.new(0, 10, 0, 10)
+    rentersLayout.StartCorner = Enum.StartCorner.TopLeft
+    rentersLayout.Parent = rentersGrid
+    
+    guiElements.totalRentersLabel = createDataCard(rentersGrid, "Всего:", "0", false, 1)
+    guiElements.averageStarsLabel = createDataCard(rentersGrid, "Ср. звезды:", "0.0", false, 2)
+    guiElements.fiveStarLabel = createDataCard(rentersGrid, "5⭐:", "0", false, 3)
+    guiElements.sixStarLabel = createDataCard(rentersGrid, "6⭐:", "0", false, 4)
+    
+    -- Секция: ОПТИМИЗАЦИЯ
+    local optimSection = createSection("⚙️ ОПТИМИЗАЦИЯ", 140)
+    optimSection.Parent = MainScroll
+    
+    local optimGrid = Instance.new("Frame")
+    optimGrid.Size = UDim2.new(1, -20, 1, -40)
+    optimGrid.Position = UDim2.new(0, 10, 0, 35)
+    optimGrid.BackgroundTransparency = 1
+    optimGrid.Parent = optimSection
+    
+    local optimLayout = Instance.new("UIGridLayout")
+    optimLayout.CellSize = UDim2.new(0.5, -5, 0, 40)
+    optimLayout.CellPadding = UDim2.new(0, 10, 0, 10)
+    optimLayout.StartCorner = Enum.StartCorner.TopLeft
+    optimLayout.Parent = optimGrid
+    
+    guiElements.replacementsLabel = createDataCard(optimGrid, "Замены:", "0", false, 1)
+    guiElements.acceptedLabel = createDataCard(optimGrid, "Принято:", "0", false, 2)
+    guiElements.evictedLabel = createDataCard(optimGrid, "Выселено:", "0", false, 3)
+    guiElements.cycleCountLabel = createDataCard(optimGrid, "Циклы:", "0", false, 4)
+    guiElements.lastUpdateLabel = createDataCard(optimGrid, "Обновлено:", "0:00", false, 5)
+    
+    -- Секция: УПРАВЛЕНИЕ
+    local controlSection = createSection("🎮 УПРАВЛЕНИЕ", 220)
+    controlSection.Parent = MainScroll
+    
+    local controlGrid = Instance.new("Frame")
+    controlGrid.Size = UDim2.new(1, -20, 1, -40)
+    controlGrid.Position = UDim2.new(0, 10, 0, 35)
+    controlGrid.BackgroundTransparency = 1
+    controlGrid.Parent = controlSection
+    
+    local controlLayout = Instance.new("UIGridLayout")
+    controlLayout.CellSize = UDim2.new(1, 0, 0, 50)
+    controlLayout.CellPadding = UDim2.new(0, 0, 0, 10)
+    controlLayout.StartCorner = Enum.StartCorner.TopLeft
+    controlLayout.Parent = controlGrid
+    
+    -- Функция создания кнопки управления
+    local function createControlButton(text, color, callback)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, 0, 0, 50)
+        button.BackgroundColor3 = color
+        button.Text = text
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.Font = Enum.Font.GothamBold
+        button.TextSize = 16
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = button
+        
+        button.MouseButton1Click:Connect(function()
+            if callback then
+                task.spawn(callback)
+            end
+        end)
+        
+        return button
+    end
+    
+    -- Кнопки управления
+    local startButton = createControlButton("🚀 ЗАПУСТИТЬ АВТООПТИМИЗАЦИЮ", Color3.fromRGB(0, 180, 0), function()
+        if not isRunning then
+            task.spawn(startAutoOptimizer)
+        end
+    end)
+    startButton.Parent = controlGrid
+    
+    local stopButton = createControlButton("⏹ ОСТАНОВИТЬ", Color3.fromRGB(220, 0, 0), stopOptimizer)
+    stopButton.Parent = controlGrid
+    
+    local quickButton = createControlButton("⚡ БЫСТРАЯ ОПТИМИЗАЦИЯ", Color3.fromRGB(255, 150, 0), quickOptimize)
+    quickButton.Parent = controlGrid
+    
+    local updateButton = createControlButton("🔄 ОБНОВИТЬ ДАННЫЕ", Color3.fromRGB(0, 150, 255), updateGameData)
+    updateButton.Parent = controlGrid
+    
+    -- Секция: ЛОГИ
+    local logSection = createSection("📝 ЛОГИ", 200)
+    logSection.Parent = MainScroll
+    
+    local logScroll = Instance.new("ScrollingFrame")
+    logScroll.Size = UDim2.new(1, -20, 1, -40)
+    logScroll.Position = UDim2.new(0, 10, 0, 35)
+    logScroll.BackgroundTransparency = 1
+    logScroll.BorderSizePixel = 0
+    logScroll.ScrollBarThickness = 3
+    logScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 150, 255)
+    logScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    logScroll.Parent = logSection
+    
+    local logLayout = Instance.new("UIListLayout")
+    logLayout.Padding = UDim.new(0, 5)
+    logLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    logLayout.Parent = logScroll
+    
+    -- Функция для логов
+    _G.GUILogger = function(message, type)
+        local color = Color3.fromRGB(200, 210, 230)
+        
+        if type == "success" then
+            color = Color3.fromRGB(100, 255, 100)
+        elseif type == "error" then
+            color = Color3.fromRGB(255, 100, 100)
+        elseif type == "warning" then
+            color = Color3.fromRGB(255, 200, 100)
+        elseif type == "money" then
+            color = Color3.fromRGB(100, 255, 255)
+        elseif type == "spot" then
+            color = Color3.fromRGB(100, 200, 255)
+        elseif type == "hire" then
+            color = Color3.fromRGB(255, 150, 100)
+        elseif type == "info" then
+            color = Color3.fromRGB(180, 200, 255)
+        end
+        
+        local logFrame = Instance.new("Frame")
+        logFrame.Size = UDim2.new(1, 0, 0, 25)
+        logFrame.BackgroundTransparency = 1
+        logFrame.LayoutOrder = 1
+        
+        for _, child in ipairs(logScroll:GetChildren()) do
+            if child:IsA("Frame") then
+                child.LayoutOrder = child.LayoutOrder + 1
+            end
+        end
+        
+        local messageLabel = Instance.new("TextLabel")
+        messageLabel.Size = UDim2.new(1, 0, 1, 0)
+        messageLabel.BackgroundTransparency = 1
+        messageLabel.Text = message
+        messageLabel.TextColor3 = color
+        messageLabel.Font = Enum.Font.Gotham
+        messageLabel.TextSize = 12
+        messageLabel.TextXAlignment = Enum.TextXAlignment.Left
+        messageLabel.TextWrapped = true
+        messageLabel.Parent = logFrame
+        
+        logFrame.Parent = logScroll
+        
+        -- Ограничиваем логи
+        task.wait()
+        local children = logScroll:GetChildren()
+        for i = #children, 15, -1 do
+            local child = children[i]
+            if child:IsA("Frame") then
+                child:Destroy()
+            end
+        end
+        
+        task.wait(0.05)
+        logScroll.CanvasPosition = Vector2.new(0, logScroll.AbsoluteCanvasSize.Y)
+    end
+    
+    -- Обработчики кнопок GUI
+    CloseButton.MouseButton1Click:Connect(function()
+        ScreenGui:Destroy()
+        isGUIVisible = false
+    end)
+    
+    MinimizeButton.MouseButton1Click:Connect(function()
+        if MainContainer.Size == UDim2.new(0.4, 0, 0.8, 0) then
+            -- Минимизируем
+            MainContainer.Size = UDim2.new(0, 60, 0, 60)
+            MainContainer.Position = UDim2.new(1, -70, 1, -70)
+            TopBar.Visible = false
+            MainScroll.Visible = false
+            MinimizeButton.Text = "🗖"
+        else
+            -- Восстанавливаем
+            MainContainer.Size = UDim2.new(0.4, 0, 0.8, 0)
+            MainContainer.Position = UDim2.new(0.6, 0, 0.1, 0)
+            TopBar.Visible = true
+            MainScroll.Visible = true
+            MinimizeButton.Text = "🗕"
+        end
+    end)
+    
+    -- Функция обновления статуса
+    _G.UpdateAutoStatus = function(running)
+        if running then
+            guiElements.statusLabel.Text = "▶ РАБОТАЕТ"
+            guiElements.statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+            startButton.Text = "⏸ ПАУЗА"
+        else
+            guiElements.statusLabel.Text = "⏹ СТОП"
+            guiElements.statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+            startButton.Text = "🚀 ЗАПУСТИТЬ АВТООПТИМИЗАЦИЮ"
+        end
+        isRunning = running
+    end
+    
+    -- Drag and Drop для GUI
+    local dragging = false
+    local dragStart
+    local startPos
+    
+    TopBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainContainer.Position
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            MainContainer.Position = startPos + UDim2.new(0, delta.X, 0, delta.Y)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    -- Инициализация
+    guiElements.initialized = true
+    lastUpdateTime = os.time()
+    
+    -- Анимация появления
+    MainContainer.Size = UDim2.new(0, 0, 0, 0)
+    MainContainer.Position = UDim2.new(0.5, 0, 0.5, 0)
+    
+    local openTween = TweenService:Create(MainContainer, TweenInfo.new(0.5, Enum.EasingStyle.Back), {
+        Size = UDim2.new(0.4, 0, 0.8, 0),
+        Position = UDim2.new(0.6, 0, 0.1, 0)
+    })
+    openTween:Play()
+    
+    openTween.Completed:Connect(function()
+        log("Auto Optimizer PRO v7.0 загружен", "success")
+        log("Фильтр: ТОЛЬКО 5-6⭐ арендаторы", "info")
+        updateGameData()
+    end)
+    
+    return ScreenGui
+end
+
+-- Функция быстрой оптимизации
+local function quickOptimize()
+    log("⚡ ЗАПУСК БЫСТРОЙ ОПТИМИЗАЦИИ", "info")
+    updateGameData()
+    local optimized = optimizeAllProperties()
+    log(string.format("Быстрая оптимизация завершена (%d объектов)", optimized), "success")
+end
+
+-- Функция запуска автооптимизации
+local function startAutoOptimizer()
+    if isRunning then
+        log("Оптимизатор уже запущен", "warning")
+        return
+    end
+    
+    isRunning = true
+    log("🚀 АВТООПТИМИЗАТОР ЗАПУЩЕН", "success")
+    log("Настройки: ТОЛЬКО 5-6⭐ арендаторы", "info")
+    
+    if _G.UpdateAutoStatus then
+        _G.UpdateAutoStatus(true)
+    end
+    
+    -- Основной цикл оптимизации
+    while isRunning do
+        local startTime = tick()
+        
+        local optimized = optimizeAllProperties()
+        
+        local elapsedTime = tick() - startTime
+        local waitTime = math.max(1, CHECK_INTERVAL - elapsedTime)
+        
+        if isRunning then
+            for i = 1, math.floor(waitTime) do
+                if not isRunning then break end
+                task.wait(1)
+            end
+        end
+    end
+    
+    log("АВТООПТИМИЗАТОР ОСТАНОВЛЕН", "warning")
+    
+    if _G.UpdateAutoStatus then
+        _G.UpdateAutoStatus(false)
+    end
+end
+
+-- Функция остановки
+local function stopOptimizer()
+    isRunning = false
+    log("ЗАПРОС ОСТАНОВКИ ОПТИМИЗАТОРА", "warning")
+end
+
+-- Инициализация
+local function initialize()
+    -- Создаем GUI
+    createModernGUI()
+    
+    -- Настраиваем слушателей данных
+    dataUpdateConnection = RunService.Heartbeat:Connect(function()
+        if os.time() - lastUpdateTime >= 5 then -- Обновляем каждые 5 секунд
+            updateGameData()
+            lastUpdateTime = os.time()
+        end
+    end)
+    
+    -- Автозапуск через 3 секунды
+    task.wait(3)
+    if not isRunning then
+        task.spawn(startAutoOptimizer)
+    end
+    
+    log("Система инициализирована", "success")
+end
+
+-- Запуск инициализации
+task.spawn(initialize)
+
+-- Экспорт функций
+return {
+    quickOptimize = quickOptimize,
+    startAutoOptimizer = startAutoOptimizer,
+    stopOptimizer = stopOptimizer,
+    updateGameData = updateGameData,
+    isRunning = function() return isRunning end
+}
