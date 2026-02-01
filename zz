@@ -1,0 +1,1787 @@
+-- Auto Optimizer Elite v11.0
+-- Полностью исправленная и оптимизированная версия
+-- Автор: AI Assistant | Версия: 11.0
+
+-- Безопасная загрузка сервисов
+local success, services = pcall(function()
+    return {
+        ReplicatedStorage = game:GetService("ReplicatedStorage"),
+        TweenService = game:GetService("TweenService"),
+        UserInputService = game:GetService("UserInputService"),
+        RunService = game:GetService("RunService"),
+        Players = game:GetService("Players"),
+        TextService = game:GetService("TextService")
+    }
+end)
+
+if not success then
+    warn("[AutoOptimizer] Не удалось загрузить сервисы")
+    return
+end
+
+local ReplicatedStorage, TweenService, UserInputService, RunService, Players, TextService = 
+    services.ReplicatedStorage, services.TweenService, services.UserInputService, 
+    services.RunService, services.Players, services.TextService
+
+-- Получаем LocalPlayer
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    repeat task.wait(0.1) until Players.LocalPlayer
+    LocalPlayer = Players.LocalPlayer
+end
+
+-- Безопасная загрузка модулей
+local function safeRequire(path)
+    local success, module = pcall(function()
+        return require(path)
+    end)
+    return success and module or nil
+end
+
+-- Загружаем модули с заглушками
+local Portfolio = safeRequire(ReplicatedStorage.Modules.Game.PortfolioController) or {
+    GetPortfolio = function() return {} end,
+    GetAll = function() return nil end,
+    Accept = function() print("[Stub] Accept called") end,
+    Evict = function() print("[Stub] Evict called") end,
+    Deny = function() print("[Stub] Deny called") end
+}
+
+local Building = safeRequire(ReplicatedStorage.Modules.Data.Building) or {}
+
+local PlayerDataClient = safeRequire(ReplicatedStorage.Modules.PlayerDataClient) or {
+    Get = function(key) 
+        local defaults = {
+            Cash = 0,
+            BankBalance = 0,
+            BankToCollect = 0,
+            InterestLevel = 0,
+            MaxTimeLevel = 0
+        }
+        return defaults[key] or 0 
+    end,
+    Loaded = function() return true end
+}
+
+local Number = safeRequire(ReplicatedStorage.Modules.Number) or {
+    shortennumber = function(num, places, full)
+        if not num then return "0" end
+        num = tonumber(num) or 0
+        
+        if num >= 1e12 then
+            return string.format("%.2fT", num / 1e12)
+        elseif num >= 1e9 then
+            return string.format("%.2fB", num / 1e9)
+        elseif num >= 1e6 then
+            return string.format("%.2fM", num / 1e6)
+        elseif num >= 1e3 then
+            return string.format("%.2fK", num / 1e3)
+        else
+            return string.format("%.0f", num)
+        end
+    end
+}
+
+local Invoker = safeRequire(ReplicatedStorage.Modules.UI.Invoker) or {
+    Clicked = function(event, ...)
+        print(string.format("[Stub] Invoker.Clicked: %s", event))
+    end
+}
+
+local SoundController = safeRequire(ReplicatedStorage.Modules.SoundController) or {
+    PlaySound = function(sound)
+        print(string.format("[Stub] Sound: %s", sound))
+    end
+}
+
+-- Конфигурация
+local Config = {
+    -- Звезды
+    MIN_STARS_FOR_REPLACEMENT = 5,
+    MIN_STARS_FOR_NEW = 5,
+    MAX_STARS = 6,
+    
+    -- Банк
+    AUTO_DEPOSIT_ENABLED = true,
+    DEPOSIT_THRESHOLD = 1000000,
+    KEEP_CASH_AMOUNT = 100000,
+    AUTO_CLAIM_BANK_INTEREST = true,
+    
+    -- Основные
+    CHECK_INTERVAL = 5,
+    AUTO_DENY_BAD_APPLICANTS = true,
+    AUTO_ACCEPT_GOOD_APPLICANTS = true,
+    AGGRESSIVE_REPLACEMENT = true,
+    PRIORITIZE_HIGHER_STARS = true,
+    ONLY_5_6_STARS = true,
+    
+    -- GUI
+    SHOW_NOTIFICATIONS = true,
+    PLAY_SOUNDS = true,
+    GUI_OPACITY = 0.95,
+    GUI_THEME = "Dark",
+    ANIMATIONS_ENABLED = true
+}
+
+-- Переменные
+local isRunning = false
+local cycleCount = 0
+local processedRenters = {}
+local processedApplicants = {}
+local lastUpdateTime = 0
+local logs = {}
+local MAX_LOGS = 50
+
+-- Статистика
+local statsData = {
+    cashBalance = 0,
+    bankBalance = 0,
+    bankToCollect = 0,
+    interestRate = 0,
+    maxTimeLevel = 0,
+    totalProperties = 0,
+    totalValue = 0,
+    totalIncome = 0,
+    totalExpenses = 0,
+    netProfit = 0,
+    totalRenters = 0,
+    occupiedSpots = 0,
+    totalSpots = 0,
+    occupancyRate = 0,
+    averageStars = 0,
+    fiveStarRenters = 0,
+    sixStarRenters = 0,
+    lowStarRenters = 0,
+    totalReplacements = 0,
+    totalAccepted = 0,
+    totalEvicted = 0,
+    bankDepositsMade = 0,
+    interestCollected = 0,
+    totalDeposited = 0
+}
+
+-- Цвета
+local Colors = {
+    Dark = {
+        Background = Color3.fromRGB(15, 15, 25),
+        Secondary = Color3.fromRGB(30, 30, 45),
+        Tertiary = Color3.fromRGB(40, 40, 60),
+        Text = Color3.fromRGB(255, 255, 255),
+        SubText = Color3.fromRGB(200, 210, 230),
+        Success = Color3.fromRGB(100, 255, 100),
+        Error = Color3.fromRGB(255, 100, 100),
+        Warning = Color3.fromRGB(255, 200, 100),
+        Info = Color3.fromRGB(100, 200, 255),
+        Money = Color3.fromRGB(100, 255, 100),
+        Accent = Color3.fromRGB(100, 150, 255)
+    }
+}
+
+local currentColors = Colors[Config.GUI_THEME] or Colors.Dark
+
+-- Вспомогательные функции
+local function formatNumber(num)
+    if not num then return "0" end
+    return Number.shortennumber(tonumber(num) or 0, 1, false)
+end
+
+local function log(message, type)
+    local timestamp = os.date("%H:%M:%S")
+    local logEntry = {
+        time = timestamp,
+        message = message,
+        type = type or "info"
+    }
+    
+    table.insert(logs, 1, logEntry)
+    if #logs > MAX_LOGS then
+        table.remove(logs, MAX_LOGS + 1)
+    end
+    
+    print(string.format("[AutoOptimizer] %s: %s", timestamp, message))
+end
+
+local function showNotification(title, message, color)
+    if not Config.SHOW_NOTIFICATIONS then return end
+    pcall(function()
+        Invoker.Clicked("Notification", color or "Blue", title or "Auto Optimizer", message)
+    end)
+end
+
+-- Функции данных
+local function calculateTotalSpots(property)
+    if not property or property.BuildingType == "Empty" then return 0 end
+    
+    local buildingData = Building[property.BuildingType]
+    if not buildingData then return 0 end
+    
+    local spots = buildingData.Spots or 0
+    
+    if property.Built then
+        for _, upgrade in ipairs(property.Built) do
+            if upgrade ~= "Main" and buildingData.Upgrades and buildingData.Upgrades[upgrade] then
+                spots = spots + (buildingData.Upgrades[upgrade].AddedRenters or 0)
+            end
+        end
+    end
+    
+    return spots
+end
+
+local function isValidStars(stars, minStars)
+    if not stars then return false end
+    local min = minStars or Config.MIN_STARS_FOR_NEW
+    return stars >= min and stars <= Config.MAX_STARS
+end
+
+local function getAllApplicantsSorted(propertyUID)
+    if not propertyUID then return {} end
+    
+    local property = Portfolio.GetAll(propertyUID)
+    if not property or not property.Applicants then return {} end
+    
+    local applicants = {}
+    
+    for applicantId, applicant in pairs(property.Applicants) do
+        if applicantId and applicant then
+            local cacheKey = propertyUID .. "_" .. applicantId
+            if not processedApplicants[cacheKey] then
+                local stars = applicant.Stars or 1
+                if isValidStars(stars, Config.MIN_STARS_FOR_NEW) then
+                    table.insert(applicants, {
+                        id = applicantId,
+                        stars = stars,
+                        data = applicant
+                    })
+                end
+            end
+        end
+    end
+    
+    table.sort(applicants, function(a, b)
+        if a.stars ~= b.stars then
+            return a.stars > b.stars
+        end
+        return a.id < b.id
+    end)
+    
+    return applicants
+end
+
+local function getAllRentersSorted(propertyUID)
+    if not propertyUID then return {} end
+    
+    local property = Portfolio.GetAll(propertyUID)
+    if not property or not property.Renters then return {} end
+    
+    local renters = {}
+    
+    for renterId, renter in pairs(property.Renters) do
+        if renterId and renter then
+            local cacheKey = propertyUID .. "_" .. renterId
+            if not processedRenters[cacheKey] then
+                table.insert(renters, {
+                    id = renterId,
+                    stars = renter.Stars or 1,
+                    data = renter
+                })
+            end
+        end
+    end
+    
+    table.sort(renters, function(a, b)
+        return a.stars < b.stars
+    end)
+    
+    return renters
+end
+
+local function acceptApplicant(propertyUID, applicantId)
+    if not propertyUID or not applicantId then return false end
+    
+    local success = pcall(function()
+        Portfolio.Accept(propertyUID, applicantId)
+        return true
+    end)
+    
+    if success then
+        processedApplicants[propertyUID .. "_" .. applicantId] = true
+        statsData.totalAccepted = (statsData.totalAccepted or 0) + 1
+        return true
+    end
+    
+    return false
+end
+
+local function evictRenter(propertyUID, renterId)
+    if not propertyUID or not renterId then return false end
+    
+    local success = pcall(function()
+        Portfolio.Evict(propertyUID, renterId)
+        return true
+    end)
+    
+    if success then
+        processedRenters[propertyUID .. "_" .. renterId] = true
+        statsData.totalEvicted = (statsData.totalEvicted or 0) + 1
+        return true
+    end
+    
+    return false
+end
+
+local function denyApplicant(propertyUID, applicantId)
+    if not propertyUID or not applicantId then return false end
+    
+    local success = pcall(function()
+        Portfolio.Deny(propertyUID, applicantId)
+        return true
+    end)
+    
+    if success then
+        processedApplicants[propertyUID .. "_" .. applicantId] = true
+        return true
+    end
+    
+    return false
+end
+
+-- Операции с банком
+local function claimBankInterest()
+    if not Config.AUTO_CLAIM_BANK_INTEREST then return false end
+    
+    local toCollect = statsData.bankToCollect or 0
+    if toCollect > 0 then
+        pcall(function()
+            Invoker.Clicked("ClaimInterest")
+            statsData.interestCollected = (statsData.interestCollected or 0) + toCollect
+            log(string.format("Проценты: $%s", formatNumber(toCollect)), "money")
+            showNotification("💰 Банк", string.format("Проценты: $%s", formatNumber(toCollect)), "Blue")
+            
+            if Config.PLAY_SOUNDS then
+                SoundController.PlaySound("Reward")
+            end
+        end)
+        return true
+    end
+    return false
+end
+
+local function autoDepositToBank()
+    if not Config.AUTO_DEPOSIT_ENABLED then return false end
+    
+    local cash = statsData.cashBalance or 0
+    local bankBalance = statsData.bankBalance or 0
+    local maxBalance = 1e12 -- 1 триллион
+    
+    if cash > Config.DEPOSIT_THRESHOLD then
+        local amountToDeposit = cash - Config.KEEP_CASH_AMOUNT
+        
+        if bankBalance + amountToDeposit > maxBalance then
+            amountToDeposit = maxBalance - bankBalance
+        end
+        
+        if amountToDeposit > 0 then
+            pcall(function()
+                Invoker.Clicked("Deposit", amountToDeposit)
+                statsData.bankDepositsMade = (statsData.bankDepositsMade or 0) + 1
+                statsData.totalDeposited = (statsData.totalDeposited or 0) + amountToDeposit
+                
+                log(string.format("Депозит: $%s", formatNumber(amountToDeposit)), "money")
+                showNotification("💰 Банк", string.format("Депозит: $%s", formatNumber(amountToDeposit)), "Blue")
+                
+                if Config.PLAY_SOUNDS then
+                    SoundController.PlaySound("SmallSuccessA")
+                end
+            end)
+            return true
+        end
+    end
+    return false
+end
+
+-- Оптимизация
+local function optimizeProperty(propertyUID)
+    if not propertyUID then return "error" end
+    
+    local property = Portfolio.GetAll(propertyUID)
+    if not property or property.BuildingType == "Empty" then return "skip" end
+    
+    local totalSpots = calculateTotalSpots(property)
+    local currentRenters = getAllRentersSorted(propertyUID)
+    local currentApplicants = getAllApplicantsSorted(propertyUID)
+    
+    -- Заполнение свободных мест
+    if #currentRenters < totalSpots and #currentApplicants > 0 then
+        local spotsToFill = totalSpots - #currentRenters
+        local filled = 0
+        
+        for i = 1, math.min(spotsToFill, #currentApplicants) do
+            local applicant = currentApplicants[i]
+            if applicant and applicant.stars >= Config.MIN_STARS_FOR_NEW then
+                if acceptApplicant(propertyUID, applicant.id) then
+                    filled = filled + 1
+                    log(string.format("%s: Принят %d⭐", propertyUID, applicant.stars), "hire")
+                    task.wait(0.1)
+                end
+            end
+        end
+        
+        if filled > 0 then
+            return "filled"
+        end
+    end
+    
+    -- Замена арендаторов
+    if #currentRenters > 0 and #currentApplicants > 0 then
+        local worstRenter = currentRenters[1]
+        if worstRenter then
+            for _, applicant in ipairs(currentApplicants) do
+                if applicant.stars > worstRenter.stars then
+                    if evictRenter(propertyUID, worstRenter.id) then
+                        task.wait(0.2)
+                        
+                        if acceptApplicant(propertyUID, applicant.id) then
+                            statsData.totalReplacements = (statsData.totalReplacements or 0) + 1
+                            log(string.format("%s: Замена %d⭐ → %d⭐", propertyUID, worstRenter.stars, applicant.stars), "spot")
+                            task.wait(0.1)
+                            return "replaced"
+                        end
+                    end
+                    break
+                end
+            end
+        end
+    end
+    
+    -- Отклонение плохих заявок
+    if Config.AUTO_DENY_BAD_APPLICANTS then
+        for applicantId, applicant in pairs(property.Applicants or {}) do
+            local stars = applicant.Stars or 1
+            if stars < Config.MIN_STARS_FOR_NEW then
+                denyApplicant(propertyUID, applicantId)
+            end
+        end
+    end
+    
+    return "no_changes"
+end
+
+local function updateGameData()
+    pcall(function()
+        -- Данные игрока
+        statsData.cashBalance = PlayerDataClient.Get("Cash") or 0
+        statsData.bankBalance = PlayerDataClient.Get("BankBalance") or 0
+        statsData.bankToCollect = PlayerDataClient.Get("BankToCollect") or 0
+        
+        local interestLevel = PlayerDataClient.Get("InterestLevel") or 0
+        statsData.interestRate = interestLevel * 0.005 + 0.005
+        statsData.maxTimeLevel = PlayerDataClient.Get("MaxTimeLevel") or 0
+        
+        -- Данные портфеля
+        local portfolio = Portfolio.GetPortfolio() or {}
+        local totalProperties = 0
+        local totalValue = 0
+        local totalIncome = 0
+        local totalExpenses = 0
+        local totalRenters = 0
+        local occupiedSpots = 0
+        local totalSpots = 0
+        local totalStars = 0
+        local fiveStarCount = 0
+        local sixStarCount = 0
+        local lowStarCount = 0
+        
+        for propertyUID, property in pairs(portfolio) do
+            if property and property.BuildingType and property.BuildingType ~= "Empty" then
+                totalProperties = totalProperties + 1
+                totalValue = totalValue + (property.Value or 0)
+                totalIncome = totalIncome + (property.Income or 0)
+                totalExpenses = totalExpenses + (property.Expenses or 0)
+                
+                if property.Renters then
+                    for renterId, renter in pairs(property.Renters) do
+                        if renterId and renter then
+                            totalRenters = totalRenters + 1
+                            occupiedSpots = occupiedSpots + 1
+                            local stars = renter.Stars or 1
+                            totalStars = totalStars + stars
+                            
+                            if stars == 5 then
+                                fiveStarCount = fiveStarCount + 1
+                            elseif stars == 6 then
+                                sixStarCount = sixStarCount + 1
+                            elseif stars < 5 then
+                                lowStarCount = lowStarCount + 1
+                            end
+                        end
+                    end
+                end
+                
+                totalSpots = totalSpots + calculateTotalSpots(property)
+            end
+        end
+        
+        -- Обновляем статистику
+        statsData.totalProperties = totalProperties
+        statsData.totalValue = totalValue
+        statsData.totalIncome = totalIncome
+        statsData.totalExpenses = totalExpenses
+        statsData.netProfit = totalIncome - totalExpenses
+        statsData.totalRenters = totalRenters
+        statsData.occupiedSpots = occupiedSpots
+        statsData.totalSpots = totalSpots
+        statsData.occupancyRate = totalSpots > 0 and (occupiedSpots / totalSpots * 100) or 0
+        statsData.averageStars = totalRenters > 0 and (totalStars / totalRenters) or 0
+        statsData.fiveStarRenters = fiveStarCount
+        statsData.sixStarRenters = sixStarCount
+        statsData.lowStarRenters = lowStarCount
+    end)
+end
+
+local function optimizeAllProperties()
+    local cycleStart = tick()
+    cycleCount = cycleCount + 1
+    
+    log(string.format("ЦИКЛ #%d", cycleCount), "info")
+    updateGameData()
+    
+    -- Банковские операции
+    if Config.AUTO_CLAIM_BANK_INTEREST then
+        claimBankInterest()
+    end
+    
+    if Config.AUTO_DEPOSIT_ENABLED then
+        autoDepositToBank()
+    end
+    
+    -- Оптимизация недвижимости
+    local portfolio = Portfolio.GetPortfolio() or {}
+    local optimized = 0
+    
+    for propertyUID, property in pairs(portfolio) do
+        if property and property.BuildingType and property.BuildingType ~= "Empty" then
+            local result = optimizeProperty(propertyUID)
+            if result == "filled" or result == "replaced" then
+                optimized = optimized + 1
+            end
+            task.wait(0.05)
+        end
+    end
+    
+    statsData.cycleTime = tick() - cycleStart
+    lastUpdateTime = os.time()
+    
+    if optimized > 0 then
+        log(string.format("Оптимизировано: %d объектов", optimized), "success")
+    else
+        log("Все объекты оптимизированы", "info")
+    end
+    
+    return optimized
+end
+
+-- GUI Компоненты
+local guiElements = {}
+local tabContents = {}
+local currentTab = "stats"
+
+-- UI Drag Detector
+local UIDragDetector = {}
+UIDragDetector.__index = UIDragDetector
+
+function UIDragDetector.new(frame, dragButton)
+    local self = setmetatable({}, UIDragDetector)
+    
+    self.frame = frame
+    self.dragButton = dragButton or frame
+    self.dragging = false
+    self.dragInput = nil
+    self.dragStart = nil
+    self.startPos = nil
+    
+    local function onInputBegan(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            self.dragging = true
+            self.dragStart = input.Position
+            self.startPos = self.frame.Position
+            
+            local connection
+            connection = input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    self.dragging = false
+                    connection:Disconnect()
+                end
+            end)
+        end
+    end
+    
+    local function onInputChanged(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            self.dragInput = input
+        end
+    end
+    
+    local function onUserInputChanged(input)
+        if self.dragging and input == self.dragInput then
+            local delta = input.Position - self.dragStart
+            self.frame.Position = UDim2.new(
+                self.startPos.X.Scale,
+                self.startPos.X.Offset + delta.X,
+                self.startPos.Y.Scale,
+                self.startPos.Y.Offset + delta.Y
+            )
+        end
+    end
+    
+    self.connection1 = self.dragButton.InputBegan:Connect(onInputBegan)
+    self.connection2 = self.dragButton.InputChanged:Connect(onInputChanged)
+    self.connection3 = UserInputService.InputChanged:Connect(onUserInputChanged)
+    
+    return self
+end
+
+function UIDragDetector:Destroy()
+    if self.connection1 then self.connection1:Disconnect() end
+    if self.connection2 then self.connection2:Disconnect() end
+    if self.connection3 then self.connection3:Disconnect() end
+end
+
+-- GUI Utils
+local function createElement(className, props)
+    local element = Instance.new(className)
+    
+    for key, value in pairs(props) do
+        if key ~= "Parent" and key ~= "Children" then
+            if pcall(function() return element[key] end) then
+                element[key] = value
+            end
+        end
+    end
+    
+    if props.Parent then
+        element.Parent = props.Parent
+    end
+    
+    return element
+end
+
+local function createStatCard(parent, label, defaultValue, isMoney, layoutOrder)
+    local card = createElement("Frame", {
+        Size = UDim2.new(1, -20, 0, 40),
+        BackgroundColor3 = currentColors.Tertiary,
+        BorderSizePixel = 0,
+        LayoutOrder = layoutOrder,
+        Parent = parent
+    })
+    
+    createElement("UICorner", {
+        CornerRadius = UDim.new(0, 8),
+        Parent = card
+    })
+    
+    local labelText = createElement("TextLabel", {
+        Size = UDim2.new(0.6, -5, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        Text = label,
+        TextColor3 = currentColors.SubText,
+        Font = Enum.Font.Gotham,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = card
+    })
+    
+    local valueText = createElement("TextLabel", {
+        Size = UDim2.new(0.4, 0, 1, 0),
+        Position = UDim2.new(0.6, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Text = defaultValue or "0",
+        TextColor3 = isMoney and currentColors.Money or currentColors.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Parent = card
+    })
+    
+    createElement("UIPadding", {
+        PaddingRight = UDim.new(0, 10),
+        Parent = valueText
+    })
+    
+    return valueText
+end
+
+-- Функции обновления GUI
+local function updateStatsGUI()
+    if not guiElements.initialized or currentTab ~= "stats" then return end
+    
+    pcall(function()
+        if guiElements.cashLabel then guiElements.cashLabel.Text = "$" .. formatNumber(statsData.cashBalance) end
+        if guiElements.bankLabel then guiElements.bankLabel.Text = "$" .. formatNumber(statsData.bankBalance) end
+        if guiElements.bankToCollectLabel then guiElements.bankToCollectLabel.Text = "$" .. formatNumber(statsData.bankToCollect) end
+        if guiElements.totalIncomeLabel then guiElements.totalIncomeLabel.Text = "$" .. formatNumber(statsData.totalIncome) .. "/час" end
+        if guiElements.netProfitLabel then guiElements.netProfitLabel.Text = "$" .. formatNumber(statsData.netProfit) .. "/час" end
+        if guiElements.propertiesLabel then guiElements.propertiesLabel.Text = tostring(statsData.totalProperties) end
+        if guiElements.totalValueLabel then guiElements.totalValueLabel.Text = "$" .. formatNumber(statsData.totalValue) end
+        if guiElements.totalRentersLabel then guiElements.totalRentersLabel.Text = tostring(statsData.totalRenters) end
+        if guiElements.averageStarsLabel then guiElements.averageStarsLabel.Text = string.format("%.1f", statsData.averageStars) end
+        if guiElements.fiveStarLabel then guiElements.fiveStarLabel.Text = tostring(statsData.fiveStarRenters) end
+        if guiElements.sixStarLabel then guiElements.sixStarLabel.Text = tostring(statsData.sixStarRenters) end
+        if guiElements.lowStarLabel then guiElements.lowStarLabel.Text = tostring(statsData.lowStarRenters) end
+        if guiElements.occupiedSpotsLabel then guiElements.occupiedSpotsLabel.Text = string.format("%d/%d", statsData.occupiedSpots, statsData.totalSpots) end
+        if guiElements.occupancyLabel then guiElements.occupancyLabel.Text = string.format("%.1f%%", statsData.occupancyRate) end
+        if guiElements.replacementsLabel then guiElements.replacementsLabel.Text = tostring(statsData.totalReplacements) end
+        if guiElements.acceptedLabel then guiElements.acceptedLabel.Text = tostring(statsData.totalAccepted) end
+        if guiElements.evictedLabel then guiElements.evictedLabel.Text = tostring(statsData.totalEvicted) end
+        if guiElements.bankDepositsLabel then guiElements.bankDepositsLabel.Text = tostring(statsData.bankDepositsMade) end
+        if guiElements.interestCollectedLabel then guiElements.interestCollectedLabel.Text = "$" .. formatNumber(statsData.interestCollected) end
+        if guiElements.cycleCountLabel then guiElements.cycleCountLabel.Text = tostring(cycleCount) end
+        
+        if guiElements.lastUpdateLabel then
+            local timeDiff = os.time() - lastUpdateTime
+            local minutes = math.floor(timeDiff / 60)
+            local seconds = timeDiff % 60
+            guiElements.lastUpdateLabel.Text = string.format("%d:%02d", minutes, seconds)
+        end
+    end)
+end
+
+local function getLogColor(type)
+    if type == "success" then return currentColors.Success
+    elseif type == "error" then return currentColors.Error
+    elseif type == "warning" then return currentColors.Warning
+    elseif type == "money" then return currentColors.Money
+    elseif type == "spot" then return currentColors.Info
+    elseif type == "hire" then return Color3.fromRGB(255, 150, 100)
+    else return currentColors.SubText end
+end
+
+local function updateLogsGUI()
+    if not guiElements.logContainer or currentTab ~= "logs" then return end
+    
+    pcall(function()
+        -- Очищаем старые логи (кроме контролов)
+        for _, child in ipairs(guiElements.logContainer:GetChildren()) do
+            if child:IsA("Frame") and child.Name ~= "ControlsFrame" then
+                child:Destroy()
+            end
+        end
+        
+        -- Добавляем новые логи
+        for i, logEntry in ipairs(logs) do
+            local logFrame = createElement("Frame", {
+                Size = UDim2.new(1, -10, 0, 30),
+                BackgroundColor3 = currentColors.Tertiary,
+                LayoutOrder = i + 1,
+                Parent = guiElements.logContainer
+            })
+            
+            createElement("UICorner", {
+                CornerRadius = UDim.new(0, 6),
+                Parent = logFrame
+            })
+            
+            local timeLabel = createElement("TextLabel", {
+                Size = UDim2.new(0, 60, 1, 0),
+                BackgroundTransparency = 1,
+                Text = "[" .. logEntry.time .. "]",
+                TextColor3 = currentColors.SubText,
+                Font = Enum.Font.Gotham,
+                TextSize = 11,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Parent = logFrame
+            })
+            
+            createElement("UIPadding", {
+                PaddingLeft = UDim.new(0, 5),
+                Parent = timeLabel
+            })
+            
+            local messageLabel = createElement("TextLabel", {
+                Size = UDim2.new(1, -65, 1, 0),
+                Position = UDim2.new(0, 65, 0, 0),
+                BackgroundTransparency = 1,
+                Text = logEntry.message,
+                TextColor3 = getLogColor(logEntry.type),
+                Font = Enum.Font.Gotham,
+                TextSize = 11,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Parent = logFrame
+            })
+        end
+    end)
+end
+
+local function updateBankGUI()
+    if not guiElements.bankBalanceInfo then return end
+    
+    pcall(function()
+        guiElements.bankBalanceInfo.Text = "$" .. formatNumber(statsData.bankBalance)
+        guiElements.bankToCollectInfo.Text = "$" .. formatNumber(statsData.bankToCollect)
+        guiElements.interestRateInfo.Text = string.format("%.3f%%", (statsData.interestRate or 0) * 100)
+        guiElements.maxTimeInfo.Text = string.format("%dч", statsData.maxTimeLevel or 0)
+    end)
+end
+
+-- Создание вкладок
+local function createSettingsTab()
+    local container = createElement("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 4,
+        ScrollBarImageColor3 = currentColors.Accent,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false
+    })
+    
+    local layout = createElement("UIListLayout", {
+        Padding = UDim.new(0, 10),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = container
+    })
+    
+    -- Секция звезд
+    local starsSection = createElement("Frame", {
+        Size = UDim2.new(1, -20, 0, 100),
+        BackgroundColor3 = currentColors.Tertiary,
+        LayoutOrder = 1,
+        Parent = container
+    })
+    
+    createElement("UICorner", {
+        CornerRadius = UDim.new(0, 8),
+        Parent = starsSection
+    })
+    
+    createElement("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 30),
+        BackgroundTransparency = 1,
+        Text = "⭐ НАСТРОЙКИ ЗВЕЗД",
+        TextColor3 = currentColors.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = starsSection
+    })
+    
+    createElement("UIPadding", {
+        PaddingLeft = UDim.new(0, 10),
+        PaddingTop = UDim.new(0, 35),
+        PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 10),
+        Parent = starsSection
+    })
+    
+    -- Простые числовые поля вместо слайдеров
+    local function createNumberInput(label, defaultValue, min, max, callback)
+        local frame = createElement("Frame", {
+            Size = UDim2.new(1, -20, 0, 30),
+            BackgroundTransparency = 1,
+            LayoutOrder = 1,
+            Parent = starsSection
+        })
+        
+        local labelText = createElement("TextLabel", {
+            Size = UDim2.new(0.6, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = label,
+            TextColor3 = currentColors.SubText,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = frame
+        })
+        
+        local valueBox = createElement("TextBox", {
+            Size = UDim2.new(0.4, 0, 0.8, 0),
+            Position = UDim2.new(0.6, 0, 0.1, 0),
+            BackgroundColor3 = currentColors.Secondary,
+            TextColor3 = currentColors.Text,
+            Text = tostring(defaultValue),
+            Font = Enum.Font.Gotham,
+            TextSize = 14,
+            ClearTextOnFocus = false,
+            Parent = frame
+        })
+        
+        createElement("UICorner", {
+            CornerRadius = UDim.new(0, 4),
+            Parent = valueBox
+        })
+        
+        valueBox.FocusLost:Connect(function()
+            local value = tonumber(valueBox.Text)
+            if value then
+                value = math.clamp(value, min, max)
+                valueBox.Text = tostring(value)
+                if callback then callback(value) end
+            else
+                valueBox.Text = tostring(defaultValue)
+            end
+        end)
+        
+        return frame
+    end
+    
+    createNumberInput("Мин звезды (новые):", Config.MIN_STARS_FOR_NEW, 1, 6, function(value)
+        Config.MIN_STARS_FOR_NEW = value
+        log(string.format("Мин звезды (новые): %d", value), "info")
+    end)
+    
+    createNumberInput("Мин звезды (замена):", Config.MIN_STARS_FOR_REPLACEMENT, 1, 6, function(value)
+        Config.MIN_STARS_FOR_REPLACEMENT = value
+        log(string.format("Мин звезды (замена): %d", value), "info")
+    end)
+    
+    -- Чекбоксы
+    local checkSection = createElement("Frame", {
+        Size = UDim2.new(1, -20, 0, 200),
+        BackgroundColor3 = currentColors.Tertiary,
+        LayoutOrder = 2,
+        Parent = container
+    })
+    
+    createElement("UICorner", {
+        CornerRadius = UDim.new(0, 8),
+        Parent = checkSection
+    })
+    
+    createElement("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 30),
+        BackgroundTransparency = 1,
+        Text = "⚙️ НАСТРОЙКИ",
+        TextColor3 = currentColors.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = checkSection
+    })
+    
+    createElement("UIPadding", {
+        PaddingLeft = UDim.new(0, 10),
+        PaddingTop = UDim.new(0, 35),
+        PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 10),
+        Parent = checkSection
+    })
+    
+    local function createCheckbox(label, defaultValue, callback)
+        local frame = createElement("Frame", {
+            Size = UDim2.new(1, -20, 0, 30),
+            BackgroundTransparency = 1,
+            LayoutOrder = 1,
+            Parent = checkSection
+        })
+        
+        local labelText = createElement("TextLabel", {
+            Size = UDim2.new(0.7, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = label,
+            TextColor3 = currentColors.SubText,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = frame
+        })
+        
+        local button = createElement("TextButton", {
+            Size = UDim2.new(0, 25, 0, 25),
+            Position = UDim2.new(1, -30, 0.5, -12.5),
+            BackgroundColor3 = defaultValue and currentColors.Success or currentColors.Error,
+            Text = defaultValue and "✓" or "✗",
+            TextColor3 = currentColors.Text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            Parent = frame
+        })
+        
+        createElement("UICorner", {
+            CornerRadius = UDim.new(0, 5),
+            Parent = button
+        })
+        
+        button.MouseButton1Click:Connect(function()
+            defaultValue = not defaultValue
+            button.BackgroundColor3 = defaultValue and currentColors.Success or currentColors.Error
+            button.Text = defaultValue and "✓" or "✗"
+            if callback then callback(defaultValue) end
+        end)
+        
+        return frame
+    end
+    
+    createCheckbox("Авто-депозит", Config.AUTO_DEPOSIT_ENABLED, function(value)
+        Config.AUTO_DEPOSIT_ENABLED = value
+        log("Авто-депозит: " .. (value and "ВКЛ" or "ВЫКЛ"), "info")
+    end)
+    
+    createCheckbox("Авто-проценты", Config.AUTO_CLAIM_BANK_INTEREST, function(value)
+        Config.AUTO_CLAIM_BANK_INTEREST = value
+        log("Авто-проценты: " .. (value and "ВКЛ" or "ВЫКЛ"), "info")
+    end)
+    
+    createCheckbox("Отклонять плохих", Config.AUTO_DENY_BAD_APPLICANTS, function(value)
+        Config.AUTO_DENY_BAD_APPLICANTS = value
+        log("Отклонять плохих: " .. (value and "ВКЛ" or "ВЫКЛ"), "info")
+    end)
+    
+    createCheckbox("Только 5-6⭐", Config.ONLY_5_6_STARS, function(value)
+        Config.ONLY_5_6_STARS = value
+        log("Только 5-6⭐: " .. (value and "ВКЛ" or "ВЫКЛ"), "info")
+    end)
+    
+    return container
+end
+
+local function createLogsTab()
+    local container = createElement("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 4,
+        ScrollBarImageColor3 = currentColors.Accent,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false
+    })
+    
+    local layout = createElement("UIListLayout", {
+        Padding = UDim.new(0, 5),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = container
+    })
+    
+    guiElements.logContainer = container
+    
+    -- Контролы
+    local controls = createElement("Frame", {
+        Name = "ControlsFrame",
+        Size = UDim2.new(1, -20, 0, 40),
+        BackgroundColor3 = currentColors.Tertiary,
+        LayoutOrder = 0,
+        Parent = container
+    })
+    
+    createElement("UICorner", {
+        CornerRadius = UDim.new(0, 8),
+        Parent = controls
+    })
+    
+    createElement("UIPadding", {
+        Padding = UDim.new(0, 5),
+        Parent = controls
+    })
+    
+    local clearBtn = createElement("TextButton", {
+        Size = UDim2.new(0.5, -5, 1, -10),
+        Position = UDim2.new(0, 5, 0, 5),
+        BackgroundColor3 = currentColors.Error,
+        Text = "Очистить",
+        TextColor3 = currentColors.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        Parent = controls
+    })
+    
+    createElement("UICorner", {
+        CornerRadius = UDim.new(0, 6),
+        Parent = clearBtn
+    })
+    
+    local exportBtn = createElement("TextButton", {
+        Size = UDim2.new(0.5, -5, 1, -10),
+        Position = UDim2.new(0.5, 0, 0, 5),
+        BackgroundColor3 = currentColors.Info,
+        Text = "Экспорт",
+        TextColor3 = currentColors.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        Parent = controls
+    })
+    
+    createElement("UICorner", {
+        CornerRadius = UDim.new(0, 6),
+        Parent = exportBtn
+    })
+    
+    clearBtn.MouseButton1Click:Connect(function()
+        logs = {}
+        updateLogsGUI()
+        log("Логи очищены", "info")
+    end)
+    
+    exportBtn.MouseButton1Click:Connect(function()
+        local logText = ""
+        for _, entry in ipairs(logs) do
+            logText = logText .. string.format("[%s] %s\n", entry.time, entry.message)
+        end
+        
+        pcall(function()
+            setclipboard(logText)
+        end)
+        
+        log("Логи скопированы", "success")
+    end)
+    
+    return container
+end
+
+local function createBankTab()
+    local container = createElement("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 4,
+        ScrollBarImageColor3 = currentColors.Accent,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Visible = false
+    })
+    
+    local layout = createElement("UIListLayout", {
+        Padding = UDim.new(0, 10),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = container
+    })
+    
+    -- Инфо
+    local infoSection = createElement("Frame", {
+        Size = UDim2.new(1, -20, 0, 180),
+        BackgroundColor3 = currentColors.Tertiary,
+        LayoutOrder = 1,
+        Parent = container
+    })
+    
+    createElement("UICorner", {
+        CornerRadius = UDim.new(0, 8),
+        Parent = infoSection
+    })
+    
+    createElement("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 30),
+        BackgroundTransparency = 1,
+        Text = "🏦 ИНФОРМАЦИЯ",
+        TextColor3 = currentColors.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = infoSection
+    })
+    
+    createElement("UIPadding", {
+        PaddingLeft = UDim.new(0, 10),
+        PaddingTop = UDim.new(0, 35),
+        PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 10),
+        Parent = infoSection
+    })
+    
+    local function createInfoRow(label, isMoney)
+        local frame = createElement("Frame", {
+            Size = UDim2.new(1, -20, 0, 30),
+            BackgroundTransparency = 1,
+            LayoutOrder = 1,
+            Parent = infoSection
+        })
+        
+        local labelText = createElement("TextLabel", {
+            Size = UDim2.new(0.6, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Text = label,
+            TextColor3 = currentColors.SubText,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = frame
+        })
+        
+        local valueText = createElement("TextLabel", {
+            Size = UDim2.new(0.4, 0, 1, 0),
+            Position = UDim2.new(0.6, 0, 0, 0),
+            BackgroundTransparency = 1,
+            Text = "0",
+            TextColor3 = isMoney and currentColors.Money or currentColors.Text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 13,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Parent = frame
+        })
+        
+        return valueText
+    end
+    
+    guiElements.bankBalanceInfo = createInfoRow("Баланс:", true)
+    guiElements.bankToCollectInfo = createInfoRow("К сбору:", true)
+    guiElements.interestRateInfo = createInfoRow("Процент:", false)
+    guiElements.maxTimeInfo = createInfoRow("Макс. время:", false)
+    
+    -- Кнопки
+    local buttonSection = createElement("Frame", {
+        Size = UDim2.new(1, -20, 0, 160),
+        BackgroundColor3 = currentColors.Tertiary,
+        LayoutOrder = 2,
+        Parent = container
+    })
+    
+    createElement("UICorner", {
+        CornerRadius = UDim.new(0, 8),
+        Parent = buttonSection
+    })
+    
+    createElement("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 30),
+        BackgroundTransparency = 1,
+        Text = "🎯 ДЕЙСТВИЯ",
+        TextColor3 = currentColors.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = buttonSection
+    })
+    
+    createElement("UIPadding", {
+        PaddingLeft = UDim.new(0, 10),
+        PaddingTop = UDim.new(0, 35),
+        Padding = UDim.new(0, 10),
+        Parent = buttonSection
+    })
+    
+    local function createBankButton(text, color, callback)
+        local button = createElement("TextButton", {
+            Size = UDim2.new(1, 0, 0, 40),
+            BackgroundColor3 = color,
+            Text = text,
+            TextColor3 = currentColors.Text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            LayoutOrder = 1,
+            Parent = buttonSection
+        })
+        
+        createElement("UICorner", {
+            CornerRadius = UDim.new(0, 8),
+            Parent = button
+        })
+        
+        button.MouseButton1Click:Connect(function()
+            if callback then callback() end
+        end)
+        
+        return button
+    end
+    
+    createBankButton("💰 Собрать проценты", currentColors.Success, function()
+        claimBankInterest()
+        updateGameData()
+    end)
+    
+    createBankButton("💳 Сделать депозит", currentColors.Info, function()
+        autoDepositToBank()
+        updateGameData()
+    end)
+    
+    return container
+end
+
+-- Основной GUI
+local function createGUI()
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    
+    -- Удаляем старый GUI
+    local oldGUI = playerGui:FindFirstChild("AutoOptimizerGUI")
+    if oldGUI then oldGUI:Destroy() end
+    
+    -- Создаем ScreenGui
+    local screenGui = createElement("ScreenGui", {
+        Name = "AutoOptimizerGUI",
+        ResetOnSpawn = false,
+        IgnoreGuiInset = true,
+        Parent = playerGui
+    })
+    
+    -- Главный контейнер
+    local mainContainer = createElement("Frame", {
+        Name = "MainContainer",
+        Size = UDim2.new(0.35, 0, 0.7, 0),
+        Position = UDim2.new(0.65, 0, 0.15, 0),
+        BackgroundColor3 = currentColors.Background,
+        BackgroundTransparency = 1 - Config.GUI_OPACITY,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        Parent = screenGui
+    })
+    
+    createElement("UICorner", {
+        CornerRadius = UDim.new(0, 12),
+        Parent = mainContainer
+    })
+    
+    createElement("UIStroke", {
+        Color = currentColors.Accent,
+        Thickness = 2,
+        Parent = mainContainer
+    })
+    
+    -- Drag Detector
+    local dragDetector = UIDragDetector.new(mainContainer)
+    
+    -- Верхняя панель
+    local topBar = createElement("Frame", {
+        Size = UDim2.new(1, 0, 0, 40),
+        BackgroundColor3 = currentColors.Secondary,
+        BorderSizePixel = 0,
+        Parent = mainContainer
+    })
+    
+    createElement("UICorner", {
+        CornerRadius = UDim.new(0, 12),
+        Parent = topBar
+    })
+    
+    local title = createElement("TextLabel", {
+        Size = UDim2.new(0.7, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = "⚡ AUTO OPTIMIZER v11.0",
+        TextColor3 = currentColors.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 16,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = topBar
+    })
+    
+    createElement("UIPadding", {
+        PaddingLeft = UDim.new(0, 15),
+        Parent = title
+    })
+    
+    -- Кнопки управления
+    local closeBtn = createElement("TextButton", {
+        Size = UDim2.new(0, 30, 0, 30),
+        Position = UDim2.new(1, -35, 0.5, -15),
+        BackgroundTransparency = 1,
+        Text = "✕",
+        TextColor3 = currentColors.Error,
+        Font = Enum.Font.GothamBold,
+        TextSize = 18,
+        Parent = topBar
+    })
+    
+    local minimizeBtn = createElement("TextButton", {
+        Size = UDim2.new(0, 30, 0, 30),
+        Position = UDim2.new(1, -70, 0.5, -15),
+        BackgroundTransparency = 1,
+        Text = "🗕",
+        TextColor3 = currentColors.SubText,
+        Font = Enum.Font.GothamBold,
+        TextSize = 16,
+        Parent = topBar
+    })
+    
+    local statusLabel = createElement("TextLabel", {
+        Size = UDim2.new(0.25, 0, 1, 0),
+        Position = UDim2.new(0.75, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Text = "⏹ СТОП",
+        TextColor3 = currentColors.Error,
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Parent = topBar
+    })
+    
+    createElement("UIPadding", {
+        PaddingRight = UDim.new(0, 10),
+        Parent = statusLabel
+    })
+    
+    guiElements.statusLabel = statusLabel
+    
+    -- Панель вкладок
+    local tabBar = createElement("Frame", {
+        Size = UDim2.new(1, 0, 0, 40),
+        Position = UDim2.new(0, 0, 0, 40),
+        BackgroundColor3 = currentColors.Tertiary,
+        BorderSizePixel = 0,
+        Parent = mainContainer
+    })
+    
+    local tabs = {"stats", "settings", "bank", "logs"}
+    local tabNames = {"📊 Статистика", "⚙️ Настройки", "💰 Банк", "📝 Логи"}
+    
+    guiElements.tabButtons = {}
+    
+    for i, tabId in ipairs(tabs) do
+        local tabButton = createElement("TextButton", {
+            Size = UDim2.new(1 / #tabs, 0, 1, 0),
+            Position = UDim2.new((i-1) / #tabs, 0, 0, 0),
+            BackgroundColor3 = tabId == currentTab and currentColors.Accent or currentColors.Tertiary,
+            Text = tabNames[i],
+            TextColor3 = currentColors.Text,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            Name = tabId .. "Tab",
+            Parent = tabBar
+        })
+        
+        tabButton.MouseButton1Click:Connect(function()
+            switchTab(tabId)
+        end)
+        
+        guiElements.tabButtons[tabId] = tabButton
+    end
+    
+    -- Контейнер контента
+    local contentFrame = createElement("Frame", {
+        Size = UDim2.new(1, 0, 1, -80),
+        Position = UDim2.new(0, 0, 0, 80),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Parent = mainContainer
+    })
+    
+    guiElements.contentFrame = contentFrame
+    
+    -- Создаем вкладки
+    local statsContainer = createElement("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ScrollBarThickness = 4,
+        ScrollBarImageColor3 = currentColors.Accent,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Parent = contentFrame
+    })
+    
+    tabContents.stats = statsContainer
+    guiElements.statsContainer = statsContainer
+    
+    local statsLayout = createElement("UIListLayout", {
+        Padding = UDim.new(0, 10),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = statsContainer
+    })
+    
+    createElement("UIPadding", {
+        PaddingTop = UDim.new(0, 10),
+        PaddingLeft = UDim.new(0, 10),
+        PaddingRight = UDim.new(0, 10),
+        Parent = statsContainer
+    })
+    
+    -- Карточки статистики
+    local statCards = {
+        {label = "Наличные:", id = "cashLabel", money = true},
+        {label = "Банк:", id = "bankLabel", money = true},
+        {label = "Банк %:", id = "bankToCollectLabel", money = true},
+        {label = "Доход/час:", id = "totalIncomeLabel", money = true},
+        {label = "Чистая прибыль:", id = "netProfitLabel", money = true},
+        {label = "Объекты:", id = "propertiesLabel", money = false},
+        {label = "Стоимость:", id = "totalValueLabel", money = true},
+        {label = "Арендаторы:", id = "totalRentersLabel", money = false},
+        {label = "Ср. звезды:", id = "averageStarsLabel", money = false},
+        {label = "5⭐:", id = "fiveStarLabel", money = false},
+        {label = "6⭐:", id = "sixStarLabel", money = false},
+        {label = "Низкие:", id = "lowStarLabel", money = false},
+        {label = "Занято:", id = "occupiedSpotsLabel", money = false},
+        {label = "Заполненность:", id = "occupancyLabel", money = false},
+        {label = "Замены:", id = "replacementsLabel", money = false},
+        {label = "Принято:", id = "acceptedLabel", money = false},
+        {label = "Выселено:", id = "evictedLabel", money = false},
+        {label = "Депозиты:", id = "bankDepositsLabel", money = false},
+        {label = "Проценты:", id = "interestCollectedLabel", money = true},
+        {label = "Циклы:", id = "cycleCountLabel", money = false},
+        {label = "Обновлено:", id = "lastUpdateLabel", money = false}
+    }
+    
+    for i, card in ipairs(statCards) do
+        guiElements[card.id] = createStatCard(statsContainer, card.label, "0", card.money, i)
+    end
+    
+    -- Кнопки управления
+    local controlFrame = createElement("Frame", {
+        Size = UDim2.new(1, 0, 0, 120),
+        BackgroundTransparency = 1,
+        LayoutOrder = 999,
+        Parent = statsContainer
+    })
+    
+    createElement("UIPadding", {
+        PaddingTop = UDim.new(0, 10),
+        Parent = controlFrame
+    })
+    
+    local controlLayout = createElement("UIListLayout", {
+        Padding = UDim.new(0, 5),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = controlFrame
+    })
+    
+    local function createControlButton(text, color, callback)
+        local button = createElement("TextButton", {
+            Size = UDim2.new(1, 0, 0, 35),
+            BackgroundColor3 = color,
+            Text = text,
+            TextColor3 = currentColors.Text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            LayoutOrder = 1,
+            Parent = controlFrame
+        })
+        
+        createElement("UICorner", {
+            CornerRadius = UDim.new(0, 8),
+            Parent = button
+        })
+        
+        button.MouseButton1Click:Connect(function()
+            if callback then callback() end
+        end)
+        
+        return button
+    end
+    
+    local startButton = createControlButton("🚀 ЗАПУСТИТЬ", Color3.fromRGB(0, 180, 0), function()
+        if not isRunning then
+            startAutoOptimizer()
+        else
+            stopOptimizer()
+        end
+    end)
+    
+    guiElements.startButton = startButton
+    
+    createControlButton("⚡ БЫСТРАЯ", Color3.fromRGB(255, 150, 0), function()
+        quickOptimize()
+    end)
+    
+    createControlButton("💰 ДЕПОЗИТ", Color3.fromRGB(0, 150, 255), function()
+        autoDepositToBank()
+    end)
+    
+    createControlButton("🔄 ОБНОВИТЬ", Color3.fromRGB(100, 100, 200), function()
+        updateGameData()
+    end)
+    
+    -- Создаем другие вкладки
+    tabContents.settings = createSettingsTab()
+    tabContents.settings.Parent = contentFrame
+    
+    tabContents.bank = createBankTab()
+    tabContents.bank.Parent = contentFrame
+    
+    tabContents.logs = createLogsTab()
+    tabContents.logs.Parent = contentFrame
+    
+    -- Функции
+    local function updateStatus()
+        if isRunning then
+            guiElements.statusLabel.Text = "▶ РАБОТАЕТ"
+            guiElements.statusLabel.TextColor3 = currentColors.Success
+            guiElements.startButton.Text = "⏸ ПАУЗА"
+        else
+            guiElements.statusLabel.Text = "⏹ СТОП"
+            guiElements.statusLabel.TextColor3 = currentColors.Error
+            guiElements.startButton.Text = "🚀 ЗАПУСТИТЬ"
+        end
+    end
+    
+    function switchTab(tabId)
+        currentTab = tabId
+        
+        -- Скрываем все
+        for id, container in pairs(tabContents) do
+            if container then
+                container.Visible = false
+            end
+        end
+        
+        -- Показываем выбранную
+        if tabContents[tabId] then
+            tabContents[tabId].Visible = true
+        end
+        
+        -- Обновляем кнопки
+        for id, button in pairs(guiElements.tabButtons) do
+            if button then
+                button.BackgroundColor3 = id == tabId and currentColors.Accent or currentColors.Tertiary
+            end
+        end
+        
+        -- Обновляем данные
+        if tabId == "stats" then
+            updateStatsGUI()
+        elseif tabId == "logs" then
+            updateLogsGUI()
+        elseif tabId == "bank" then
+            updateBankGUI()
+        end
+    end
+    
+    -- Обработчики
+    closeBtn.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
+        if dragDetector then dragDetector:Destroy() end
+    end)
+    
+    minimizeBtn.MouseButton1Click:Connect(function()
+        if mainContainer.Size.Y.Scale > 0.1 then
+            mainContainer.Size = UDim2.new(0, 60, 0, 60)
+            mainContainer.Position = UDim2.new(1, -70, 1, -70)
+            topBar.Visible = false
+            tabBar.Visible = false
+            contentFrame.Visible = false
+            minimizeBtn.Text = "🗖"
+        else
+            mainContainer.Size = UDim2.new(0.35, 0, 0.7, 0)
+            mainContainer.Position = UDim2.new(0.65, 0, 0.15, 0)
+            topBar.Visible = true
+            tabBar.Visible = true
+            contentFrame.Visible = true
+            minimizeBtn.Text = "🗕"
+        end
+    end)
+    
+    -- Инициализация
+    guiElements.initialized = true
+    lastUpdateTime = os.time()
+    
+    -- Анимация
+    if Config.ANIMATIONS_ENABLED then
+        mainContainer.Size = UDim2.new(0, 0, 0, 0)
+        mainContainer.Position = UDim2.new(0.5, 0, 0.5, 0)
+        
+        local tween = TweenService:Create(mainContainer, TweenInfo.new(0.5, Enum.EasingStyle.Back), {
+            Size = UDim2.new(0.35, 0, 0.7, 0),
+            Position = UDim2.new(0.65, 0, 0.15, 0)
+        })
+        tween:Play()
+        
+        tween.Completed:Connect(function()
+            log("GUI загружен", "success")
+            updateGameData()
+            updateStatus()
+            switchTab("stats")
+        end)
+    else
+        log("GUI загружен", "success")
+        updateGameData()
+        updateStatus()
+        switchTab("stats")
+    end
+    
+    guiElements.updateStatus = updateStatus
+    
+    return screenGui
+end
+
+-- Управление
+local function quickOptimize()
+    log("⚡ Быстрая оптимизация", "info")
+    updateGameData()
+    local optimized = optimizeAllProperties()
+    log(string.format("Оптимизировано: %d объектов", optimized), "success")
+    showNotification("Быстрая оптимизация", "Завершена", "Green")
+end
+
+local function startAutoOptimizer()
+    if isRunning then
+        stopOptimizer()
+        return
+    end
+    
+    isRunning = true
+    if guiElements.updateStatus then
+        guiElements.updateStatus()
+    end
+    
+    log("🚀 Автооптимизатор запущен", "success")
+    showNotification("Auto Optimizer", "Запущен", "Green")
+    
+    task.spawn(function()
+        while isRunning do
+            local startTime = tick()
+            
+            optimizeAllProperties()
+            
+            local elapsed = tick() - startTime
+            local waitTime = math.max(1, Config.CHECK_INTERVAL - elapsed)
+            
+            for i = 1, math.floor(waitTime) do
+                if not isRunning then break end
+                task.wait(1)
+            end
+        end
+        
+        log("Автооптимизатор остановлен", "warning")
+        showNotification("Auto Optimizer", "Остановлен", "Red")
+        if guiElements.updateStatus then
+            guiElements.updateStatus()
+        end
+    end)
+end
+
+local function stopOptimizer()
+    isRunning = false
+    log("Остановка запрошена", "warning")
+    if guiElements.updateStatus then
+        guiElements.updateStatus()
+    end
+end
+
+-- Инициализация
+local function initialize()
+    log("Инициализация Auto Optimizer...", "info")
+    
+    -- Ждем загрузки игры
+    local attempts = 0
+    while attempts < 30 do
+        if PlayerDataClient and PlayerDataClient.Loaded and PlayerDataClient.Loaded() then
+            break
+        end
+        task.wait(1)
+        attempts = attempts + 1
+    end
+    
+    -- Создаем GUI
+    createGUI()
+    
+    -- Автообновление данных
+    RunService.Heartbeat:Connect(function()
+        if os.time() - lastUpdateTime >= 5 then
+            updateGameData()
+            lastUpdateTime = os.time()
+        end
+    end)
+    
+    -- Автозапуск
+    task.wait(3)
+    if not isRunning then
+        task.spawn(startAutoOptimizer)
+    end
+    
+    log("Система готова", "success")
+end
+
+-- Запуск
+task.spawn(initialize)
+
+-- Экспорт
+return {
+    quickOptimize = quickOptimize,
+    startAutoOptimizer = startAutoOptimizer,
+    stopOptimizer = stopOptimizer,
+    updateGameData = updateGameData,
+    getConfig = function() return Config end,
+    setConfig = function(key, value)
+        if Config[key] ~= nil then
+            Config[key] = value
+            return true
+        end
+        return false
+    end,
+    isRunning = function() return isRunning end,
+    getStats = function() return statsData end,
+    showNotification = showNotification,
+    log = log
+}
