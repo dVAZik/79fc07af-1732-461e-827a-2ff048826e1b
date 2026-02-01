@@ -1,0 +1,750 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+-- Создаем основной экран
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ObjectViewer"
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.ResetOnSpawn = false
+
+-- Основной фрейм
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 900, 0, 600)
+MainFrame.Position = UDim2.new(0.5, -450, 0.5, -300)
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 27, 33)
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+
+-- Эффект градиента
+local Gradient = Instance.new("UIGradient")
+Gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 27, 33)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(35, 37, 43))
+})
+Gradient.Rotation = 45
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 27, 33)
+
+-- Верхняя панель
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 50)
+TopBar.BackgroundColor3 = Color3.fromRGB(35, 37, 43)
+TopBar.BorderSizePixel = 0
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(0, 200, 1, 0)
+Title.Position = UDim2.new(0, 20, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "OBJECT VIEWER"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 18
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 40, 0, 40)
+CloseButton.Position = UDim2.new(1, -50, 0.5, -20)
+CloseButton.AnchorPoint = Vector2.new(0, 0.5)
+CloseButton.BackgroundColor3 = Color3.fromRGB(45, 47, 53)
+CloseButton.BorderSizePixel = 0
+CloseButton.Text = "✕"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.TextSize = 20
+
+-- Боковая панель
+local SideBar = Instance.new("Frame")
+SideBar.Name = "SideBar"
+SideBar.Size = UDim2.new(0, 200, 1, -50)
+SideBar.Position = UDim2.new(0, 0, 0, 50)
+SideBar.BackgroundColor3 = Color3.fromRGB(30, 32, 38)
+SideBar.BorderSizePixel = 0
+
+local CategoryButtons = Instance.new("ScrollingFrame")
+CategoryButtons.Name = "CategoryButtons"
+CategoryButtons.Size = UDim2.new(1, 0, 1, 0)
+CategoryButtons.BackgroundTransparency = 1
+CategoryButtons.ScrollBarThickness = 4
+CategoryButtons.ScrollBarImageColor3 = Color3.fromRGB(60, 62, 68)
+CategoryButtons.CanvasSize = UDim2.new(0, 0, 0, 0)
+CategoryButtons.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Padding = UDim.new(0, 5)
+UIListLayout.SortOrder = Enum.SortOrder.Name
+
+-- Основной контент
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Size = UDim2.new(1, -200, 1, -50)
+ContentFrame.Position = UDim2.new(0, 200, 0, 50)
+ContentFrame.BackgroundTransparency = 1
+
+-- Вьюер для моделей
+local ModelViewer = Instance.new("ViewportFrame")
+ModelViewer.Name = "ModelViewer"
+ModelViewer.Size = UDim2.new(0.6, 0, 1, 0)
+ModelViewer.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+ModelViewer.BorderSizePixel = 0
+ModelViewer.CurrentCamera = workspace.CurrentCamera
+
+-- Управление камерой
+local CameraControlFrame = Instance.new("Frame")
+CameraControlFrame.Name = "CameraControlFrame"
+CameraControlFrame.Size = UDim2.new(0, 40, 0, 120)
+CameraControlFrame.Position = UDim2.new(1, -50, 1, -140)
+CameraControlFrame.BackgroundColor3 = Color3.fromRGB(35, 37, 43, 150)
+CameraControlFrame.BackgroundTransparency = 0.3
+CameraControlFrame.BorderSizePixel = 0
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+
+-- Кнопки управления камерой
+local ZoomIn = Instance.new("TextButton")
+ZoomIn.Name = "ZoomIn"
+ZoomIn.Size = UDim2.new(1, -10, 0, 30)
+ZoomIn.Position = UDim2.new(0, 5, 0, 5)
+ZoomIn.BackgroundColor3 = Color3.fromRGB(45, 47, 53)
+ZoomIn.BorderSizePixel = 0
+ZoomIn.Text = "+"
+ZoomIn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ZoomIn.Font = Enum.Font.GothamBold
+ZoomIn.TextSize = 20
+
+local ZoomOut = Instance.new("TextButton")
+ZoomOut.Name = "ZoomOut"
+ZoomOut.Size = UDim2.new(1, -10, 0, 30)
+ZoomOut.Position = UDim2.new(0, 5, 0, 40)
+ZoomOut.BackgroundColor3 = Color3.fromRGB(45, 47, 53)
+ZoomOut.BorderSizePixel = 0
+ZoomOut.Text = "-"
+ZoomOut.TextColor3 = Color3.fromRGB(255, 255, 255)
+ZoomOut.Font = Enum.Font.GothamBold
+ZoomOut.TextSize = 20
+
+local ResetCamera = Instance.new("TextButton")
+ResetCamera.Name = "ResetCamera"
+ResetCamera.Size = UDim2.new(1, -10, 0, 30)
+ResetCamera.Position = UDim2.new(0, 5, 0, 75)
+ResetCamera.BackgroundColor3 = Color3.fromRGB(45, 47, 53)
+ResetCamera.BorderSizePixel = 0
+ResetCamera.Text = "↺"
+ResetCamera.TextColor3 = Color3.fromRGB(255, 255, 255)
+ResetCamera.Font = Enum.Font.GothamBold
+ResetCamera.TextSize = 20
+
+-- Панель информации
+local InfoPanel = Instance.new("Frame")
+InfoPanel.Name = "InfoPanel"
+InfoPanel.Size = UDim2.new(0.4, 0, 1, 0)
+InfoPanel.Position = UDim2.new(0.6, 0, 0, 0)
+InfoPanel.BackgroundColor3 = Color3.fromRGB(30, 32, 38)
+InfoPanel.BorderSizePixel = 0
+
+local InfoScroll = Instance.new("ScrollingFrame")
+InfoScroll.Name = "InfoScroll"
+InfoScroll.Size = UDim2.new(1, 0, 1, 0)
+InfoScroll.BackgroundTransparency = 1
+InfoScroll.ScrollBarThickness = 4
+InfoScroll.ScrollBarImageColor3 = Color3.fromRGB(60, 62, 68)
+InfoScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+InfoScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+local InfoLayout = Instance.new("UIListLayout")
+InfoLayout.Padding = UDim.new(0, 10)
+InfoLayout.SortOrder = Enum.SortOrder.Name
+
+-- Элементы информации
+local ObjectName = Instance.new("TextLabel")
+ObjectName.Name = "ObjectName"
+ObjectName.Size = UDim2.new(1, -40, 0, 40)
+ObjectName.Position = UDim2.new(0, 20, 0, 20)
+ObjectName.BackgroundTransparency = 1
+ObjectName.Text = "OBJECT NAME"
+ObjectName.TextColor3 = Color3.fromRGB(255, 255, 255)
+ObjectName.Font = Enum.Font.GothamBold
+ObjectName.TextSize = 24
+ObjectName.TextXAlignment = Enum.TextXAlignment.Left
+
+local InfoGrid = Instance.new("Frame")
+InfoGrid.Name = "InfoGrid"
+InfoGrid.Size = UDim2.new(1, -40, 0, 0)
+InfoGrid.Position = UDim2.new(0, 20, 0, 70)
+InfoGrid.BackgroundTransparency = 1
+InfoGrid.AutomaticSize = Enum.AutomaticSize.Y
+
+local GridLayout = Instance.new("UIGridLayout")
+GridLayout.CellSize = UDim2.new(0.5, -5, 0, 40)
+GridLayout.CellPadding = UDim2.new(0, 10, 0, 5)
+GridLayout.SortOrder = Enum.SortOrder.Name
+GridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+
+-- Функции
+local ObjectViewer = {}
+
+-- Переменные для управления камерой
+local cameraOffset = Vector3.new(0, 0, -10)
+local cameraRotation = Vector2.new(0, 0)
+local isDragging = false
+local lastMousePos = Vector2.new(0, 0)
+local currentModel = nil
+
+-- Создание элемента категории
+function ObjectViewer.createCategoryButton(name)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Size = UDim2.new(1, -20, 0, 40)
+    button.Position = UDim2.new(0, 10, 0, 0)
+    button.BackgroundColor3 = Color3.fromRGB(40, 42, 48)
+    button.BorderSizePixel = 0
+    button.Text = name:upper()
+    button.TextColor3 = Color3.fromRGB(200, 200, 200)
+    button.Font = Enum.Font.Gotham
+    button.TextSize = 14
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = button
+    
+    -- Анимация при наведении
+    button.MouseEnter:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(50, 52, 58),
+            TextColor3 = Color3.fromRGB(255, 255, 255)
+        }):Play()
+    end)
+    
+    button.MouseLeave:Connect(function()
+        TweenService:Create(button, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(40, 42, 48),
+            TextColor3 = Color3.fromRGB(200, 200, 200)
+        }):Play()
+    end)
+    
+    return button
+end
+
+-- Создание элемента информации
+function ObjectViewer.createInfoItem(label, value)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 0, 40)
+    container.BackgroundTransparency = 1
+    
+    local labelText = Instance.new("TextLabel")
+    labelText.Size = UDim2.new(0.4, 0, 1, 0)
+    labelText.BackgroundTransparency = 1
+    labelText.Text = label
+    labelText.TextColor3 = Color3.fromRGB(150, 150, 150)
+    labelText.Font = Enum.Font.Gotham
+    labelText.TextSize = 14
+    labelText.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local valueText = Instance.new("TextLabel")
+    valueText.Size = UDim2.new(0.6, 0, 1, 0)
+    valueText.Position = UDim2.new(0.4, 0, 0, 0)
+    valueText.BackgroundTransparency = 1
+    valueText.Text = tostring(value)
+    valueText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    valueText.Font = Enum.Font.GothamMedium
+    valueText.TextSize = 14
+    valueText.TextXAlignment = Enum.TextXAlignment.Right
+    
+    labelText.Parent = container
+    valueText.Parent = container
+    
+    return container
+end
+
+-- Загрузка модулей данных
+function ObjectViewer.loadDataModules()
+    local modules = {}
+    
+    -- Проверяем существование модулей
+    if ReplicatedStorage:FindFirstChild("Modules") then
+        local Modules = ReplicatedStorage.Modules
+        if Modules:FindFirstChild("Data") then
+            local Data = Modules.Data
+            
+            -- Загрузка данных о зданиях
+            if Data:FindFirstChild("Building") then
+                local BuildingData = Data.Building
+                for _, module in ipairs(BuildingData:GetChildren()) do
+                    if module:IsA("ModuleScript") then
+                        local success, data = pcall(require, module)
+                        if success then
+                            modules["Building_" .. module.Name] = data
+                        end
+                    end
+                end
+            end
+            
+            -- Загрузка данных о машинах
+            if Data:FindFirstChild("Vehicle") then
+                local VehicleData = Data.Vehicle
+                for _, module in ipairs(VehicleData:GetChildren()) do
+                    if module:IsA("ModuleScript") and module.Name ~= "Types" then
+                        local success, data = pcall(require, module)
+                        if success then
+                            modules["Vehicle_" .. module.Name] = data
+                        end
+                    end
+                end
+            end
+            
+            -- Загрузка данных о самолетах
+            if Data:FindFirstChild("PlaneData") then
+                local PlaneData = Data.PlaneData
+                local success, data = pcall(require, PlaneData)
+                if success then
+                    modules["Planes"] = data
+                end
+            end
+        end
+    end
+    
+    return modules
+end
+
+-- Получение объектов из папок
+function ObjectViewer.getObjects()
+    local objects = {
+        Vehicles = {},
+        Buildings = {},
+        Planes = {}
+    }
+    
+    -- Получение машин
+    if ReplicatedStorage:FindFirstChild("Objects") then
+        local Objects = ReplicatedStorage.Objects
+        
+        if Objects:FindFirstChild("Cars") then
+            for _, model in ipairs(Objects.Cars:GetChildren()) do
+                if model:IsA("Model") then
+                    table.insert(objects.Vehicles, {
+                        Name = model.Name,
+                        Model = model,
+                        Type = "Vehicle"
+                    })
+                end
+            end
+        end
+        
+        if Objects:FindFirstChild("Buildings") then
+            for _, model in ipairs(Objects.Buildings:GetChildren()) do
+                if model:IsA("Model") then
+                    table.insert(objects.Buildings, {
+                        Name = model.Name,
+                        Model = model,
+                        Type = "Building"
+                    })
+                end
+            end
+        end
+        
+        if Objects:FindFirstChild("Planes") then
+            for _, model in ipairs(Objects.Planes:GetChildren()) do
+                if model:IsA("Model") then
+                    table.insert(objects.Planes, {
+                        Name = model.Name,
+                        Model = model,
+                        Type = "Plane"
+                    })
+                end
+            end
+        end
+    end
+    
+    return objects
+end
+
+-- Отображение модели во вьюпорте
+function ObjectViewer.displayModel(model)
+    -- Очищаем предыдущую модель
+    for _, child in ipairs(ModelViewer:GetChildren()) do
+        if child:IsA("Model") or child:IsA("BasePart") then
+            child:Destroy()
+        end
+    end
+    
+    -- Клонируем модель
+    local clone = model:Clone()
+    clone.Parent = ModelViewer
+    
+    -- Настраиваем камеру
+    local cf = CFrame.new()
+    local size = Vector3.new(0, 0, 0)
+    
+    -- Вычисляем размер модели
+    for _, part in ipairs(clone:GetDescendants()) do
+        if part:IsA("BasePart") then
+            local partSize = part.Size
+            local partCFrame = part.CFrame
+            local worldCorners = {
+                partCFrame * CFrame.new(partSize.X/2, partSize.Y/2, partSize.Z/2),
+                partCFrame * CFrame.new(-partSize.X/2, -partSize.Y/2, -partSize.Z/2)
+            }
+            
+            for _, corner in ipairs(worldCorners) do
+                local pos = corner.Position
+                size = Vector3.new(
+                    math.max(size.X, math.abs(pos.X)),
+                    math.max(size.Y, math.abs(pos.Y)),
+                    math.max(size.Z, math.abs(pos.Z))
+                )
+            end
+        end
+    end
+    
+    -- Устанавливаем камеру
+    local maxSize = math.max(size.X, size.Y, size.Z)
+    local distance = maxSize * 2
+    
+    local camera = Instance.new("Camera")
+    camera.CFrame = CFrame.new(Vector3.new(0, maxSize/2, distance))
+    camera.Focus = CFrame.new()
+    ModelViewer.CurrentCamera = camera
+    
+    currentModel = clone
+end
+
+-- Обновление информации
+function ObjectViewer.updateInfo(object, data)
+    -- Очищаем предыдущую информацию
+    for _, child in ipairs(InfoGrid:GetChildren()) do
+        child:Destroy()
+    end
+    
+    -- Обновляем имя
+    ObjectName.Text = object.Name:upper()
+    
+    -- Добавляем базовую информацию
+    if object.Type == "Vehicle" then
+        local vehicleData = data[object.Name]
+        if vehicleData then
+            ObjectViewer.createInfoItem("SPEED", vehicleData.Speed or "N/A").Parent = InfoGrid
+            ObjectViewer.createInfoItem("ACCELERATION", vehicleData.Acceleration or "N/A").Parent = InfoGrid
+            ObjectViewer.createInfoItem("BRAKES", vehicleData.Brakes or "N/A").Parent = InfoGrid
+            ObjectViewer.createInfoItem("HANDLING", vehicleData.Handling or "N/A").Parent = InfoGrid
+            ObjectViewer.createInfoItem("COST", "$" .. (vehicleData.Cost or "N/A")).Parent = InfoGrid
+            
+            if vehicleData.WorldReq then
+                ObjectViewer.createInfoItem("WORLD REQUIRED", vehicleData.WorldReq).Parent = InfoGrid
+            end
+            
+            if vehicleData.GamepassId then
+                ObjectViewer.createInfoItem("GAMEPASS", vehicleData.GamepassId).Parent = InfoGrid
+            end
+        end
+    elseif object.Type == "Building" then
+        local buildingData = data[object.Name]
+        if buildingData then
+            ObjectViewer.createInfoItem("BASE VALUE", "$" .. (buildingData.BaseValue or "N/A")).Parent = InfoGrid
+            ObjectViewer.createInfoItem("BASE RENT", "$" .. (buildingData.BaseRent or "N/A")).Parent = InfoGrid
+            ObjectViewer.createInfoItem("SPOTS", buildingData.Spots or "N/A").Parent = InfoGrid
+            ObjectViewer.createInfoItem("RENTER TYPE", buildingData.RenterType or "N/A").Parent = InfoGrid
+            ObjectViewer.createInfoItem("LOAN PAYMENTS", buildingData.LoanPayments or "N/A").Parent = InfoGrid
+            
+            if buildingData.GamepassId then
+                ObjectViewer.createInfoItem("GAMEPASS", buildingData.GamepassId).Parent = InfoGrid
+            end
+        end
+    elseif object.Type == "Plane" then
+        local planeData = data[object.Name]
+        if planeData then
+            ObjectViewer.createInfoItem("SPEED", planeData.Speed or "N/A").Parent = InfoGrid
+            ObjectViewer.createInfoItem("CAPACITY", planeData.Capacity or "N/A").Parent = InfoGrid
+            ObjectViewer.createInfoItem("RANGE", planeData.Range or "N/A").Parent = InfoGrid
+            ObjectViewer.createInfoItem("COST", "$" .. (planeData.Cost or "N/A")).Parent = InfoGrid
+        end
+    end
+end
+
+-- Создание кнопок для объектов
+function ObjectViewer.createObjectButtons(category, objects)
+    -- Создаем контейнер для кнопок
+    local container = Instance.new("ScrollingFrame")
+    container.Name = category .. "Container"
+    container.Size = UDim2.new(1, 0, 1, -60)
+    container.Position = UDim2.new(0, 0, 0, 60)
+    container.BackgroundTransparency = 1
+    container.ScrollBarThickness = 4
+    container.ScrollBarImageColor3 = Color3.fromRGB(60, 62, 68)
+    container.CanvasSize = UDim2.new(0, 0, 0, 0)
+    container.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 10)
+    layout.SortOrder = Enum.SortOrder.Name
+    
+    -- Создаем кнопки для каждого объекта
+    for _, object in ipairs(objects) do
+        local button = Instance.new("TextButton")
+        button.Name = object.Name
+        button.Size = UDim2.new(1, -40, 0, 50)
+        button.Position = UDim2.new(0, 20, 0, 0)
+        button.BackgroundColor3 = Color3.fromRGB(40, 42, 48)
+        button.BorderSizePixel = 0
+        button.Text = object.Name
+        button.TextColor3 = Color3.fromRGB(200, 200, 200)
+        button.Font = Enum.Font.Gotham
+        button.TextSize = 14
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = button
+        
+        -- Анимация при наведении
+        button.MouseEnter:Connect(function()
+            TweenService:Create(button, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(50, 52, 58),
+                TextColor3 = Color3.fromRGB(255, 255, 255)
+            }):Play()
+        end)
+        
+        button.MouseLeave:Connect(function()
+            TweenService:Create(button, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(40, 42, 48),
+                TextColor3 = Color3.fromRGB(200, 200, 200)
+            }):Play()
+        end)
+        
+        -- Обработка клика
+        button.MouseButton1Click:Connect(function()
+            ObjectViewer.displayModel(object.Model)
+            
+            -- Загружаем данные для отображения
+            local dataModules = ObjectViewer.loadDataModules()
+            local data = {}
+            
+            if object.Type == "Vehicle" then
+                -- Ищем данные в модулях машин
+                for moduleName, moduleData in pairs(dataModules) do
+                    if string.find(moduleName, "Vehicle_") then
+                        if moduleData[object.Name] then
+                            data = moduleData
+                            break
+                        end
+                    end
+                end
+            elseif object.Type == "Building" then
+                -- Ищем данные в модулях зданий
+                for moduleName, moduleData in pairs(dataModules) do
+                    if string.find(moduleName, "Building_") then
+                        if moduleData[object.Name] then
+                            data = moduleData
+                            break
+                        end
+                    end
+                end
+            elseif object.Type == "Plane" then
+                data = dataModules["Planes"] or {}
+            end
+            
+            ObjectViewer.updateInfo(object, data)
+        end)
+        
+        button.Parent = container
+    end
+    
+    layout.Parent = container
+    container.Parent = ContentFrame
+    container.Visible = false
+    
+    return container
+end
+
+-- Инициализация
+function ObjectViewer.init()
+    -- Загружаем данные
+    local objects = ObjectViewer.getObjects()
+    
+    -- Создаем кнопки категорий
+    local categories = {
+        {Name = "Vehicles", Objects = objects.Vehicles},
+        {Name = "Buildings", Objects = objects.Buildings},
+        {Name = "Planes", Objects = objects.Planes}
+    }
+    
+    local containers = {}
+    
+    for i, category in ipairs(categories) do
+        local button = ObjectViewer.createCategoryButton(category.Name)
+        button.Parent = CategoryButtons
+        
+        -- Создаем контейнер для объектов этой категории
+        local container = ObjectViewer.createObjectButtons(category.Name, category.Objects)
+        containers[category.Name] = container
+        
+        -- Обработка клика по категории
+        button.MouseButton1Click:Connect(function()
+            -- Скрываем все контейнеры
+            for _, cont in pairs(containers) do
+                cont.Visible = false
+            end
+            
+            -- Показываем выбранный контейнер
+            container.Visible = true
+            
+            -- Анимация кнопок
+            for _, btn in ipairs(CategoryButtons:GetChildren()) do
+                if btn:IsA("TextButton") then
+                    TweenService:Create(btn, TweenInfo.new(0.2), {
+                        BackgroundColor3 = Color3.fromRGB(40, 42, 48),
+                        TextColor3 = Color3.fromRGB(200, 200, 200)
+                    }):Play()
+                end
+            end
+            
+            TweenService:Create(button, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(60, 140, 255),
+                TextColor3 = Color3.fromRGB(255, 255, 255)
+            }):Play()
+        end)
+        
+        -- Показываем первую категорию по умолчанию
+        if i == 1 then
+            container.Visible = true
+            TweenService:Create(button, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(60, 140, 255),
+                TextColor3 = Color3.fromRGB(255, 255, 255)
+            }):Play()
+        end
+    end
+    
+    -- Управление камерой
+    ZoomIn.MouseButton1Click:Connect(function()
+        if ModelViewer.CurrentCamera then
+            local cf = ModelViewer.CurrentCamera.CFrame
+            ModelViewer.CurrentCamera.CFrame = cf + cf.LookVector * -2
+        end
+    end)
+    
+    ZoomOut.MouseButton1Click:Connect(function()
+        if ModelViewer.CurrentCamera then
+            local cf = ModelViewer.CurrentCamera.CFrame
+            ModelViewer.CurrentCamera.CFrame = cf + cf.LookVector * 2
+        end
+    end)
+    
+    ResetCamera.MouseButton1Click:Connect(function()
+        if currentModel then
+            local size = currentModel:GetExtentsSize()
+            local maxSize = math.max(size.X, size.Y, size.Z)
+            local distance = maxSize * 2
+            
+            ModelViewer.CurrentCamera.CFrame = CFrame.new(Vector3.new(0, maxSize/2, distance))
+            ModelViewer.CurrentCamera.Focus = CFrame.new()
+        end
+    end)
+    
+    -- Вращение модели мышью
+    local UserInputService = game:GetService("UserInputService")
+    
+    ModelViewer.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = true
+            lastMousePos = UserInputService:GetMouseLocation()
+        end
+    end)
+    
+    ModelViewer.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            isDragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mousePos = UserInputService:GetMouseLocation()
+            local delta = mousePos - lastMousePos
+            
+            if ModelViewer.CurrentCamera and currentModel then
+                local cf = ModelViewer.CurrentCamera.CFrame
+                local rotation = CFrame.fromEulerAnglesYXZ(
+                    delta.Y * 0.01,
+                    -delta.X * 0.01,
+                    0
+                )
+                
+                ModelViewer.CurrentCamera.CFrame = cf * rotation
+            end
+            
+            lastMousePos = mousePos
+        end
+    end)
+    
+    -- Закрытие GUI
+    CloseButton.MouseButton1Click:Connect(function()
+        ScreenGui:Destroy()
+    end)
+    
+    -- Добавление элементов в GUI
+    TopBar.Parent = MainFrame
+    Title.Parent = TopBar
+    CloseButton.Parent = TopBar
+    
+    SideBar.Parent = MainFrame
+    CategoryButtons.Parent = SideBar
+    UIListLayout.Parent = CategoryButtons
+    
+    ContentFrame.Parent = MainFrame
+    ModelViewer.Parent = ContentFrame
+    
+    CameraControlFrame.Parent = ModelViewer
+    UICorner.Parent = CameraControlFrame
+    ZoomIn.Parent = CameraControlFrame
+    ZoomOut.Parent = CameraControlFrame
+    ResetCamera.Parent = CameraControlFrame
+    
+    InfoPanel.Parent = ContentFrame
+    InfoScroll.Parent = InfoPanel
+    InfoLayout.Parent = InfoScroll
+    
+    ObjectName.Parent = InfoScroll
+    InfoGrid.Parent = InfoScroll
+    GridLayout.Parent = InfoGrid
+    
+    MainFrame.Parent = ScreenGui
+    ScreenGui.Parent = PlayerGui
+    
+    -- Добавляем эффекты
+    local dropShadow = Instance.new("DropShadow")
+    dropShadow.Name = "DropShadow"
+    dropShadow.Size = 20
+    dropShadow.Transparency = 0.5
+    dropShadow.Parent = MainFrame
+    
+    local topBarShadow = Instance.new("DropShadow")
+    topBarShadow.Name = "TopBarShadow"
+    topBarShadow.Size = 10
+    topBarShadow.Transparency = 0.3
+    topBarShadow.Parent = TopBar
+    
+    print("Object Viewer GUI загружен!")
+end
+
+-- Функция для открытия GUI
+function ObjectViewer.open()
+    if not ScreenGui.Parent then
+        ScreenGui.Parent = PlayerGui
+    end
+    MainFrame.Visible = true
+end
+
+-- Функция для закрытия GUI
+function ObjectViewer.close()
+    MainFrame.Visible = false
+end
+
+-- Экспорт функций
+return ObjectViewer
