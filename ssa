@@ -1,3 +1,4 @@
+
 --[[
     Advanced Debug Tool v1.0 - Fixed Version
     Mobile-optimized interface with enhanced stealth features
@@ -33,12 +34,15 @@ local realconfigs = {
     transparentUI = 0.7
 }
 
-local configs = newproxy(true)
-local configsmetatable = getmetatable(configs)
-
-configsmetatable.__index = function(self,index)
-    return realconfigs[index]
-end
+-- Вместо newproxy, используем простую таблицу
+local configs = setmetatable({}, {
+    __index = function(self, index)
+        return realconfigs[index]
+    end,
+    __newindex = function(self, index, value)
+        realconfigs[index] = value
+    end
+})
 
 -- Обёртки для сервисов
 local oth = syn and syn.oth
@@ -64,50 +68,58 @@ local delay = task.delay
 local spawn = task.spawn
 local clear = table.clear
 local clone = table.clone
+local find = table.find
+local insert = table.insert
+local remove = table.remove
 
+-- Исправленные функции
 local function blankfunction(...)
     return ...
 end
 
-local get_thread_identity = (syn and syn.get_thread_identity) or getidentity or getthreadidentity
-local set_thread_identity = (syn and syn.set_thread_identity) or setidentity
-local islclosure = islclosure or is_l_closure
-local threadfuncs = (get_thread_identity and set_thread_identity and true) or false
+local get_thread_identity = (syn and syn.get_thread_identity) or getidentity or getthreadidentity or blankfunction
+local set_thread_identity = (syn and syn.set_thread_identity) or setidentity or blankfunction
+local islclosure = islclosure or function() return false end
 
 local getinfo = getinfo or blankfunction
 local getupvalues = getupvalues or debug.getupvalues or blankfunction
 local getconstants = getconstants or debug.getconstants or blankfunction
 
-local getcustomasset = getsynasset or getcustomasset
+local getcustomasset = getsynasset or getcustomasset or blankfunction
 local getcallingscript = getcallingscript or blankfunction
 local newcclosure = newcclosure or blankfunction
 local clonefunction = clonefunction or blankfunction
 local cloneref = cloneref or blankfunction
-local request = request or syn and syn.request
+local request = request or (syn and syn.request) or blankfunction
+
+-- Исправленные функции записи/чтения
 local makewritable = makewriteable or function(tbl)
-    setreadonly(tbl,false)
-end
-local makereadonly = makereadonly or function(tbl)
-    setreadonly(tbl,true)
-end
-local isreadonly = isreadonly or table.isfrozen
-
-local setclipboard = setclipboard or toclipboard or set_clipboard or (Clipboard and Clipboard.set) or function(...)
-    return ErrorPrompt("Attempted to set clipboard: "..(...),true)
-end
-
-local hookmetamethod = hookmetamethod or (makewriteable and makereadonly and getrawmetatable) and function(obj: object, metamethod: string, func: Function)
-    local old = getrawmetatable(obj)
-
-    if hookfunction then
-        return hookfunction(old[metamethod],func)
-    else
-        local oldmetamethod = old[metamethod]
-        makewriteable(old)
-        old[metamethod] = func
-        makereadonly(old)
-        return oldmetamethod
+    if setreadonly then
+        setreadonly(tbl, false)
     end
+end
+
+local makereadonly = makereadonly or function(tbl)
+    if setreadonly then
+        setreadonly(tbl, true)
+    end
+end
+
+local isreadonly = isreadonly or table.isfrozen or function() return false end
+
+local setclipboard = setclipboard or toclipboard or set_clipboard or (Clipboard and Clipboard.set) or function(text)
+    warn("Attempted to set clipboard: " .. tostring(text))
+end
+
+-- Исправленный hookmetamethod
+local hookmetamethod = hookmetamethod or function(obj, metamethod, func)
+    if hookfunction and getrawmetatable then
+        local old = getrawmetatable(obj)
+        if old and old[metamethod] then
+            return hookfunction(old[metamethod], func)
+        end
+    end
+    return nil
 end
 
 local function Create(instance, properties, children)
@@ -128,36 +140,32 @@ local function Create(instance, properties, children)
 end
 
 local function SafeGetService(service)
-    return cloneref(game:GetService(service))
-end
-
-local function Search(logtable,tbl)
-    table.insert(logtable,tbl)
-    
-    for i,v in tbl do
-        if type(v) == "table" then
-            return table.find(logtable,v) ~= nil or Search(v)
-        end
-    end
+    return game:GetService(service)
 end
 
 local function IsCyclicTable(tbl)
     local checkedtables = {}
-
-    local function SearchTable(tbl)
-        table.insert(checkedtables,tbl)
+    
+    local function SearchTable(current)
+        if find(checkedtables, current) then
+            return true
+        end
         
-        for i,v in next, tbl do
-            if type(v) == "table" then
-                return table.find(checkedtables,v) and true or SearchTable(v)
+        insert(checkedtables, current)
+        
+        for i, v in next, current do
+            if type(v) == "table" and SearchTable(v) then
+                return true
             end
         end
+        
+        return false
     end
-
+    
     return SearchTable(tbl)
 end
 
-local function deepclone(args: table, copies: table): table
+local function deepclone(args, copies)
     local copy = nil
     copies = copies or {}
 
@@ -172,7 +180,7 @@ local function deepclone(args: table, copies: table): table
             end
         end
     elseif typeof(args) == "Instance" then
-        copy = cloneref(args)
+        copy = args
     else
         copy = args
     end
@@ -180,24 +188,6 @@ local function deepclone(args: table, copies: table): table
 end
 
 local function rawtostring(userdata)
-    if type(userdata) == "table" or typeof(userdata) == "userdata" then
-        local rawmetatable = getrawmetatable(userdata)
-        local cachedstring = rawmetatable and rawget(rawmetatable, "__tostring")
-
-        if cachedstring then
-            local wasreadonly = isreadonly(rawmetatable)
-            if wasreadonly then
-                makewritable(rawmetatable)
-            end
-            rawset(rawmetatable, "__tostring", nil)
-            local safestring = tostring(userdata)
-            rawset(rawmetatable, "__tostring", cachedstring)
-            if wasreadonly then
-                makereadonly(rawmetatable)
-            end
-            return safestring
-        end
-    end
     return tostring(userdata)
 end
 
@@ -209,54 +199,111 @@ local TweenService = SafeGetService("TweenService")
 local ContentProvider = SafeGetService("ContentProvider")
 local TextService = SafeGetService("TextService")
 local http = SafeGetService("HttpService")
-local GuiInset = game:GetService("GuiService"):GetGuiInset() :: Vector2
+local GuiService = SafeGetService("GuiService")
+local GuiInset = GuiService:GetGuiInset()
 
-local function jsone(str) return http:JSONEncode(str) end
-local function jsond(str)
-    local suc,err = pcall(http.JSONDecode,http,str)
-    return suc and err or suc
+local function jsone(str) 
+    return http:JSONEncode(str) 
 end
 
-function ErrorPrompt(Message,state)
-    if getrenv then
-        local ErrorPrompt = getrenv().require(CoreGui:WaitForChild("RobloxGui"):WaitForChild("Modules"):WaitForChild("ErrorPrompt"))
-        local prompt = ErrorPrompt.new("Default",{HideErrorCode = true})
-        local ErrorStoarge = Create("ScreenGui",{Parent = CoreGui,ResetOnSpawn = false})
-        local thread = state and running()
-        prompt:setParent(ErrorStoarge)
-        prompt:setErrorTitle("System Error")
-        prompt:updateButtons({{
-            Text = "OK",
-            Callback = function()
-                prompt:_close()
-                ErrorStoarge:Destroy()
-                if thread then
-                    resume(thread)
+local function jsond(str)
+    local suc, err = pcall(function()
+        return http:JSONDecode(str)
+    end)
+    return suc and err or nil
+end
+
+-- Исправленная функция ErrorPrompt
+function ErrorPrompt(Message, state)
+    if getrenv and CoreGui then
+        local suc, result = pcall(function()
+            local RobloxGui = CoreGui:WaitForChild("RobloxGui", 1)
+            if RobloxGui then
+                local Modules = RobloxGui:WaitForChild("Modules", 1)
+                if Modules then
+                    local ErrorPromptModule = Modules:WaitForChild("ErrorPrompt", 1)
+                    if ErrorPromptModule then
+                        local ErrorPrompt = getrenv().require(ErrorPromptModule)
+                        local prompt = ErrorPrompt.new("Default",{HideErrorCode = true})
+                        local ErrorStorage = Create("ScreenGui",{Parent = CoreGui,ResetOnSpawn = false})
+                        local thread = state and running()
+                        prompt:setParent(ErrorStorage)
+                        prompt:setErrorTitle("System Error")
+                        prompt:updateButtons({{
+                            Text = "OK",
+                            Callback = function()
+                                prompt:_close()
+                                ErrorStorage:Destroy()
+                                if thread then
+                                    resume(thread)
+                                end
+                            end,
+                            Primary = true
+                        }}, 'Default')
+                        prompt:_open(Message)
+                        if thread then
+                            yield()
+                        end
+                        return true
+                    end
                 end
-            end,
-            Primary = true
-        }}, 'Default')
-        prompt:_open(Message)
-        if thread then
-            yield(thread)
+            end
+        end)
+        if not suc then
+            warn(Message)
         end
     else
         warn(Message)
     end
 end
 
--- Загружаем Highlight
+-- Загружаем Highlight с обработкой ошибок
 local Highlight
-pcall(function()
-    Highlight = loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/SimpleSpy/main/Highlight.lua"))()
+local highlightLoaded = pcall(function()
+    Highlight = loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/SimpleSpy/main/Highlight.lua", true))()
 end)
 
-if not Highlight then
-    ErrorPrompt("Failed to load Highlight module", true)
-    return
+if not Highlight and highlightLoaded then
+    warn("Failed to load Highlight module")
+    Highlight = {
+        new = function(parent)
+            return {
+                setRaw = function(self, text)
+                    local label = Create("TextLabel", {
+                        Parent = parent,
+                        BackgroundTransparency = 1,
+                        Size = UDim2.new(1, 0, 1, 0),
+                        Font = Enum.Font.Code,
+                        Text = tostring(text),
+                        TextColor3 = Color3.fromRGB(255, 255, 255),
+                        TextSize = 12,
+                        TextXAlignment = Enum.TextXAlignment.Left,
+                        TextYAlignment = Enum.TextYAlignment.Top,
+                        TextWrapped = true
+                    })
+                end,
+                getString = function(self)
+                    return ""
+                end
+            }
+        end
+    }
 end
 
-local LazyFix = loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/Roblox/main/Lua/Libraries/DataToCode/DataToCode.luau"))()
+-- Загружаем LazyFix с обработкой ошибок
+local LazyFix
+local lazyFixLoaded = pcall(function()
+    LazyFix = loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/Roblox/main/Lua/Libraries/DataToCode/DataToCode.luau", true))()
+end)
+
+if not LazyFix and lazyFixLoaded then
+    warn("Failed to load LazyFix module")
+    LazyFix = {
+        Convert = function(args, pretty)
+            return "-- Data conversion failed\nlocal args = {}"
+        end
+    }
+end
 
 -- Создаем основной интерфейс
 local DebugGUI = Create("ScreenGui",{
@@ -266,7 +313,7 @@ local DebugGUI = Create("ScreenGui",{
     DisplayOrder = 999
 })
 
-local Storage = Create("Folder",{Name = "DebugStorage"})
+local Storage = Create("Folder",{Parent = DebugGUI, Name = "DebugStorage"})
 
 -- Мобильная адаптация
 local isMobile = UserInputService.TouchEnabled
@@ -771,18 +818,28 @@ local running_threads = {}
 local originalnamecall
 
 -- Создаем удаленные объекты
-local remoteEvent = Instance.new("RemoteEvent",Storage)
+local remoteEvent = Instance.new("RemoteEvent")
 remoteEvent.Name = "SystemEvent_" .. math.random(1000, 9999)
+remoteEvent.Parent = Storage
+
 local unreliableRemoteEvent = Instance.new("UnreliableRemoteEvent")
 unreliableRemoteEvent.Name = "UnreliableEvent_" .. math.random(1000, 9999)
-local remoteFunction = Instance.new("RemoteFunction",Storage)
+
+local remoteFunction = Instance.new("RemoteFunction")
 remoteFunction.Name = "SystemFunction_" .. math.random(1000, 9999)
-local NamecallHandler = Instance.new("BindableEvent",Storage)
+remoteFunction.Parent = Storage
+
+local NamecallHandler = Instance.new("BindableEvent")
 NamecallHandler.Name = "NamecallHandler_" .. math.random(1000, 9999)
-local IndexHandler = Instance.new("BindableEvent",Storage)
+NamecallHandler.Parent = Storage
+
+local IndexHandler = Instance.new("BindableEvent")
 IndexHandler.Name = "IndexHandler_" .. math.random(1000, 9999)
-local GetDebugIdHandler = Instance.new("BindableFunction",Storage)
+IndexHandler.Parent = Storage
+
+local GetDebugIdHandler = Instance.new("BindableFunction")
 GetDebugIdHandler.Name = "DebugIdHandler_" .. math.random(1000, 9999)
+GetDebugIdHandler.Parent = Storage
 
 local originalEvent = remoteEvent.FireServer
 local originalUnreliableEvent = unreliableRemoteEvent.FireServer
@@ -794,87 +851,95 @@ function GetDebugIdHandler.OnInvoke(obj: Instance)
 end
 
 local function ThreadGetDebugId(obj: Instance): string 
-    return GetDebugIDInvoke(GetDebugIdHandler,obj)
+    return GetDebugIDInvoke(GetDebugIdHandler, obj)
 end
 
 local synv3 = false
 
 if syn and identifyexecutor then
-    local _, version = identifyexecutor()
-    if (version and version:sub(1, 2) == 'v3') then
+    local suc, version = pcall(identifyexecutor)
+    if suc and version and type(version) == "string" and version:sub(1, 2) == 'v3' then
         synv3 = true
     end
 end
 
 -- Сохранение настроек
-xpcall(function()
-    if isfile and readfile and isfolder and makefolder then
+pcall(function()
+    if isfile and readfile and isfolder and makefolder and writefile then
         local configPath = "SystemDebug//Settings.json"
-        local cachedconfigs = isfile(configPath) and jsond(readfile(configPath))
-
-        if cachedconfigs then
-            for i,v in next, realconfigs do
-                if cachedconfigs[i] == nil then
-                    cachedconfigs[i] = v
-                end
-            end
-            realconfigs = cachedconfigs
-        end
-
+        
         if not isfolder("SystemDebug") then
             makefolder("SystemDebug")
         end
         if not isfolder("SystemDebug//Assets") then
             makefolder("SystemDebug//Assets")
         end
+        
+        if isfile(configPath) then
+            local content = readfile(configPath)
+            local cachedconfigs = jsond(content)
+            
+            if cachedconfigs and type(cachedconfigs) == "table" then
+                for i, v in pairs(realconfigs) do
+                    if cachedconfigs[i] == nil then
+                        cachedconfigs[i] = v
+                    end
+                end
+                realconfigs = cachedconfigs
+            end
+        end
+        
         if not isfile(configPath) then
-            writefile(configPath,jsone(realconfigs))
+            writefile(configPath, jsone(realconfigs))
         end
-
-        configsmetatable.__newindex = function(self,index,newindex)
-            realconfigs[index] = newindex
-            writefile(configPath,jsone(realconfigs))
-        end
-    else
-        configsmetatable.__newindex = function(self,index,newindex)
-            realconfigs[index] = newindex
-        end
+        
+        configs = setmetatable({}, {
+            __index = function(self, index)
+                return realconfigs[index]
+            end,
+            __newindex = function(self, index, newindex)
+                realconfigs[index] = newindex
+                writefile(configPath, jsone(realconfigs))
+            end
+        })
     end
-end,function(err)
-    ErrorPrompt(("Configuration error: (%s)"):format(err))
 end)
 
 -- Логирование потоков
 local function logthread(thread: thread)
-    table.insert(running_threads,thread)
+    insert(running_threads, thread)
 end
 
 -- Очистка старых логов
 function clean()
-    local max = getgenv().SystemDebugMaxRemotes or 300
-    if not typeof(max) == "number" and math.floor(max) ~= max then
-        max = 300
+    local max = 300
+    if getgenv().SystemDebugMaxRemotes and type(getgenv().SystemDebugMaxRemotes) == "number" then
+        max = math.floor(getgenv().SystemDebugMaxRemotes)
     end
+    
     if #remoteLogs > max then
-        for i = 100, #remoteLogs do
+        for i = max + 1, #remoteLogs do
             local v = remoteLogs[i]
-            if typeof(v[1]) == "RBXScriptConnection" then
-                v[1]:Disconnect()
-            end
-            if typeof(v[2]) == "Instance" then
-                v[2]:Destroy()
+            if v and type(v) == "table" then
+                if v[1] and typeof(v[1]) == "RBXScriptConnection" then
+                    v[1]:Disconnect()
+                end
+                if v[2] and typeof(v[2]) == "Instance" then
+                    v[2]:Destroy()
+                end
             end
         end
+        
         local newLogs = {}
-        for i = 1, 100 do
-            table.insert(newLogs, remoteLogs[i])
+        for i = 1, math.min(max, #remoteLogs) do
+            newLogs[i] = remoteLogs[i]
         end
         remoteLogs = newLogs
     end
 end
 
 local function ThreadIsNotDead(thread: thread): boolean
-    return not status(thread) == "dead"
+    return status(thread) ~= "dead"
 end
 
 -- Адаптация интерфейса для мобильных устройств
@@ -896,30 +961,48 @@ local function adaptForMobile()
         Title.TextSize = 16
         StatusText.TextSize = 12
         CounterText.TextSize = 12
+        
+        -- Обновляем UI
+        MainContainer.Size = UDim2.new(0, 450 * baseSize, 0, 268 * baseSize)
+        LeftPanel.Size = UDim2.new(0, 150 * baseSize, 1, 0)
+        RightPanel.Size = UDim2.new(1, -150 * baseSize, 1, 0)
     end
 end
 
 -- Показать/скрыть подсказку
 function showToolTip(text, position)
-    ToolTipText.Text = text
-    local textSize = TextService:GetTextSize(text, ToolTipText.TextSize, ToolTipText.Font, Vector2.new(190, math.huge))
+    if not ToolTip or not ToolTipText then return end
+    
+    ToolTipText.Text = tostring(text)
+    local textSize = TextService:GetTextSize(
+        tostring(text), 
+        ToolTipText.TextSize, 
+        ToolTipText.Font, 
+        Vector2.new(190, math.huge)
+    )
     ToolTip.Size = UDim2.new(0, 200, 0, textSize.Y + 10)
     ToolTip.Position = position
     ToolTip.Visible = true
 end
 
 function hideToolTip()
-    ToolTip.Visible = false
+    if ToolTip then
+        ToolTip.Visible = false
+    end
 end
 
 -- Обновление статуса
 function updateStatus(text)
-    StatusText.Text = text
+    if StatusText then
+        StatusText.Text = tostring(text)
+    end
 end
 
 -- Обновление счетчика
 function updateCounter(count)
-    CounterText.Text = "Events: " .. tostring(count)
+    if CounterText then
+        CounterText.Text = "Events: " .. tostring(count)
+    end
 end
 
 -- Создание кнопки инструмента
@@ -969,21 +1052,29 @@ function createToolButton(name, desc, icon, onClick)
 
     ButtonBtn.MouseEnter:Connect(function()
         ToolButton.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-        ButtonIcon.ImageColor3 = Color3.fromRGB(220, 220, 230)
+        if ButtonIcon then
+            ButtonIcon.ImageColor3 = Color3.fromRGB(220, 220, 230)
+        end
     end)
 
     ButtonBtn.MouseLeave:Connect(function()
         ToolButton.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-        ButtonIcon.ImageColor3 = Color3.fromRGB(180, 180, 190)
+        if ButtonIcon then
+            ButtonIcon.ImageColor3 = Color3.fromRGB(180, 180, 190)
+        end
     end)
 
     ButtonBtn.MouseButton1Click:Connect(function()
-        logthread(running())
-        onClick()
+        if onClick then
+            pcall(onClick)
+        end
     end)
 
     ButtonBtn.MouseButton2Click:Connect(function()
-        showToolTip(desc, UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
+        if desc then
+            local mouse = UserInputService:GetMouseLocation()
+            showToolTip(desc, UDim2.new(0, mouse.X, 0, mouse.Y))
+        end
     end)
 
     ToolButton.Parent = ToolsPanel
@@ -1025,7 +1116,7 @@ function createLogEntry(log)
         Position = UDim2.new(0, 20, 0, 5),
         Size = UDim2.new(1, -25, 0, 16),
         Font = Enum.Font.SourceSans,
-        Text = log.name,
+        Text = log.name or "Unknown",
         TextColor3 = Color3.fromRGB(220, 220, 230),
         TextSize = fontSize,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1070,8 +1161,10 @@ function createLogEntry(log)
         end
         
         selected = log
-        selected.entry = LogEntry
-        LogEntry.BackgroundColor3 = selectedColor
+        if LogEntry then
+            LogEntry.BackgroundColor3 = selectedColor
+            selected.entry = LogEntry
+        end
         
         -- Показываем детали
         showLogDetails(log)
@@ -1084,9 +1177,11 @@ end
 
 -- Показать детали лога
 function showLogDetails(log)
+    if not log or not codebox then return end
+    
     -- Обновляем код
-    if codebox then
-        local script = genScript(log.remote, log.args)
+    if codebox.setRaw then
+        local script = genScript(log.remote, log.args or {})
         if log.blocked then
             script = "-- BLOCKED BY SYSTEM\n\n" .. script
         end
@@ -1099,48 +1194,52 @@ end
 
 -- Обновление вкладки информации
 function updateInfoTab(log)
-    local info = {
-        "Remote: " .. tostring(log.remote),
-        "Type: " .. (log.remote:IsA("RemoteEvent") and "Event" or "Function"),
-        "Caller: " .. (log.caller or "Unknown"),
-        "Time: " .. os.date("%H:%M:%S"),
-        "Args Count: " .. #log.args
-    }
+    if not InfoTab then return end
     
     -- Здесь будет обновление InfoTab
+    -- Временно просто меняем текст вкладки
+    if InfoTab:IsA("TextButton") then
+        InfoTab.Text = "INFO (" .. (log.name or "Unknown") .. ")"
+    end
 end
 
 -- Генерация скрипта
 function genScript(remote, args)
     prevTables = {}
     local gen = ""
-    if #args > 0 then
-        xpcall(function()
-            gen = "local args = "..LazyFix.Convert(args, true) .. "\n"
-        end,function(err)
-            gen = gen .. "-- Conversion error\n--"..err.."\nlocal args = {"
-            for i, v in next, args do
-                if type(i) ~= "Instance" and type(i) ~= "userdata" then
-                    gen = gen .. "\n    [" .. tostring(i) .. "] = "
-                elseif type(i) == "string" then
-                    gen = gen .. '\n    ["' .. i .. '"] = '
-                elseif type(i) == "userdata" then
-                    gen = gen .. "\n    [" .. tostring(i) .. "] = "
-                end
-                
-                if type(v) ~= "Instance" and type(v) ~= "userdata" then
-                    gen = gen .. tostring(v)
-                elseif type(v) == "string" then
-                    gen = gen .. '"' .. v .. '"'
-                elseif type(v) == "userdata" then
-                    gen = gen .. tostring(v)
-                end
-            end
-            gen = gen .. "\n}\n\n"
+    
+    if not remote then
+        return "-- Invalid remote"
+    end
+    
+    if args and #args > 0 then
+        local suc, result = pcall(function()
+            return "local args = " .. LazyFix.Convert(args, true) .. "\n"
         end)
         
-        if not remote:IsDescendantOf(game) and not getnilrequired then
-            gen = "function getNil(name,class) for _,v in next, getnilinstances()do if v.ClassName==class and v.Name==name then return v;end end end\n\n" .. gen
+        if suc then
+            gen = result
+        else
+            gen = "-- Conversion error\n--" .. tostring(result) .. "\nlocal args = {\n"
+            for i, v in pairs(args) do
+                if type(i) == "string" then
+                    gen = gen .. '    ["' .. tostring(i) .. '"] = '
+                else
+                    gen = gen .. "    [" .. tostring(i) .. "] = "
+                end
+                
+                if type(v) == "string" then
+                    gen = gen .. '"' .. v .. '"'
+                else
+                    gen = gen .. tostring(v)
+                end
+                gen = gen .. ",\n"
+            end
+            gen = gen .. "}\n\n"
+        end
+        
+        if not remote:IsDescendantOf(game) then
+            gen = "function getNil(name,class) for _,v in next, getnilinstances() do if v.ClassName==class and v.Name==name then return v;end end end\n\n" .. gen
         end
         
         if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
@@ -1155,25 +1254,37 @@ function genScript(remote, args)
             gen = "game:GetService('ReplicatedStorage'):FindFirstChild('" .. remote.Name .. "'):InvokeServer()"
         end
     end
+    
     prevTables = {}
     return gen
 end
 
+-- Функция schedule (добавлена)
+local function schedule(func, ...)
+    insert(scheduled, {func, ...})
+end
+
+-- Функция checkcaller (добавлена)
+local function checkcaller()
+    local calling = getcallingscript()
+    return calling and calling:IsDescendantOf(game)
+end
+
 -- Добавление нового удаленного события
 function newRemote(type, data)
-    if layoutOrderNum < 1 then layoutOrderNum = 999999999 end
+    if not data or not data.remote then return end
     
     local remote = data.remote
     local callingscript = data.callingscript
     
     local log = {
-        Name = remote.Name,
+        name = remote.Name,
         type = type,
         remote = remote,
-        args = data.args,
+        args = data.args or {},
         caller = callingscript and callingscript.Name or "Unknown",
         path = remote:GetFullName(),
-        blocked = data.blocked,
+        blocked = data.blocked or false,
         time = os.time()
     }
     
@@ -1181,14 +1292,16 @@ function newRemote(type, data)
     local entry = createLogEntry(log)
     log.entry = entry
     
-    logs[#logs + 1] = log
+    insert(logs, log)
     
     -- Обновляем счетчик
     updateCounter(#logs)
     
     -- Прокручиваем к новому элементу
     delay(0.1, function()
-        LeftPanel.CanvasPosition = Vector2.new(0, LogsList.AbsoluteSize.Y)
+        if LeftPanel and LogsList then
+            LeftPanel.CanvasPosition = Vector2.new(0, LogsList.AbsoluteSize.Y)
+        end
     end)
     
     -- Очистка старых логов
@@ -1197,6 +1310,8 @@ end
 
 -- Обработчик удаленных событий
 function remoteHandler(data)
+    if not data or not data.remote then return end
+    
     if configs.autoblock then
         local id = data.id
 
@@ -1219,41 +1334,43 @@ function remoteHandler(data)
         history[id].lastCall = tick()
     end
 
-    if (data.remote:IsA("RemoteEvent") or data.remote:IsA("UnreliableRemoteEvent")) and lower(data.method) == "fireserver" then
+    if (data.remote:IsA("RemoteEvent") or data.remote:IsA("UnreliableRemoteEvent")) and lower(data.method or "") == "fireserver" then
         newRemote("event", data)
-    elseif data.remote:IsA("RemoteFunction") and lower(data.method) == "invokeserver" then
+    elseif data.remote:IsA("RemoteFunction") and lower(data.method or "") == "invokeserver" then
         newRemote("function", data)
     end
 end
 
 -- Хуки для перехвата
-local newindex = function(method,originalfunction,...)
-    if typeof(...) == 'Instance' then
-        local remote = cloneref(...)
+local newindex = function(method, originalfunction, ...)
+    local args = {...}
+    if #args > 0 and typeof(args[1]) == 'Instance' then
+        local remote = args[1]
 
         if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") or remote:IsA("UnreliableRemoteEvent") then
-            if not configs.logcheckcaller and checkcaller() then return originalfunction(...) end
-            local id = ThreadGetDebugId(remote)
+            if not configs.logcheckcaller and checkcaller() then 
+                return originalfunction(...) 
+            end
+            local id = tostring(remote)
             local blockcheck = false
-            local args = {select(2,...)}
+            local callArgs = {select(2, ...)}
 
-            if not IsCyclicTable(args) then
+            if not IsCyclicTable(callArgs) then
                 local data = {
                     method = method,
                     remote = remote,
-                    args = deepclone(args),
+                    args = deepclone(callArgs),
                     callingscript = nil,
                     blockcheck = blockcheck,
                     id = id
                 }
-                args = nil
 
                 if configs.funcEnabled then
                     local calling = getcallingscript()
-                    data.callingscript = calling and cloneref(calling) or nil
+                    data.callingscript = calling
                 end
 
-                schedule(remoteHandler,data)
+                schedule(remoteHandler, data)
             end
             if blockcheck then return end
         end
@@ -1265,32 +1382,34 @@ local newnamecall = newcclosure(function(...)
     local method = getnamecallmethod()
 
     if method and (method == "FireServer" or method == "fireServer" or method == "InvokeServer" or method == "invokeServer") then
-        if typeof(...) == 'Instance' then
-            local remote = cloneref(...)
+        local args = {...}
+        if #args > 0 and typeof(args[1]) == 'Instance' then
+            local remote = args[1]
 
-            if IsA(remote,"RemoteEvent") or IsA(remote,"RemoteFunction") or IsA(remote,"UnreliableRemoteEvent") then    
-                if not configs.logcheckcaller and checkcaller() then return originalnamecall(...) end
-                local id = ThreadGetDebugId(remote)
+            if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") or remote:IsA("UnreliableRemoteEvent") then    
+                if not configs.logcheckcaller and checkcaller() then 
+                    return originalnamecall(...) 
+                end
+                local id = tostring(remote)
                 local blockcheck = false
-                local args = {select(2,...)}
+                local callArgs = {select(2, ...)}
 
-                if not IsCyclicTable(args) then
+                if not IsCyclicTable(callArgs) then
                     local data = {
                         method = method,
                         remote = remote,
-                        args = deepclone(args),
+                        args = deepclone(callArgs),
                         callingscript = nil,
                         blockcheck = blockcheck,
                         id = id
                     }
-                    args = nil
 
                     if configs.funcEnabled then
                         local calling = getcallingscript()
-                        data.callingscript = calling and cloneref(calling) or nil
+                        data.callingscript = calling
                     end
 
-                    schedule(remoteHandler,data)
+                    schedule(remoteHandler, data)
                 end
                 if blockcheck then return end
             end
@@ -1300,47 +1419,41 @@ local newnamecall = newcclosure(function(...)
 end)
 
 local newFireServer = newcclosure(function(...)
-    return newindex("FireServer",originalEvent,...)
+    return newindex("FireServer", originalEvent, ...)
 end)
 
 local newUnreliableFireServer = newcclosure(function(...)
-    return newindex("FireServer",originalUnreliableEvent,...)
+    return newindex("FireServer", originalUnreliableEvent, ...)
 end)
 
 local newInvokeServer = newcclosure(function(...)
-    return newindex("InvokeServer",originalFunction,...)
+    return newindex("InvokeServer", originalFunction, ...)
 end)
 
 -- Управление хуками
 local function disablehooks()
-    if synv3 then
-        if unhook and originalnamecall then
-            unhook(getrawmetatable(game).__namecall,originalnamecall)
+    if synv3 and unhook then
+        if originalnamecall then
+            pcall(unhook, getrawmetatable(game).__namecall, originalnamecall)
         end
-        if unhook and originalEvent then
-            unhook(Instance.new("RemoteEvent").FireServer, originalEvent)
+        if originalEvent then
+            pcall(unhook, Instance.new("RemoteEvent").FireServer, originalEvent)
         end
-        if unhook and originalFunction then
-            unhook(Instance.new("RemoteFunction").InvokeServer, originalFunction)
+        if originalFunction then
+            pcall(unhook, Instance.new("RemoteFunction").InvokeServer, originalFunction)
         end
-        if unhook and originalUnreliableEvent then
-            unhook(Instance.new("UnreliableRemoteEvent").FireServer, originalUnreliableEvent)
+        if originalUnreliableEvent then
+            pcall(unhook, Instance.new("UnreliableRemoteEvent").FireServer, originalUnreliableEvent)
         end
     else
-        if hookmetamethod and originalnamecall then
-            hookmetamethod(game,"__namecall",originalnamecall)
-        elseif hookfunction and getrawmetatable(game).__namecall then
-            hookfunction(getrawmetatable(game).__namecall,originalnamecall)
-        end
-        
         if hookfunction and originalEvent then
-            hookfunction(Instance.new("RemoteEvent").FireServer, originalEvent)
+            pcall(hookfunction, Instance.new("RemoteEvent").FireServer, originalEvent)
         end
         if hookfunction and originalFunction then
-            hookfunction(Instance.new("RemoteFunction").InvokeServer, originalFunction)
+            pcall(hookfunction, Instance.new("RemoteFunction").InvokeServer, originalFunction)
         end
         if hookfunction and originalUnreliableEvent then
-            hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, originalUnreliableEvent)
+            pcall(hookfunction, Instance.new("UnreliableRemoteEvent").FireServer, originalUnreliableEvent)
         end
     end
 end
@@ -1348,36 +1461,49 @@ end
 function toggleSpy()
     if not toggle then
         local oldnamecall
-        if synv3 then
-            oldnamecall = hook(getrawmetatable(game).__namecall,clonefunction(newnamecall))
-            originalEvent = hook(Instance.new("RemoteEvent").FireServer, clonefunction(newFireServer))
-            originalFunction = hook(Instance.new("RemoteFunction").InvokeServer, clonefunction(newInvokeServer))
-            originalUnreliableEvent = hook(Instance.new("UnreliableRemoteEvent").FireServer, clonefunction(newUnreliableFireServer))
+        
+        if synv3 and hook then
+            pcall(function()
+                oldnamecall = hook(getrawmetatable(game).__namecall, clonefunction(newnamecall))
+                originalEvent = hook(Instance.new("RemoteEvent").FireServer, clonefunction(newFireServer))
+                originalFunction = hook(Instance.new("RemoteFunction").InvokeServer, clonefunction(newInvokeServer))
+                originalUnreliableEvent = hook(Instance.new("UnreliableRemoteEvent").FireServer, clonefunction(newUnreliableFireServer))
+            end)
         else
             if hookmetamethod then
                 oldnamecall = hookmetamethod(game, "__namecall", clonefunction(newnamecall))
             elseif hookfunction then
-                oldnamecall = hookfunction(getrawmetatable(game).__namecall,clonefunction(newnamecall))
+                oldnamecall = hookfunction(getrawmetatable(game).__namecall, clonefunction(newnamecall))
             end
             
             if hookfunction then
-                originalEvent = hookfunction(Instance.new("RemoteEvent").FireServer, clonefunction(newFireServer))
-                originalFunction = hookfunction(Instance.new("RemoteFunction").InvokeServer, clonefunction(newInvokeServer))
-                originalUnreliableEvent = hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, clonefunction(newUnreliableFireServer))
+                pcall(function()
+                    originalEvent = hookfunction(Instance.new("RemoteEvent").FireServer, clonefunction(newFireServer))
+                    originalFunction = hookfunction(Instance.new("RemoteFunction").InvokeServer, clonefunction(newInvokeServer))
+                    originalUnreliableEvent = hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, clonefunction(newUnreliableFireServer))
+                end)
             end
         end
         
         if oldnamecall then
-            originalnamecall = originalnamecall or oldnamecall
+            originalnamecall = oldnamecall
         end
         
-        TweenService:Create(ToggleCircle, TweenInfo.new(0.3), {Position = UDim2.new(1, -18, 0.5, -8)}):Play()
-        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(70, 180, 80)}):Play()
+        if ToggleCircle then
+            TweenService:Create(ToggleCircle, TweenInfo.new(0.3), {Position = UDim2.new(1, -18, 0.5, -8)}):Play()
+        end
+        if ToggleButton then
+            TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(70, 180, 80)}):Play()
+        end
         updateStatus("Monitoring enabled")
     else
         disablehooks()
-        TweenService:Create(ToggleCircle, TweenInfo.new(0.3), {Position = UDim2.new(0, 2, 0.5, -8)}):Play()
-        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(100, 100, 110)}):Play()
+        if ToggleCircle then
+            TweenService:Create(ToggleCircle, TweenInfo.new(0.3), {Position = UDim2.new(0, 2, 0.5, -8)}):Play()
+        end
+        if ToggleButton then
+            TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(100, 100, 110)}):Play()
+        end
         updateStatus("Monitoring disabled")
     end
 end
@@ -1396,7 +1522,9 @@ function toggleMinimize()
         -- Разворачиваем
         TweenService:Create(MainContainer, TweenInfo.new(0.3), {Size = UDim2.new(0, 450 * baseSize, 0, 268 * baseSize)}):Play()
         closed = false
-        MiniButton.Visible = false
+        if MiniButton then
+            MiniButton.Visible = false
+        end
         updateStatus("Interface expanded")
     else
         -- Сворачиваем
@@ -1406,7 +1534,9 @@ function toggleMinimize()
         
         -- Показываем маленькую кнопку
         delay(0.3, function()
-            MiniButton.Visible = true
+            if MiniButton then
+                MiniButton.Visible = true
+            end
         end)
     end
     
@@ -1433,7 +1563,7 @@ end
 
 -- Максимизация кодовой панели
 function maximizeCodePanel()
-    if maximized then return end
+    if maximized or not CodeContainer then return end
     maximized = true
     
     local originalSize = CodeContainer.Size
@@ -1482,16 +1612,18 @@ local dragging = false
 local dragStart = Vector2.new(0,0)
 local startPosition = Vector2.new(0,0)
 
-TopBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = Vector2.new(input.Position.X, input.Position.Y)
-        startPosition = Vector2.new(MainContainer.Position.X.Offset, MainContainer.Position.Y.Offset)
-        
-        -- Поднимаем окно наверх при перетаскивании
-        MainContainer.ZIndex = 100
-    end
-end)
+if TopBar then
+    TopBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = Vector2.new(input.Position.X, input.Position.Y)
+            startPosition = Vector2.new(MainContainer.Position.X.Offset, MainContainer.Position.Y.Offset)
+            
+            -- Поднимаем окно наверх при перетаскивании
+            MainContainer.ZIndex = 100
+        end
+    end)
+end
 
 UserInputService.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
@@ -1501,15 +1633,14 @@ UserInputService.InputChanged:Connect(function(input)
         
         -- Ограничиваем движение в пределах экрана
         local viewportSize = workspace.CurrentCamera.ViewportSize
-        local guiInset = GuiInset
         
         if newX < 0 then newX = 0 end
         if newY < 0 then newY = 0 end
         if newX + MainContainer.AbsoluteSize.X > viewportSize.X then 
             newX = viewportSize.X - MainContainer.AbsoluteSize.X 
         end
-        if newY + MainContainer.AbsoluteSize.Y > viewportSize.Y - guiInset.Y then 
-            newY = viewportSize.Y - MainContainer.AbsoluteSize.Y - guiInset.Y
+        if newY + MainContainer.AbsoluteSize.Y > viewportSize.Y - GuiInset.Y then 
+            newY = viewportSize.Y - MainContainer.AbsoluteSize.Y - GuiInset.Y
         end
         
         MainContainer.Position = UDim2.new(0, newX, 0, newY)
@@ -1530,8 +1661,12 @@ local function recordActivity()
     lastActivity = tick()
 end
 
-MainContainer.InputBegan:Connect(recordActivity)
-TopBar.InputBegan:Connect(recordActivity)
+if MainContainer then
+    MainContainer.InputBegan:Connect(recordActivity)
+end
+if TopBar then
+    TopBar.InputBegan:Connect(recordActivity)
+end
 
 if configs.autoHide then
     spawn(function()
@@ -1551,13 +1686,13 @@ local function taskscheduler()
         return
     end
     if #scheduled > 100 then
-        table.remove(scheduled, #scheduled)
+        remove(scheduled, #scheduled)
     end
     if #scheduled > 0 then
         local currentf = scheduled[1]
-        table.remove(scheduled, 1)
+        remove(scheduled, 1)
         if type(currentf) == "table" and type(currentf[1]) == "function" then
-            pcall(unpack(currentf))
+            pcall(currentf[1], unpack(currentf, 2))
         end
     end
 end
@@ -1572,9 +1707,9 @@ local function shutdown()
             connection:Disconnect()
         end
     end
-    for i,v in next, running_threads do
+    for i, v in pairs(running_threads) do
         if ThreadIsNotDead(v) then
-            close(v)
+            pcall(close, v)
         end
     end
     clear(running_threads)
@@ -1582,8 +1717,14 @@ local function shutdown()
     clear(logs)
     clear(remoteLogs)
     disablehooks()
-    DebugGUI:Destroy()
-    Storage:Destroy()
+    
+    if DebugGUI then
+        DebugGUI:Destroy()
+    end
+    if Storage then
+        Storage:Destroy()
+    end
+    
     UserInputService.MouseIconEnabled = true
     getgenv().AdvancedDebugExecuted = false
 end
@@ -1595,63 +1736,96 @@ else
     -- Fallback если Highlight не загрузился
     codebox = {
         setRaw = function(self, text)
-            local label = Create("TextLabel", {
-                Parent = CodeBox,
-                BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 1, 0),
-                Font = Enum.Font.Code,
-                Text = text,
-                TextColor3 = Color3.fromRGB(255, 255, 255),
-                TextSize = 12,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                TextYAlignment = Enum.TextYAlignment.Top,
-                TextWrapped = true
-            })
+            if CodeBox then
+                for _, child in ipairs(CodeBox:GetChildren()) do
+                    child:Destroy()
+                end
+                
+                local label = Create("TextLabel", {
+                    Parent = CodeBox,
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 1, 0),
+                    Font = Enum.Font.Code,
+                    Text = tostring(text),
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    TextSize = 12,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    TextYAlignment = Enum.TextYAlignment.Top,
+                    TextWrapped = true
+                })
+            end
         end,
         getString = function(self)
+            if CodeBox then
+                local label = CodeBox:FindFirstChildWhichIsA("TextLabel")
+                return label and label.Text or ""
+            end
             return ""
         end
     }
 end
 
 -- Настройка обработчиков событий
-MinimizeBtn.MouseButton1Click:Connect(toggleMinimize)
-MaximizeBtn.MouseButton1Click:Connect(toggleSidePanel)
-CloseBtn.MouseButton1Click:Connect(shutdown)
-ToggleButton.MouseButton1Click:Connect(toggleSpyMethod)
-MiniButton.MouseButton1Click:Connect(toggleMinimize)
+if MinimizeBtn then
+    MinimizeBtn.MouseButton1Click:Connect(toggleMinimize)
+end
 
-ScriptTab.MouseButton1Click:Connect(function()
-    ScriptTab.BackgroundColor3 = Color3.fromRGB(50, 120, 220)
-    InfoTab.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-end)
+if MaximizeBtn then
+    MaximizeBtn.MouseButton1Click:Connect(toggleSidePanel)
+end
 
-InfoTab.MouseButton1Click:Connect(function()
-    InfoTab.BackgroundColor3 = Color3.fromRGB(50, 120, 220)
-    ScriptTab.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-end)
+if CloseBtn then
+    CloseBtn.MouseButton1Click:Connect(shutdown)
+end
+
+if ToggleButton then
+    ToggleButton.MouseButton1Click:Connect(toggleSpyMethod)
+end
+
+if MiniButton then
+    MiniButton.MouseButton1Click:Connect(toggleMinimize)
+end
+
+if ScriptTab then
+    ScriptTab.MouseButton1Click:Connect(function()
+        ScriptTab.BackgroundColor3 = Color3.fromRGB(50, 120, 220)
+        if InfoTab then
+            InfoTab.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+        end
+    end)
+end
+
+if InfoTab then
+    InfoTab.MouseButton1Click:Connect(function()
+        InfoTab.BackgroundColor3 = Color3.fromRGB(50, 120, 220)
+        if ScriptTab then
+            ScriptTab.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+        end
+    end)
+end
 
 -- Создание инструментов
 createToolButton("Copy", "Copy script to clipboard", "rbxassetid://7072725342", function()
     if codebox and codebox.getString then
-        setclipboard(codebox:getString())
+        local text = codebox:getString()
+        setclipboard(text)
         updateStatus("Script copied to clipboard")
     end
 end)
 
 createToolButton("Execute", "Execute script", "rbxassetid://7072725567", function()
-    if selected and selected.remote then
+    if selected and selected.remote and selected.args then
         updateStatus("Executing...")
-        xpcall(function()
+        pcall(function()
             if selected.remote:IsA("RemoteEvent") or selected.remote:IsA("UnreliableRemoteEvent") then
                 selected.remote:FireServer(unpack(selected.args))
             elseif selected.remote:IsA("RemoteFunction") then
                 selected.remote:InvokeServer(unpack(selected.args))
             end
             updateStatus("Execution successful")
-        end, function(err)
-            updateStatus("Execution error: " .. tostring(err))
         end)
+    else
+        updateStatus("No remote selected or invalid data")
     end
 end)
 
@@ -1660,9 +1834,11 @@ createToolButton("Clear", "Clear all logs", "rbxassetid://7072725207", function(
     selected = nil
     
     -- Очищаем визуальные элементы
-    for _, child in ipairs(LogsList:GetChildren()) do
-        if child:IsA("Frame") and child.Name == "LogEntry" then
-            child:Destroy()
+    if LogsList then
+        for _, child in ipairs(LogsList:GetChildren()) do
+            if child:IsA("Frame") and child.Name == "LogEntry" then
+                child:Destroy()
+            end
         end
     end
     
@@ -1676,9 +1852,11 @@ createToolButton("Clear", "Clear all logs", "rbxassetid://7072725207", function(
 end)
 
 createToolButton("Block", "Block this remote", "rbxassetid://7072923071", function()
-    if selected then
+    if selected and selected.remote then
         blocklist[selected.remote] = true
         updateStatus("Remote blocked")
+    else
+        updateStatus("No remote selected")
     end
 end)
 
@@ -1701,7 +1879,14 @@ schedulerconnect = RunService.Heartbeat:Connect(taskscheduler)
 
 -- Показ интерфейса
 local success, err = pcall(function()
-    DebugGUI.Parent = (gethui and gethui()) or (syn and syn.protect_gui and syn.protect_gui(DebugGUI)) or CoreGui
+    if gethui then
+        DebugGUI.Parent = gethui()
+    elseif syn and syn.protect_gui then
+        syn.protect_gui(DebugGUI)
+        DebugGUI.Parent = CoreGui
+    else
+        DebugGUI.Parent = CoreGui
+    end
 end)
 
 if not success then
@@ -1752,32 +1937,45 @@ end)
 -- Функция для показа подсказки при наведении
 local function setupTooltips()
     -- Подсказки для кнопок управления
-    MinimizeBtn.MouseEnter:Connect(function()
-        showToolTip("Minimize window", UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
-    end)
+    if MinimizeBtn then
+        MinimizeBtn.MouseEnter:Connect(function()
+            local mouse = UserInputService:GetMouseLocation()
+            showToolTip("Minimize window", UDim2.new(0, mouse.X, 0, mouse.Y))
+        end)
+        MinimizeBtn.MouseLeave:Connect(hideToolTip)
+    end
     
-    MaximizeBtn.MouseEnter:Connect(function()
-        showToolTip("Toggle side panel", UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
-    end)
+    if MaximizeBtn then
+        MaximizeBtn.MouseEnter:Connect(function()
+            local mouse = UserInputService:GetMouseLocation()
+            showToolTip("Toggle side panel", UDim2.new(0, mouse.X, 0, mouse.Y))
+        end)
+        MaximizeBtn.MouseLeave:Connect(hideToolTip)
+    end
     
-    CloseBtn.MouseEnter:Connect(function()
-        showToolTip("Close debug tool", UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
-    end)
+    if CloseBtn then
+        CloseBtn.MouseEnter:Connect(function()
+            local mouse = UserInputService:GetMouseLocation()
+            showToolTip("Close debug tool", UDim2.new(0, mouse.X, 0, mouse.Y))
+        end)
+        CloseBtn.MouseLeave:Connect(hideToolTip)
+    end
     
-    ToggleButton.MouseEnter:Connect(function()
-        showToolTip("Toggle remote monitoring", UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
-    end)
+    if ToggleButton then
+        ToggleButton.MouseEnter:Connect(function()
+            local mouse = UserInputService:GetMouseLocation()
+            showToolTip("Toggle remote monitoring", UDim2.new(0, mouse.X, 0, mouse.Y))
+        end)
+        ToggleButton.MouseLeave:Connect(hideToolTip)
+    end
     
-    MiniButton.MouseEnter:Connect(function()
-        showToolTip("Show debug window", UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
-    end)
-    
-    -- Скрываем подсказку при уходе мыши
-    MinimizeBtn.MouseLeave:Connect(hideToolTip)
-    MaximizeBtn.MouseLeave:Connect(hideToolTip)
-    CloseBtn.MouseLeave:Connect(hideToolTip)
-    ToggleButton.MouseLeave:Connect(hideToolTip)
-    MiniButton.MouseLeave:Connect(hideToolTip)
+    if MiniButton then
+        MiniButton.MouseEnter:Connect(function()
+            local mouse = UserInputService:GetMouseLocation()
+            showToolTip("Show debug window", UDim2.new(0, mouse.X, 0, mouse.Y))
+        end)
+        MiniButton.MouseLeave:Connect(hideToolTip)
+    end
 end
 
 setupTooltips()
@@ -1787,9 +1985,11 @@ print("[System] Advanced Debug Tool initialized successfully - " .. randomName)
 -- Экспортируем API для внешнего использования
 local AdvancedDebugAPI = {
     Show = function()
-        DebugGUI.Enabled = true
-        toggleMinimize()
-        updateStatus("Interface shown")
+        if DebugGUI then
+            DebugGUI.Enabled = true
+            toggleMinimize()
+            updateStatus("Interface shown")
+        end
     end,
     
     Hide = function()
@@ -1802,9 +2002,11 @@ local AdvancedDebugAPI = {
     ClearLogs = function()
         clear(logs)
         selected = nil
-        for _, child in ipairs(LogsList:GetChildren()) do
-            if child:IsA("Frame") and child.Name == "LogEntry" then
-                child:Destroy()
+        if LogsList then
+            for _, child in ipairs(LogsList:GetChildren()) do
+                if child:IsA("Frame") and child.Name == "LogEntry" then
+                    child:Destroy()
+                end
             end
         end
         if codebox and codebox.setRaw then
