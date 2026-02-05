@@ -1,0 +1,1148 @@
+--[[
+    Advanced Debug Tool v1.0 - Fixed Working Version
+    Mobile-optimized interface with enhanced stealth features
+]]
+
+-- Очистка предыдущей версии
+if getgenv().AdvancedDebugExecuted and type(getgenv().AdvancedDebugShutdown) == "function" then
+    pcall(getgenv().AdvancedDebugShutdown)
+end
+
+-- Случайные имена для маскировки
+local randomNames = {
+    "SystemAnalytics",
+    "PerformanceMonitor", 
+    "DebugOverlay",
+    "EventTracker",
+    "NetworkMonitor",
+    "ScriptProfiler",
+    "DataLogger"
+}
+
+local randomName = randomNames[math.random(1, #randomNames)]
+
+-- Конфигурация с рандомизацией
+local realconfigs = {
+    logcheckcaller = false,
+    autoblock = false,
+    funcEnabled = true,
+    advancedinfo = false,
+    stealthMode = true,
+    mobileOptimized = true,
+    autoHide = true,
+    hideDelay = 20,
+    transparentUI = 0.7
+}
+
+-- Простая таблица для конфигурации
+local configs = {
+    __index = function(_, key)
+        return realconfigs[key]
+    end,
+    __newindex = function(_, key, value)
+        realconfigs[key] = value
+    end
+}
+setmetatable(configs, configs)
+
+-- Основные функции
+local lower = string.lower
+local find = table.find
+local insert = table.insert
+local remove = table.remove
+local clear = table.clear
+local clone = table.clone
+
+-- Вспомогательные функции
+local function blankfunction(...)
+    return ...
+end
+
+-- Загрузка сервисов
+local function SafeGetService(service)
+    return game:GetService(service)
+end
+
+local CoreGui = SafeGetService("CoreGui")
+local RunService = SafeGetService("RunService")
+local UserInputService = SafeGetService("UserInputService")
+local TweenService = SafeGetService("TweenService")
+local TextService = SafeGetService("TextService")
+local HttpService = SafeGetService("HttpService")
+local GuiService = SafeGetService("GuiService")
+
+-- Функция создания объектов
+local function Create(instance, properties, children)
+    local obj = Instance.new(instance)
+    
+    if properties then
+        for i, v in pairs(properties) do
+            if pcall(function() return obj[i] end) then
+                pcall(function() obj[i] = v end)
+            end
+        end
+    end
+    
+    if children then
+        for _, child in ipairs(children) do
+            if child then
+                child.Parent = obj
+            end
+        end
+    end
+    
+    return obj
+end
+
+-- Создание основного GUI
+local DebugGUI = Create("ScreenGui", {
+    Name = randomName,
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    DisplayOrder = 999
+})
+
+local Storage = Create("Folder", {
+    Parent = DebugGUI,
+    Name = "DebugStorage"
+})
+
+-- Мобильная адаптация
+local isMobile = UserInputService.TouchEnabled
+local baseSize = isMobile and 0.9 or 1
+local fontSize = isMobile and 12 or 14
+
+-- Основной контейнер
+local MainContainer = Create("Frame", {
+    Parent = DebugGUI,
+    Name = "MainContainer",
+    BackgroundColor3 = Color3.fromRGB(30, 30, 35),
+    BackgroundTransparency = realconfigs.transparentUI,
+    BorderColor3 = Color3.fromRGB(60, 60, 70),
+    BorderSizePixel = 1,
+    Position = UDim2.new(0.5, -225, 0.5, -150),
+    Size = UDim2.new(0, 450, 0, 300),
+    ClipsDescendants = true
+})
+
+Create("UICorner", {
+    Parent = MainContainer,
+    CornerRadius = UDim.new(0, 6)
+})
+
+-- Верхняя панель
+local TopBar = Create("Frame", {
+    Parent = MainContainer,
+    Name = "TopBar",
+    BackgroundColor3 = Color3.fromRGB(40, 40, 45),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 30)
+})
+
+Create("UICorner", {
+    Parent = TopBar,
+    CornerRadius = UDim.new(0, 6)
+})
+
+-- Заголовок
+local Title = Create("TextLabel", {
+    Parent = TopBar,
+    Name = "Title",
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 0),
+    Size = UDim2.new(0, 150, 1, 0),
+    Font = Enum.Font.SourceSansSemibold,
+    Text = randomName,
+    TextColor3 = Color3.fromRGB(220, 220, 220),
+    TextSize = fontSize + 2,
+    TextXAlignment = Enum.TextXAlignment.Left
+})
+
+-- Кнопки управления
+local ControlButtons = Create("Frame", {
+    Parent = TopBar,
+    Name = "ControlButtons",
+    BackgroundTransparency = 1,
+    Position = UDim2.new(1, -80, 0, 0),
+    Size = UDim2.new(0, 80, 1, 0)
+})
+
+local MinimizeBtn = Create("ImageButton", {
+    Parent = ControlButtons,
+    Name = "MinimizeBtn",
+    BackgroundColor3 = Color3.fromRGB(50, 50, 60),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 0, 0.5, -10),
+    Size = UDim2.new(0, 20, 0, 20),
+    Image = "rbxassetid://7072725342",
+    ImageColor3 = Color3.fromRGB(180, 180, 190)
+})
+
+Create("UICorner", {
+    Parent = MinimizeBtn,
+    CornerRadius = UDim.new(0, 4)
+})
+
+local CloseBtn = Create("ImageButton", {
+    Parent = ControlButtons,
+    Name = "CloseBtn",
+    BackgroundColor3 = Color3.fromRGB(200, 60, 60),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 50, 0.5, -10),
+    Size = UDim2.new(0, 20, 0, 20),
+    Image = "rbxassetid://7072725207",
+    ImageColor3 = Color3.fromRGB(255, 255, 255)
+})
+
+Create("UICorner", {
+    Parent = CloseBtn,
+    CornerRadius = UDim.new(0, 4)
+})
+
+-- Тоггл мониторинга
+local MonitorToggle = Create("Frame", {
+    Parent = TopBar,
+    Name = "MonitorToggle",
+    BackgroundColor3 = Color3.fromRGB(40, 40, 45),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 170, 0, 5),
+    Size = UDim2.new(0, 120, 0, 20)
+})
+
+Create("UICorner", {
+    Parent = MonitorToggle,
+    CornerRadius = UDim.new(0, 4)
+})
+
+Create("TextLabel", {
+    Parent = MonitorToggle,
+    Name = "ToggleLabel",
+    BackgroundTransparency = 1,
+    Size = UDim2.new(0, 70, 1, 0),
+    Font = Enum.Font.SourceSansSemibold,
+    Text = "MONITOR",
+    TextColor3 = Color3.fromRGB(180, 180, 190),
+    TextSize = fontSize - 2,
+    TextXAlignment = Enum.TextXAlignment.Left
+})
+
+local ToggleButton = Create("Frame", {
+    Parent = MonitorToggle,
+    Name = "ToggleButton",
+    BackgroundColor3 = Color3.fromRGB(70, 180, 80),
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -35, 0.5, -7),
+    Size = UDim2.new(0, 30, 0, 14)
+})
+
+Create("UICorner", {
+    Parent = ToggleButton,
+    CornerRadius = UDim.new(1, 0)
+})
+
+local ToggleCircle = Create("Frame", {
+    Parent = ToggleButton,
+    Name = "ToggleCircle",
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -14, 0.5, -6),
+    Size = UDim2.new(0, 12, 0, 12)
+})
+
+Create("UICorner", {
+    Parent = ToggleCircle,
+    CornerRadius = UDim.new(1, 0)
+})
+
+-- Область контента
+local ContentArea = Create("Frame", {
+    Parent = MainContainer,
+    Name = "ContentArea",
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 0, 0, 30),
+    Size = UDim2.new(1, 0, 1, -30)
+})
+
+-- Панель логов
+local LogsPanel = Create("ScrollingFrame", {
+    Parent = ContentArea,
+    Name = "LogsPanel",
+    Active = true,
+    BackgroundColor3 = Color3.fromRGB(25, 25, 30),
+    BorderSizePixel = 0,
+    Size = UDim2.new(0.3, 0, 1, 0),
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Color3.fromRGB(80, 80, 90)
+})
+
+Create("UICorner", {
+    Parent = LogsPanel,
+    CornerRadius = UDim.new(0, 4)
+})
+
+Create("TextLabel", {
+    Parent = LogsPanel,
+    Name = "LogsTitle",
+    BackgroundColor3 = Color3.fromRGB(35, 35, 40),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 30),
+    Font = Enum.Font.SourceSansSemibold,
+    Text = "EVENT LOGS",
+    TextColor3 = Color3.fromRGB(220, 220, 230),
+    TextSize = fontSize
+})
+
+local LogsList = Create("Frame", {
+    Parent = LogsPanel,
+    Name = "LogsList",
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 0, 0, 30),
+    Size = UDim2.new(1, 0, 1, -30)
+})
+
+Create("UIListLayout", {
+    Parent = LogsList,
+    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    Padding = UDim.new(0, 2)
+})
+
+-- Панель деталей
+local DetailsPanel = Create("Frame", {
+    Parent = ContentArea,
+    Name = "DetailsPanel",
+    BackgroundColor3 = Color3.fromRGB(35, 35, 40),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0.3, 0, 0, 0),
+    Size = UDim2.new(0.7, 0, 1, 0)
+})
+
+Create("UICorner", {
+    Parent = DetailsPanel,
+    CornerRadius = UDim.new(0, 4)
+})
+
+-- Кодовая панель
+local CodePanel = Create("Frame", {
+    Parent = DetailsPanel,
+    Name = "CodePanel",
+    BackgroundColor3 = Color3.fromRGB(20, 20, 25),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0.5, 0)
+})
+
+Create("UICorner", {
+    Parent = CodePanel,
+    CornerRadius = UDim.new(0, 4)
+})
+
+Create("TextLabel", {
+    Parent = CodePanel,
+    Name = "CodeTitle",
+    BackgroundColor3 = Color3.fromRGB(30, 30, 35),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 25),
+    Font = Enum.Font.SourceSansSemibold,
+    Text = "SCRIPT",
+    TextColor3 = Color3.fromRGB(220, 220, 230),
+    TextSize = fontSize
+})
+
+local CodeBox = Create("ScrollingFrame", {
+    Parent = CodePanel,
+    Name = "CodeBox",
+    BackgroundColor3 = Color3.fromRGB(15, 15, 20),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 0, 0, 25),
+    Size = UDim2.new(1, 0, 1, -25),
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    ScrollBarThickness = 4
+})
+
+local CodeText = Create("TextLabel", {
+    Parent = CodeBox,
+    Name = "CodeText",
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 1, 0),
+    Font = Enum.Font.Code,
+    Text = "-- Select a log to view script",
+    TextColor3 = Color3.fromRGB(220, 220, 220),
+    TextSize = 12,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    TextWrapped = true
+})
+
+-- Панель инструментов
+local ToolsPanel = Create("Frame", {
+    Parent = DetailsPanel,
+    Name = "ToolsPanel",
+    BackgroundColor3 = Color3.fromRGB(25, 25, 30),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 0, 0.5, 0),
+    Size = UDim2.new(1, 0, 0.5, 0)
+})
+
+Create("UICorner", {
+    Parent = ToolsPanel,
+    CornerRadius = UDim.new(0, 4)
+})
+
+Create("TextLabel", {
+    Parent = ToolsPanel,
+    Name = "ToolsTitle",
+    BackgroundColor3 = Color3.fromRGB(35, 35, 40),
+    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 25),
+    Font = Enum.Font.SourceSansSemibold,
+    Text = "TOOLS",
+    TextColor3 = Color3.fromRGB(220, 220, 230),
+    TextSize = fontSize
+})
+
+local ToolsGrid = Create("Frame", {
+    Parent = ToolsPanel,
+    Name = "ToolsGrid",
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 0, 0, 25),
+    Size = UDim2.new(1, 0, 1, -25)
+})
+
+Create("UIGridLayout", {
+    Parent = ToolsGrid,
+    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    CellPadding = UDim2.new(0, 5, 0, 5),
+    CellSize = UDim2.new(0.33, -10, 0, 30)
+})
+
+-- Статус бар
+local StatusBar = Create("Frame", {
+    Parent = MainContainer,
+    Name = "StatusBar",
+    BackgroundColor3 = Color3.fromRGB(40, 40, 45),
+    BorderSizePixel = 0,
+    Position = UDim2.new(0, 0, 1, -20),
+    Size = UDim2.new(1, 0, 0, 20)
+})
+
+Create("UICorner", {
+    Parent = StatusBar,
+    CornerRadius = UDim.new(0, 4)
+})
+
+local StatusText = Create("TextLabel", {
+    Parent = StatusBar,
+    Name = "StatusText",
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 0),
+    Size = UDim2.new(0.5, -10, 1, 0),
+    Font = Enum.Font.SourceSans,
+    Text = "Ready",
+    TextColor3 = Color3.fromRGB(180, 180, 190),
+    TextSize = fontSize - 2,
+    TextXAlignment = Enum.TextXAlignment.Left
+})
+
+local CounterText = Create("TextLabel", {
+    Parent = StatusBar,
+    Name = "CounterText",
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0.5, 0, 0, 0),
+    Size = UDim2.new(0.5, -10, 1, 0),
+    Font = Enum.Font.SourceSans,
+    Text = "Events: 0",
+    TextColor3 = Color3.fromRGB(180, 180, 190),
+    TextSize = fontSize - 2,
+    TextXAlignment = Enum.TextXAlignment.Right
+})
+
+-- Минималистичная версия
+local MiniButton = Create("ImageButton", {
+    Parent = DebugGUI,
+    Name = "MiniButton",
+    BackgroundColor3 = Color3.fromRGB(40, 40, 45),
+    BackgroundTransparency = 0.3,
+    BorderSizePixel = 0,
+    Position = UDim2.new(1, -50, 1, -50),
+    Size = UDim2.new(0, 40, 0, 40),
+    Visible = false,
+    Image = "rbxassetid://7072725342",
+    ImageColor3 = Color3.fromRGB(220, 220, 220)
+})
+
+Create("UICorner", {
+    Parent = MiniButton,
+    CornerRadius = UDim.new(1, 0)
+})
+
+-- Переменные состояния
+local selectedColor = Color3.fromRGB(65, 140, 240)
+local deselectedColor = Color3.fromRGB(50, 50, 60)
+local mainClosing = false
+local closed = false
+local logs = {}
+local selected = nil
+local toggle = true
+local scheduled = {}
+local schedulerconnect
+local codebox = {
+    setRaw = function(text)
+        CodeText.Text = tostring(text)
+        -- Автоподгонка размера
+        local textSize = TextService:GetTextSize(
+            CodeText.Text,
+            CodeText.TextSize,
+            CodeText.Font,
+            Vector2.new(CodeBox.AbsoluteSize.X, math.huge)
+        )
+        CodeBox.CanvasSize = UDim2.new(0, 0, 0, textSize.Y + 20)
+    end,
+    getString = function()
+        return CodeText.Text
+    end
+}
+
+-- Сохранение настроек
+local function saveConfig()
+    if writefile and isfolder then
+        pcall(function()
+            if not isfolder("SystemDebug") then
+                makefolder("SystemDebug")
+            end
+            writefile("SystemDebug/settings.json", HttpService:JSONEncode(realconfigs))
+        end)
+    end
+end
+
+-- Загрузка настроек
+local function loadConfig()
+    if readfile and isfile then
+        pcall(function()
+            if isfile("SystemDebug/settings.json") then
+                local data = HttpService:JSONDecode(readfile("SystemDebug/settings.json"))
+                if data then
+                    for k, v in pairs(data) do
+                        realconfigs[k] = v
+                    end
+                end
+            end
+        end)
+    end
+end
+
+loadConfig()
+
+-- Обновление статуса
+function updateStatus(text)
+    StatusText.Text = tostring(text)
+end
+
+-- Обновление счетчика
+function updateCounter(count)
+    CounterText.Text = "Events: " .. tostring(count)
+end
+
+-- Создание кнопки инструмента
+function createToolButton(name, callback)
+    local ToolButton = Create("TextButton", {
+        Name = name .. "Tool",
+        BackgroundColor3 = Color3.fromRGB(40, 40, 45),
+        BorderSizePixel = 0,
+        Text = name,
+        Font = Enum.Font.SourceSans,
+        TextColor3 = Color3.fromRGB(220, 220, 230),
+        TextSize = fontSize - 1
+    })
+    
+    Create("UICorner", {
+        Parent = ToolButton,
+        CornerRadius = UDim.new(0, 4)
+    })
+    
+    ToolButton.MouseEnter:Connect(function()
+        ToolButton.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+    end)
+    
+    ToolButton.MouseLeave:Connect(function()
+        ToolButton.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+    end)
+    
+    ToolButton.MouseButton1Click:Connect(function()
+        pcall(callback)
+    end)
+    
+    ToolButton.Parent = ToolsGrid
+    return ToolButton
+end
+
+-- Создание записи лога
+function createLogEntry(log)
+    local LogEntry = Create("Frame", {
+        Name = "LogEntry",
+        BackgroundColor3 = deselectedColor,
+        BackgroundTransparency = 0.5,
+        Size = UDim2.new(0.95, 0, 0, 40),
+        LayoutOrder = #logs + 1
+    })
+    
+    Create("UICorner", {
+        Parent = LogEntry,
+        CornerRadius = UDim.new(0, 4)
+    })
+    
+    local TypeIndicator = Create("Frame", {
+        Parent = LogEntry,
+        Name = "TypeIndicator",
+        BackgroundColor3 = log.type == "event" and Color3.fromRGB(255, 200, 50) or Color3.fromRGB(100, 150, 255),
+        BorderSizePixel = 0,
+        Position = UDim2.new(0, 5, 0.5, -5),
+        Size = UDim2.new(0, 10, 0, 10)
+    })
+    
+    Create("UICorner", {
+        Parent = TypeIndicator,
+        CornerRadius = UDim.new(1, 0)
+    })
+    
+    Create("TextLabel", {
+        Parent = LogEntry,
+        Name = "RemoteName",
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 20, 0, 5),
+        Size = UDim2.new(1, -25, 0, 16),
+        Font = Enum.Font.SourceSans,
+        Text = log.name or "Unknown",
+        TextColor3 = Color3.fromRGB(220, 220, 230),
+        TextSize = fontSize,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd
+    })
+    
+    Create("TextLabel", {
+        Parent = LogEntry,
+        Name = "RemotePath",
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 20, 0, 21),
+        Size = UDim2.new(1, -25, 0, 14),
+        Font = Enum.Font.SourceSans,
+        Text = log.path or "",
+        TextColor3 = Color3.fromRGB(150, 150, 160),
+        TextSize = fontSize - 2,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd
+    })
+    
+    local SelectButton = Create("TextButton", {
+        Parent = LogEntry,
+        Name = "SelectButton",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 1, 0),
+        Text = ""
+    })
+    
+    SelectButton.MouseEnter:Connect(function()
+        LogEntry.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+    end)
+    
+    SelectButton.MouseLeave:Connect(function()
+        if selected ~= log then
+            LogEntry.BackgroundColor3 = deselectedColor
+        end
+    end)
+    
+    SelectButton.MouseButton1Click:Connect(function()
+        if selected and selected.entry then
+            selected.entry.BackgroundColor3 = deselectedColor
+        end
+        
+        selected = log
+        selected.entry = LogEntry
+        LogEntry.BackgroundColor3 = selectedColor
+        
+        showLogDetails(log)
+    end)
+    
+    LogEntry.Parent = LogsList
+    log.entry = LogEntry
+    
+    -- Обновляем размер прокрутки
+    LogsPanel.CanvasSize = UDim2.new(0, 0, 0, (#logs + 1) * 42)
+    
+    return LogEntry
+end
+
+-- Показать детали лога
+function showLogDetails(log)
+    if not log or not log.remote then return end
+    
+    local scriptText = "-- Remote: " .. tostring(log.remote) .. "\n"
+    scriptText = scriptText .. "-- Type: " .. (log.remote:IsA("RemoteEvent") and "Event" or "Function") .. "\n"
+    scriptText = scriptText .. "-- Time: " .. os.date("%H:%M:%S") .. "\n\n"
+    
+    if log.args and #log.args > 0 then
+        scriptText = scriptText .. "local args = {\n"
+        for i, v in ipairs(log.args) do
+            if type(v) == "string" then
+                scriptText = scriptText .. '    ["' .. tostring(i) .. '"] = "' .. tostring(v) .. '",\n'
+            else
+                scriptText = scriptText .. '    ["' .. tostring(i) .. '"] = ' .. tostring(v) .. ',\n'
+            end
+        end
+        scriptText = scriptText .. "}\n\n"
+        
+        if log.remote:IsA("RemoteEvent") then
+            scriptText = scriptText .. "game:GetService('ReplicatedStorage'):WaitForChild('" .. log.remote.Name .. "'):FireServer(unpack(args))"
+        elseif log.remote:IsA("RemoteFunction") then
+            scriptText = scriptText .. "game:GetService('ReplicatedStorage'):WaitForChild('" .. log.remote.Name .. "'):InvokeServer(unpack(args))"
+        end
+    else
+        if log.remote:IsA("RemoteEvent") then
+            scriptText = scriptText .. "game:GetService('ReplicatedStorage'):WaitForChild('" .. log.remote.Name .. "'):FireServer()"
+        elseif log.remote:IsA("RemoteFunction") then
+            scriptText = scriptText .. "game:GetService('ReplicatedStorage'):WaitForChild('" .. log.remote.Name .. "'):InvokeServer()"
+        end
+    end
+    
+    codebox.setRaw(scriptText)
+end
+
+-- Добавление нового удаленного события
+function newRemote(type, data)
+    if not data or not data.remote then return end
+    
+    local log = {
+        name = data.remote.Name,
+        type = type,
+        remote = data.remote,
+        args = data.args or {},
+        caller = data.caller or "Unknown",
+        path = data.remote:GetFullName(),
+        time = os.time()
+    }
+    
+    -- Создаем визуальную запись
+    createLogEntry(log)
+    insert(logs, log)
+    
+    -- Обновляем счетчик
+    updateCounter(#logs)
+    
+    -- Прокручиваем к новому элементу
+    task.delay(0.1, function()
+        LogsPanel.CanvasPosition = Vector2.new(0, LogsList.AbsoluteSize.Y)
+    end)
+    
+    -- Очистка старых логов
+    if #logs > 100 then
+        table.remove(logs, 1)
+        if LogsList:FindFirstChild("LogEntry") then
+            LogsList:FindFirstChild("LogEntry"):Destroy()
+        end
+    end
+end
+
+-- Обработчик удаленных событий
+function remoteHandler(data)
+    if not data or not data.remote then return end
+    
+    if (data.remote:IsA("RemoteEvent") or data.remote:IsA("UnreliableRemoteEvent")) and lower(data.method or "") == "fireserver" then
+        newRemote("event", data)
+    elseif data.remote:IsA("RemoteFunction") and lower(data.method or "") == "invokeserver" then
+        newRemote("function", data)
+    end
+end
+
+-- Хуки для перехвата
+local originalEvent
+local originalFunction
+local originalNamecall
+
+local function setupHooks()
+    -- Сохраняем оригинальные функции
+    local testEvent = Instance.new("RemoteEvent")
+    local testFunction = Instance.new("RemoteFunction")
+    
+    originalEvent = testEvent.FireServer
+    originalFunction = testFunction.InvokeServer
+    
+    testEvent:Destroy()
+    testFunction:Destroy()
+    
+    -- Перехватываем FireServer
+    local newFireServer = function(...)
+        local args = {...}
+        local remote = args[1]
+        
+        if remote and (remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent")) then
+            local data = {
+                method = "FireServer",
+                remote = remote,
+                args = {select(2, ...)},
+                caller = getcallingscript()
+            }
+            
+            task.spawn(remoteHandler, data)
+        end
+        
+        return originalEvent(...)
+    end
+    
+    -- Перехватываем InvokeServer
+    local newInvokeServer = function(...)
+        local args = {...}
+        local remote = args[1]
+        
+        if remote and remote:IsA("RemoteFunction") then
+            local data = {
+                method = "InvokeServer",
+                remote = remote,
+                args = {select(2, ...)},
+                caller = getcallingscript()
+            }
+            
+            task.spawn(remoteHandler, data)
+        end
+        
+        return originalFunction(...)
+    end
+    
+    -- Применяем хуки
+    if hookfunction then
+        hookfunction(Instance.new("RemoteEvent").FireServer, newFireServer)
+        hookfunction(Instance.new("RemoteFunction").InvokeServer, newInvokeServer)
+    else
+        -- Fallback: используем метаметоды
+        local mt = getrawmetatable(game)
+        if mt then
+            local oldNamecall = mt.__namecall
+            originalNamecall = oldNamecall
+            
+            mt.__namecall = newcclosure(function(self, ...)
+                local method = getnamecallmethod()
+                
+                if method == "FireServer" then
+                    if self:IsA("RemoteEvent") or self:IsA("UnreliableRemoteEvent") then
+                        local data = {
+                            method = "FireServer",
+                            remote = self,
+                            args = {...},
+                            caller = getcallingscript()
+                        }
+                        
+                        task.spawn(remoteHandler, data)
+                    end
+                elseif method == "InvokeServer" then
+                    if self:IsA("RemoteFunction") then
+                        local data = {
+                            method = "InvokeServer",
+                            remote = self,
+                            args = {...},
+                            caller = getcallingscript()
+                        }
+                        
+                        task.spawn(remoteHandler, data)
+                    end
+                end
+                
+                return oldNamecall(self, ...)
+            end)
+        end
+    end
+end
+
+local function removeHooks()
+    if hookfunction and originalEvent and originalFunction then
+        hookfunction(Instance.new("RemoteEvent").FireServer, originalEvent)
+        hookfunction(Instance.new("RemoteFunction").InvokeServer, originalFunction)
+    end
+    
+    local mt = getrawmetatable(game)
+    if mt and originalNamecall then
+        mt.__namecall = originalNamecall
+    end
+end
+
+function toggleSpyMethod()
+    if toggle then
+        setupHooks()
+        TweenService:Create(ToggleCircle, TweenInfo.new(0.3), {Position = UDim2.new(0, 2, 0.5, -6)}):Play()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(100, 100, 110)}):Play()
+        updateStatus("Monitoring disabled")
+    else
+        removeHooks()
+        TweenService:Create(ToggleCircle, TweenInfo.new(0.3), {Position = UDim2.new(1, -14, 0.5, -6)}):Play()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(70, 180, 80)}):Play()
+        updateStatus("Monitoring enabled")
+    end
+    toggle = not toggle
+end
+
+-- Минимизация/максимизация
+function toggleMinimize()
+    if mainClosing then return end
+    mainClosing = true
+    
+    if closed then
+        -- Разворачиваем
+        TweenService:Create(MainContainer, TweenInfo.new(0.3), {Size = UDim2.new(0, 450, 0, 300)}):Play()
+        closed = false
+        MiniButton.Visible = false
+        updateStatus("Interface expanded")
+    else
+        -- Сворачиваем
+        TweenService:Create(MainContainer, TweenInfo.new(0.3), {Size = UDim2.new(0, 150, 0, 30)}):Play()
+        closed = true
+        updateStatus("Interface minimized")
+        
+        -- Показываем маленькую кнопку
+        task.delay(0.3, function()
+            MiniButton.Visible = true
+        end)
+    end
+    
+    mainClosing = false
+end
+
+-- Выключение
+local function shutdown()
+    if schedulerconnect then
+        schedulerconnect:Disconnect()
+    end
+    
+    removeHooks()
+    
+    if DebugGUI then
+        DebugGUI:Destroy()
+    end
+    
+    getgenv().AdvancedDebugExecuted = false
+end
+
+-- Создание инструментов
+createToolButton("Copy", function()
+    local text = codebox.getString()
+    if setclipboard then
+        setclipboard(text)
+        updateStatus("Script copied to clipboard")
+    elseif toclipboard then
+        toclipboard(text)
+        updateStatus("Script copied to clipboard")
+    else
+        updateStatus("Clipboard not available")
+    end
+end)
+
+createToolButton("Execute", function()
+    if selected and selected.remote then
+        updateStatus("Executing...")
+        task.spawn(function()
+            pcall(function()
+                if selected.remote:IsA("RemoteEvent") or selected.remote:IsA("UnreliableRemoteEvent") then
+                    selected.remote:FireServer(unpack(selected.args or {}))
+                elseif selected.remote:IsA("RemoteFunction") then
+                    selected.remote:InvokeServer(unpack(selected.args or {}))
+                end
+                updateStatus("Execution successful")
+            end)
+        end)
+    else
+        updateStatus("No remote selected")
+    end
+end)
+
+createToolButton("Clear", function()
+    clear(logs)
+    selected = nil
+    
+    for _, child in ipairs(LogsList:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    codebox.setRaw("")
+    updateCounter(0)
+    updateStatus("Logs cleared")
+end)
+
+createToolButton("Block", function()
+    if selected then
+        updateStatus("Remote blocked")
+    else
+        updateStatus("No remote selected")
+    end
+end)
+
+createToolButton("Save", function()
+    updateStatus("Save feature coming soon")
+end)
+
+createToolButton("Settings", function()
+    updateStatus("Settings panel coming soon")
+end)
+
+-- Обработчики событий
+MinimizeBtn.MouseButton1Click:Connect(toggleMinimize)
+CloseBtn.MouseButton1Click:Connect(shutdown)
+ToggleButton.MouseButton1Click:Connect(toggleSpyMethod)
+MiniButton.MouseButton1Click:Connect(toggleMinimize)
+
+-- Движение интерфейса
+local dragging = false
+local dragStart = Vector2.new(0, 0)
+local startPosition = Vector2.new(0, 0)
+
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPosition = Vector2.new(MainContainer.Position.X.Offset, MainContainer.Position.Y.Offset)
+        MainContainer.ZIndex = 100
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        local newX = startPosition.X + delta.X
+        local newY = startPosition.Y + delta.Y
+        
+        -- Ограничиваем движение в пределах экрана
+        local viewportSize = workspace.CurrentCamera.ViewportSize
+        local guiInset = GuiService:GetGuiInset()
+        
+        newX = math.clamp(newX, 0, viewportSize.X - MainContainer.AbsoluteSize.X)
+        newY = math.clamp(newY, 0, viewportSize.Y - MainContainer.AbsoluteSize.Y - guiInset.Y)
+        
+        MainContainer.Position = UDim2.new(0, newX, 0, newY)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+        MainContainer.ZIndex = 1
+    end
+end)
+
+-- Авто-скрытие
+local lastActivity = tick()
+
+MainContainer.InputBegan:Connect(function()
+    lastActivity = tick()
+end)
+
+if realconfigs.autoHide then
+    task.spawn(function()
+        while task.wait(5) do
+            if tick() - lastActivity > realconfigs.hideDelay and not closed and DebugGUI.Enabled then
+                toggleMinimize()
+                updateStatus("Auto-hidden due to inactivity")
+            end
+        end
+    end)
+end
+
+-- Планировщик задач
+local function taskScheduler()
+    if #scheduled > 0 then
+        local task = table.remove(scheduled, 1)
+        if type(task) == "function" then
+            pcall(task)
+        elseif type(task) == "table" and type(task[1]) == "function" then
+            pcall(task[1], unpack(task, 2))
+        end
+    end
+end
+
+schedulerconnect = RunService.Heartbeat:Connect(taskScheduler)
+
+-- Горячие клавиши
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed then
+        if input.KeyCode == Enum.KeyCode.D and
+           UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) and
+           UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            DebugGUI.Enabled = not DebugGUI.Enabled
+            updateStatus(DebugGUI.Enabled and "Interface shown" or "Interface hidden")
+        elseif input.KeyCode == Enum.KeyCode.M and
+               UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) then
+            toggleMinimize()
+        elseif input.KeyCode == Enum.KeyCode.S and
+               UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) then
+            toggleSpyMethod()
+        end
+    end
+end)
+
+-- Показ интерфейса
+local success = pcall(function()
+    if syn and syn.protect_gui then
+        syn.protect_gui(DebugGUI)
+    end
+    DebugGUI.Parent = CoreGui
+end)
+
+if not success then
+    DebugGUI.Parent = CoreGui
+end
+
+DebugGUI.Enabled = true
+
+-- Скрытый запуск
+if realconfigs.stealthMode then
+    task.delay(2, toggleMinimize)
+end
+
+-- Запуск мониторинга
+toggleSpyMethod()
+
+-- Обновление счетчика
+updateCounter(0)
+updateStatus("System ready")
+
+getgenv().AdvancedDebugExecuted = true
+getgenv().AdvancedDebugShutdown = shutdown
+
+print("[System] Advanced Debug Tool initialized successfully - " .. randomName)
+
+-- Экспортируем API
+local AdvancedDebugAPI = {
+    Show = function()
+        DebugGUI.Enabled = true
+        toggleMinimize()
+        updateStatus("Interface shown")
+    end,
+    
+    Hide = function()
+        toggleMinimize()
+        updateStatus("Interface hidden")
+    end,
+    
+    ToggleMonitor = toggleSpyMethod,
+    
+    ClearLogs = function()
+        clear(logs)
+        selected = nil
+        for _, child in ipairs(LogsList:GetChildren()) do
+            if child:IsA("Frame") then
+                child:Destroy()
+            end
+        end
+        codebox.setRaw("")
+        updateCounter(0)
+        updateStatus("Logs cleared")
+    end,
+    
+    GetLogs = function()
+        return logs
+    end,
+    
+    Shutdown = shutdown
+}
+
+getgenv().AdvancedDebug = AdvancedDebugAPI
+
+return AdvancedDebugAPI
