@@ -1,5 +1,5 @@
 --[[
-    Advanced Debug Tool v1.0
+    Advanced Debug Tool v1.0 - Fixed Version
     Mobile-optimized interface with enhanced stealth features
 ]]
 
@@ -40,19 +40,7 @@ configsmetatable.__index = function(self,index)
     return realconfigs[index]
 end
 
--- Рандомизация значений для обхода детекции
-local function randomizeValue(val)
-    if type(val) == "number" then
-        return val + (math.random() * 0.001 - 0.0005)
-    elseif type(val) == "string" then
-        if math.random(1, 10) == 1 then
-            return val .. string.char(math.random(97, 122))
-        end
-    end
-    return val
-end
-
--- Обёртки для сервисов с рандомизацией
+-- Обёртки для сервисов
 local oth = syn and syn.oth
 local unhook = oth and oth.unhook
 local hook = oth and oth.hook
@@ -127,11 +115,16 @@ local function Create(instance, properties, children)
 
     for i, v in next, properties or {} do
         obj[i] = v
-        for _, child in next, children or {} do
-            child.Parent = obj;
+    end
+    
+    if children then
+        for _, child in next, children do
+            if child then
+                child.Parent = obj
+            end
         end
     end
-    return obj;
+    return obj
 end
 
 local function SafeGetService(service)
@@ -252,33 +245,20 @@ function ErrorPrompt(Message,state)
     end
 end
 
--- Загружаем Highlight с рандомизированным URL
+-- Загружаем Highlight
 local Highlight
 pcall(function()
-    local urls = {
-        "https://raw.githubusercontent.com/78n/SimpleSpy/main/Highlight.lua",
-        "https://pastebin.com/raw/xyz123",
-        "https://gist.githubusercontent.com/raw/abc456"
-    }
-    
-    for _, url in ipairs(urls) do
-        local success, result = pcall(function()
-            return loadstring(game:HttpGet(url))()
-        end)
-        if success and result then
-            Highlight = result
-            break
-        end
-    end
-    
-    if not Highlight then
-        Highlight = loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/SimpleSpy/main/Highlight.lua"))()
-    end
+    Highlight = loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/SimpleSpy/main/Highlight.lua"))()
 end)
+
+if not Highlight then
+    ErrorPrompt("Failed to load Highlight module", true)
+    return
+end
 
 local LazyFix = loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/Roblox/main/Lua/Libraries/DataToCode/DataToCode.luau"))()
 
--- Создаем основной интерфейс с рандомизированными именами
+-- Создаем основной интерфейс
 local DebugGUI = Create("ScreenGui",{
     Name = randomName,
     ResetOnSpawn = false,
@@ -299,12 +279,18 @@ local MainContainer = Create("Frame",{
     Parent = DebugGUI,
     Name = "MainContainer",
     BackgroundColor3 = Color3.fromRGB(30, 30, 35),
-    BackgroundTransparency = configs.transparentUI,
+    BackgroundTransparency = realconfigs.transparentUI,
     BorderColor3 = Color3.fromRGB(60, 60, 70),
     BorderSizePixel = 1,
     Position = UDim2.new(0.5, -225, 0.5, -134),
     Size = UDim2.new(0, 450 * baseSize, 0, 268 * baseSize),
     ClipsDescendants = true
+})
+
+-- Добавляем скругленные углы
+local MainCorner = Create("UICorner", {
+    Parent = MainContainer,
+    CornerRadius = UDim.new(0, 6)
 })
 
 -- Тень для глубины
@@ -319,6 +305,11 @@ local Shadow = Create("Frame",{
     ZIndex = -1
 })
 
+local ShadowCorner = Create("UICorner", {
+    Parent = Shadow,
+    CornerRadius = UDim.new(0, 6)
+})
+
 local TopBar = Create("Frame",{
     Parent = MainContainer,
     Name = "TopBar",
@@ -326,6 +317,11 @@ local TopBar = Create("Frame",{
     BorderSizePixel = 0,
     Size = UDim2.new(1, 0, 0, 30 * baseSize),
     ZIndex = 2
+})
+
+local TopBarCorner = Create("UICorner", {
+    Parent = TopBar,
+    CornerRadius = UDim.new(0, 6)
 })
 
 -- Градиент для верхней панели
@@ -344,7 +340,7 @@ local Title = Create("TextLabel",{
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 10, 0, 0),
     Size = UDim2.new(0, 150, 1, 0),
-    Font = Enum.Font.Gotham,
+    Font = Enum.Font.SourceSansSemibold,
     Text = randomName,
     TextColor3 = Color3.fromRGB(220, 220, 220),
     TextSize = fontSize + 2,
@@ -371,6 +367,11 @@ local MinimizeBtn = Create("ImageButton",{
     ImageColor3 = Color3.fromRGB(180, 180, 190)
 })
 
+local MinimizeCorner = Create("UICorner", {
+    Parent = MinimizeBtn,
+    CornerRadius = UDim.new(0, 4)
+})
+
 local MaximizeBtn = Create("ImageButton",{
     Parent = ControlButtons,
     Name = "MaximizeBtn",
@@ -380,6 +381,11 @@ local MaximizeBtn = Create("ImageButton",{
     Size = UDim2.new(0, 20, 0, 20),
     Image = "rbxassetid://7072725567",
     ImageColor3 = Color3.fromRGB(180, 180, 190)
+})
+
+local MaximizeCorner = Create("UICorner", {
+    Parent = MaximizeBtn,
+    CornerRadius = UDim.new(0, 4)
 })
 
 local CloseBtn = Create("ImageButton",{
@@ -393,6 +399,11 @@ local CloseBtn = Create("ImageButton",{
     ImageColor3 = Color3.fromRGB(255, 255, 255)
 })
 
+local CloseCorner = Create("UICorner", {
+    Parent = CloseBtn,
+    CornerRadius = UDim.new(0, 4)
+})
+
 -- Тоггл для мониторинга
 local MonitorToggle = Create("Frame",{
     Parent = TopBar,
@@ -403,12 +414,17 @@ local MonitorToggle = Create("Frame",{
     Size = UDim2.new(0, 120, 0, 20)
 })
 
+local MonitorCorner = Create("UICorner", {
+    Parent = MonitorToggle,
+    CornerRadius = UDim.new(0, 4)
+})
+
 local ToggleLabel = Create("TextLabel",{
     Parent = MonitorToggle,
     Name = "ToggleLabel",
     BackgroundTransparency = 1,
     Size = UDim2.new(0, 70, 1, 0),
-    Font = Enum.Font.Gotham,
+    Font = Enum.Font.SourceSansSemibold,
     Text = "MONITOR",
     TextColor3 = Color3.fromRGB(180, 180, 190),
     TextSize = fontSize - 2,
@@ -421,7 +437,11 @@ local ToggleButton = Create("Frame",{
     BackgroundColor3 = Color3.fromRGB(70, 180, 80),
     BorderSizePixel = 0,
     Position = UDim2.new(1, -35, 0.5, -7),
-    Size = UDim2.new(0, 30, 0, 14),
+    Size = UDim2.new(0, 30, 0, 14)
+})
+
+local ToggleCorner = Create("UICorner", {
+    Parent = ToggleButton,
     CornerRadius = UDim.new(1, 0)
 })
 
@@ -431,7 +451,11 @@ local ToggleCircle = Create("Frame",{
     BackgroundColor3 = Color3.fromRGB(255, 255, 255),
     BorderSizePixel = 0,
     Position = UDim2.new(0, 2, 0.5, -6),
-    Size = UDim2.new(0, 12, 0, 12),
+    Size = UDim2.new(0, 12, 0, 12)
+})
+
+local ToggleCircleCorner = Create("UICorner", {
+    Parent = ToggleCircle,
     CornerRadius = UDim.new(1, 0)
 })
 
@@ -456,16 +480,26 @@ local LeftPanel = Create("ScrollingFrame",{
     ScrollBarImageColor3 = Color3.fromRGB(80, 80, 90)
 })
 
+local LeftPanelCorner = Create("UICorner", {
+    Parent = LeftPanel,
+    CornerRadius = UDim.new(0, 4)
+})
+
 local LogsTitle = Create("TextLabel",{
     Parent = LeftPanel,
     Name = "LogsTitle",
     BackgroundColor3 = Color3.fromRGB(35, 35, 40),
     BorderSizePixel = 0,
     Size = UDim2.new(1, 0, 0, 30),
-    Font = Enum.Font.GothamSemibold,
+    Font = Enum.Font.SourceSansSemibold,
     Text = "EVENT LOGS",
     TextColor3 = Color3.fromRGB(220, 220, 230),
     TextSize = fontSize
+})
+
+local LogsTitleCorner = Create("UICorner", {
+    Parent = LogsTitle,
+    CornerRadius = UDim.new(0, 4)
 })
 
 local LogsList = Create("Frame",{
@@ -493,6 +527,11 @@ local RightPanel = Create("Frame",{
     Size = UDim2.new(1, -150 * baseSize, 1, 0)
 })
 
+local RightPanelCorner = Create("UICorner", {
+    Parent = RightPanel,
+    CornerRadius = UDim.new(0, 4)
+})
+
 -- Кодовая панель с вкладками
 local CodeContainer = Create("Frame",{
     Parent = RightPanel,
@@ -500,6 +539,11 @@ local CodeContainer = Create("Frame",{
     BackgroundColor3 = Color3.fromRGB(20, 20, 25),
     BorderSizePixel = 0,
     Size = UDim2.new(1, 0, 0, 150 * baseSize)
+})
+
+local CodeContainerCorner = Create("UICorner", {
+    Parent = CodeContainer,
+    CornerRadius = UDim.new(0, 4)
 })
 
 local TabsBar = Create("Frame",{
@@ -510,16 +554,26 @@ local TabsBar = Create("Frame",{
     Size = UDim2.new(1, 0, 0, 30)
 })
 
+local TabsBarCorner = Create("UICorner", {
+    Parent = TabsBar,
+    CornerRadius = UDim.new(0, 4)
+})
+
 local ScriptTab = Create("TextButton",{
     Parent = TabsBar,
     Name = "ScriptTab",
     BackgroundColor3 = Color3.fromRGB(50, 120, 220),
     BorderSizePixel = 0,
     Size = UDim2.new(0, 100, 1, 0),
-    Font = Enum.Font.Gotham,
+    Font = Enum.Font.SourceSansSemibold,
     Text = "SCRIPT",
     TextColor3 = Color3.fromRGB(255, 255, 255),
     TextSize = fontSize
+})
+
+local ScriptTabCorner = Create("UICorner", {
+    Parent = ScriptTab,
+    CornerRadius = UDim.new(0, 4)
 })
 
 local InfoTab = Create("TextButton",{
@@ -529,10 +583,15 @@ local InfoTab = Create("TextButton",{
     BorderSizePixel = 0,
     Position = UDim2.new(0, 100, 0, 0),
     Size = UDim2.new(0, 100, 1, 0),
-    Font = Enum.Font.Gotham,
+    Font = Enum.Font.SourceSansSemibold,
     Text = "INFO",
     TextColor3 = Color3.fromRGB(180, 180, 190),
     TextSize = fontSize
+})
+
+local InfoTabCorner = Create("UICorner", {
+    Parent = InfoTab,
+    CornerRadius = UDim.new(0, 4)
 })
 
 local CodeBox = Create("Frame",{
@@ -542,6 +601,11 @@ local CodeBox = Create("Frame",{
     BorderSizePixel = 0,
     Position = UDim2.new(0, 0, 0, 30),
     Size = UDim2.new(1, 0, 1, -30)
+})
+
+local CodeBoxCorner = Create("UICorner", {
+    Parent = CodeBox,
+    CornerRadius = UDim.new(0, 4)
 })
 
 -- Панель инструментов
@@ -555,6 +619,11 @@ local ToolsPanel = Create("ScrollingFrame",{
     Size = UDim2.new(1, 0, 1, -150 * baseSize),
     CanvasSize = UDim2.new(0, 0, 0, 0),
     ScrollBarThickness = 4
+})
+
+local ToolsPanelCorner = Create("UICorner", {
+    Parent = ToolsPanel,
+    CornerRadius = UDim.new(0, 4)
 })
 
 local ToolsGrid = Create("UIGridLayout",{
@@ -576,13 +645,18 @@ local StatusBar = Create("Frame",{
     ZIndex = 2
 })
 
+local StatusBarCorner = Create("UICorner", {
+    Parent = StatusBar,
+    CornerRadius = UDim.new(0, 4)
+})
+
 local StatusText = Create("TextLabel",{
     Parent = StatusBar,
     Name = "StatusText",
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 10, 0, 0),
     Size = UDim2.new(0.5, -10, 1, 0),
-    Font = Enum.Font.Gotham,
+    Font = Enum.Font.SourceSans,
     Text = "Ready",
     TextColor3 = Color3.fromRGB(180, 180, 190),
     TextSize = fontSize - 2,
@@ -595,7 +669,7 @@ local CounterText = Create("TextLabel",{
     BackgroundTransparency = 1,
     Position = UDim2.new(0.5, 0, 0, 0),
     Size = UDim2.new(0.5, -10, 1, 0),
-    Font = Enum.Font.Gotham,
+    Font = Enum.Font.SourceSans,
     Text = "Events: 0",
     TextColor3 = Color3.fromRGB(180, 180, 190),
     TextSize = fontSize - 2,
@@ -613,7 +687,11 @@ local MiniButton = Create("ImageButton",{
     Size = UDim2.new(0, 40, 0, 40),
     Visible = false,
     Image = "rbxassetid://7072725342",
-    ImageColor3 = Color3.fromRGB(220, 220, 220),
+    ImageColor3 = Color3.fromRGB(220, 220, 220)
+})
+
+local MiniButtonCorner = Create("UICorner", {
+    Parent = MiniButton,
     CornerRadius = UDim.new(1, 0)
 })
 
@@ -626,7 +704,11 @@ local ToolTip = Create("Frame",{
     BorderColor3 = Color3.fromRGB(60, 60, 70),
     Size = UDim2.new(0, 200, 0, 0),
     ZIndex = 100,
-    Visible = false,
+    Visible = false
+})
+
+local ToolTipCorner = Create("UICorner", {
+    Parent = ToolTip,
     CornerRadius = UDim.new(0, 4)
 })
 
@@ -636,7 +718,7 @@ local ToolTipText = Create("TextLabel",{
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 5, 0, 5),
     Size = UDim2.new(1, -10, 1, -10),
-    Font = Enum.Font.Gotham,
+    Font = Enum.Font.SourceSans,
     Text = "",
     TextColor3 = Color3.fromRGB(220, 220, 220),
     TextSize = fontSize,
@@ -687,17 +769,6 @@ local DecompiledScripts = {}
 local generation = {}
 local running_threads = {}
 local originalnamecall
-
--- Случайные значения для обхода детекции
-local randomValues = {
-    guiName = randomName,
-    positionOffset = math.random(-20, 20),
-    sizeVariation = math.random(0.95, 1.05)
-}
-
--- Применяем случайные значения
-MainContainer.Position = MainContainer.Position + UDim2.new(0, randomValues.positionOffset, 0, randomValues.positionOffset)
-MainContainer.Size = MainContainer.Size * UDim2.new(randomValues.sizeVariation, 0, randomValues.sizeVariation, 0)
 
 -- Создаем удаленные объекты
 local remoteEvent = Instance.new("RemoteEvent",Storage)
@@ -857,7 +928,11 @@ function createToolButton(name, desc, icon, onClick)
         Name = name .. "Tool",
         BackgroundColor3 = Color3.fromRGB(40, 40, 45),
         BackgroundTransparency = 0.5,
-        Size = UDim2.new(1, 0, 1, 0),
+        Size = UDim2.new(1, 0, 1, 0)
+    })
+
+    local ToolButtonCorner = Create("UICorner", {
+        Parent = ToolButton,
         CornerRadius = UDim.new(0, 4)
     })
 
@@ -877,7 +952,7 @@ function createToolButton(name, desc, icon, onClick)
         BackgroundTransparency = 1,
         Position = UDim2.new(0, 35, 0, 0),
         Size = UDim2.new(1, -35, 1, 0),
-        Font = Enum.Font.Gotham,
+        Font = Enum.Font.SourceSans,
         Text = name,
         TextColor3 = Color3.fromRGB(220, 220, 230),
         TextSize = fontSize - 1,
@@ -921,7 +996,11 @@ function createLogEntry(log)
         Name = "LogEntry",
         BackgroundColor3 = deselectedColor,
         BackgroundTransparency = 0.5,
-        Size = UDim2.new(1, -10, 0, 40),
+        Size = UDim2.new(1, -10, 0, 40)
+    })
+
+    local LogEntryCorner = Create("UICorner", {
+        Parent = LogEntry,
         CornerRadius = UDim.new(0, 4)
     })
 
@@ -931,7 +1010,11 @@ function createLogEntry(log)
         BackgroundColor3 = log.type == "event" and Color3.fromRGB(255, 200, 50) or Color3.fromRGB(100, 150, 255),
         BorderSizePixel = 0,
         Position = UDim2.new(0, 5, 0.5, -5),
-        Size = UDim2.new(0, 10, 0, 10),
+        Size = UDim2.new(0, 10, 0, 10)
+    })
+
+    local TypeIndicatorCorner = Create("UICorner", {
+        Parent = TypeIndicator,
         CornerRadius = UDim.new(1, 0)
     })
 
@@ -941,7 +1024,7 @@ function createLogEntry(log)
         BackgroundTransparency = 1,
         Position = UDim2.new(0, 20, 0, 5),
         Size = UDim2.new(1, -25, 0, 16),
-        Font = Enum.Font.Gotham,
+        Font = Enum.Font.SourceSans,
         Text = log.name,
         TextColor3 = Color3.fromRGB(220, 220, 230),
         TextSize = fontSize,
@@ -955,7 +1038,7 @@ function createLogEntry(log)
         BackgroundTransparency = 1,
         Position = UDim2.new(0, 20, 0, 21),
         Size = UDim2.new(1, -25, 0, 14),
-        Font = Enum.Font.Gotham,
+        Font = Enum.Font.SourceSans,
         Text = log.path or "",
         TextColor3 = Color3.fromRGB(150, 150, 160),
         TextSize = fontSize - 2,
@@ -1035,7 +1118,7 @@ function genScript(remote, args)
         xpcall(function()
             gen = "local args = "..LazyFix.Convert(args, true) .. "\n"
         end,function(err)
-            gen ..= "-- Conversion error\n--"..err.."\nlocal args = {"
+            gen = gen .. "-- Conversion error\n--"..err.."\nlocal args = {"
             for i, v in next, args do
                 if type(i) ~= "Instance" and type(i) ~= "userdata" then
                     gen = gen .. "\n    [" .. tostring(i) .. "] = "
@@ -1053,7 +1136,7 @@ function genScript(remote, args)
                     gen = gen .. tostring(v)
                 end
             end
-            gen ..= "\n}\n\n"
+            gen = gen .. "\n}\n\n"
         end)
         
         if not remote:IsDescendantOf(game) and not getnilrequired then
@@ -1061,15 +1144,15 @@ function genScript(remote, args)
         end
         
         if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
-            gen ..= "game:GetService('ReplicatedStorage'):FindFirstChild('" .. remote.Name .. "'):FireServer(unpack(args))"
+            gen = gen .. "game:GetService('ReplicatedStorage'):FindFirstChild('" .. remote.Name .. "'):FireServer(unpack(args))"
         elseif remote:IsA("RemoteFunction") then
             gen = gen .. "game:GetService('ReplicatedStorage'):FindFirstChild('" .. remote.Name .. "'):InvokeServer(unpack(args))"
         end
     else
         if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
-            gen ..= "game:GetService('ReplicatedStorage'):FindFirstChild('" .. remote.Name .. "'):FireServer()"
+            gen = "game:GetService('ReplicatedStorage'):FindFirstChild('" .. remote.Name .. "'):FireServer()"
         elseif remote:IsA("RemoteFunction") then
-            gen ..= "game:GetService('ReplicatedStorage'):FindFirstChild('" .. remote.Name .. "'):InvokeServer()"
+            gen = "game:GetService('ReplicatedStorage'):FindFirstChild('" .. remote.Name .. "'):InvokeServer()"
         end
     end
     prevTables = {}
@@ -1231,19 +1314,34 @@ end)
 -- Управление хуками
 local function disablehooks()
     if synv3 then
-        unhook(getrawmetatable(game).__namecall,originalnamecall)
-        unhook(Instance.new("RemoteEvent").FireServer, originalEvent)
-        unhook(Instance.new("RemoteFunction").InvokeServer, originalFunction)
-        unhook(Instance.new("UnreliableRemoteEvent").FireServer, originalUnreliableEvent)
+        if unhook and originalnamecall then
+            unhook(getrawmetatable(game).__namecall,originalnamecall)
+        end
+        if unhook and originalEvent then
+            unhook(Instance.new("RemoteEvent").FireServer, originalEvent)
+        end
+        if unhook and originalFunction then
+            unhook(Instance.new("RemoteFunction").InvokeServer, originalFunction)
+        end
+        if unhook and originalUnreliableEvent then
+            unhook(Instance.new("UnreliableRemoteEvent").FireServer, originalUnreliableEvent)
+        end
     else
-        if hookmetamethod then
+        if hookmetamethod and originalnamecall then
             hookmetamethod(game,"__namecall",originalnamecall)
-        else
+        elseif hookfunction and getrawmetatable(game).__namecall then
             hookfunction(getrawmetatable(game).__namecall,originalnamecall)
         end
-        hookfunction(Instance.new("RemoteEvent").FireServer, originalEvent)
-        hookfunction(Instance.new("RemoteFunction").InvokeServer, originalFunction)
-        hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, originalUnreliableEvent)
+        
+        if hookfunction and originalEvent then
+            hookfunction(Instance.new("RemoteEvent").FireServer, originalEvent)
+        end
+        if hookfunction and originalFunction then
+            hookfunction(Instance.new("RemoteFunction").InvokeServer, originalFunction)
+        end
+        if hookfunction and originalUnreliableEvent then
+            hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, originalUnreliableEvent)
+        end
     end
 end
 
@@ -1258,16 +1356,21 @@ function toggleSpy()
         else
             if hookmetamethod then
                 oldnamecall = hookmetamethod(game, "__namecall", clonefunction(newnamecall))
-            else
+            elseif hookfunction then
                 oldnamecall = hookfunction(getrawmetatable(game).__namecall,clonefunction(newnamecall))
             end
-            originalEvent = hookfunction(Instance.new("RemoteEvent").FireServer, clonefunction(newFireServer))
-            originalFunction = hookfunction(Instance.new("RemoteFunction").InvokeServer, clonefunction(newInvokeServer))
-            originalUnreliableEvent = hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, clonefunction(newUnreliableFireServer))
+            
+            if hookfunction then
+                originalEvent = hookfunction(Instance.new("RemoteEvent").FireServer, clonefunction(newFireServer))
+                originalFunction = hookfunction(Instance.new("RemoteFunction").InvokeServer, clonefunction(newInvokeServer))
+                originalUnreliableEvent = hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, clonefunction(newUnreliableFireServer))
+            end
         end
-        originalnamecall = originalnamecall or function(...)
-            return oldnamecall(...)
+        
+        if oldnamecall then
+            originalnamecall = originalnamecall or oldnamecall
         end
+        
         TweenService:Create(ToggleCircle, TweenInfo.new(0.3), {Position = UDim2.new(1, -18, 0.5, -8)}):Play()
         TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(70, 180, 80)}):Play()
         updateStatus("Monitoring enabled")
@@ -1350,9 +1453,14 @@ function maximizeCodePanel()
         Position = UDim2.new(1, -30, 0, 5),
         Size = UDim2.new(0, 25, 0, 25),
         Text = "X",
-        Font = Enum.Font.GothamBold,
+        Font = Enum.Font.SourceSansBold,
         TextColor3 = Color3.fromRGB(255, 255, 255),
         TextSize = 14
+    })
+    
+    local exitBtnCorner = Create("UICorner", {
+        Parent = exitBtn,
+        CornerRadius = UDim.new(0, 4)
     })
     
     exitBtn.MouseButton1Click:Connect(function()
@@ -1379,19 +1487,40 @@ TopBar.InputBegan:Connect(function(input)
         dragging = true
         dragStart = Vector2.new(input.Position.X, input.Position.Y)
         startPosition = Vector2.new(MainContainer.Position.X.Offset, MainContainer.Position.Y.Offset)
+        
+        -- Поднимаем окно наверх при перетаскивании
+        MainContainer.ZIndex = 100
     end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = Vector2.new(input.Position.X, input.Position.Y) - dragStart
-        MainContainer.Position = UDim2.new(0, startPosition.X + delta.X, 0, startPosition.Y + delta.Y)
+        local newX = startPosition.X + delta.X
+        local newY = startPosition.Y + delta.Y
+        
+        -- Ограничиваем движение в пределах экрана
+        local viewportSize = workspace.CurrentCamera.ViewportSize
+        local guiInset = GuiInset
+        
+        if newX < 0 then newX = 0 end
+        if newY < 0 then newY = 0 end
+        if newX + MainContainer.AbsoluteSize.X > viewportSize.X then 
+            newX = viewportSize.X - MainContainer.AbsoluteSize.X 
+        end
+        if newY + MainContainer.AbsoluteSize.Y > viewportSize.Y - guiInset.Y then 
+            newY = viewportSize.Y - MainContainer.AbsoluteSize.Y - guiInset.Y
+        end
+        
+        MainContainer.Position = UDim2.new(0, newX, 0, newY)
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
+        -- Возвращаем нормальный ZIndex
+        MainContainer.ZIndex = 1
     end
 end)
 
@@ -1406,7 +1535,7 @@ TopBar.InputBegan:Connect(recordActivity)
 
 if configs.autoHide then
     spawn(function()
-        while wait(5) do
+        while task.wait(5) do
             if tick() - lastActivity > configs.hideDelay and not closed and DebugGUI.Enabled then
                 toggleMinimize()
                 updateStatus("Auto-hidden due to inactivity")
@@ -1439,7 +1568,9 @@ local function shutdown()
         schedulerconnect:Disconnect()
     end
     for _, connection in next, connections do
-        connection:Disconnect()
+        if connection and typeof(connection) == "RBXScriptConnection" then
+            connection:Disconnect()
+        end
     end
     for i,v in next, running_threads do
         if ThreadIsNotDead(v) then
@@ -1458,7 +1589,30 @@ local function shutdown()
 end
 
 -- Инициализация Highlight
-codebox = Highlight.new(CodeBox)
+if Highlight and Highlight.new then
+    codebox = Highlight.new(CodeBox)
+else
+    -- Fallback если Highlight не загрузился
+    codebox = {
+        setRaw = function(self, text)
+            local label = Create("TextLabel", {
+                Parent = CodeBox,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 1, 0),
+                Font = Enum.Font.Code,
+                Text = text,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                TextSize = 12,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextYAlignment = Enum.TextYAlignment.Top,
+                TextWrapped = true
+            })
+        end,
+        getString = function(self)
+            return ""
+        end
+    }
+end
 
 -- Настройка обработчиков событий
 MinimizeBtn.MouseButton1Click:Connect(toggleMinimize)
@@ -1479,7 +1633,7 @@ end)
 
 -- Создание инструментов
 createToolButton("Copy", "Copy script to clipboard", "rbxassetid://7072725342", function()
-    if codebox then
+    if codebox and codebox.getString then
         setclipboard(codebox:getString())
         updateStatus("Script copied to clipboard")
     end
@@ -1503,11 +1657,20 @@ end)
 
 createToolButton("Clear", "Clear all logs", "rbxassetid://7072725207", function()
     clear(logs)
+    selected = nil
+    
+    -- Очищаем визуальные элементы
     for _, child in ipairs(LogsList:GetChildren()) do
-        if child:IsA("Frame") then
+        if child:IsA("Frame") and child.Name == "LogEntry" then
             child:Destroy()
         end
     end
+    
+    -- Очищаем кодбокс
+    if codebox and codebox.setRaw then
+        codebox:setRaw("")
+    end
+    
     updateCounter(0)
     updateStatus("Logs cleared")
 end)
@@ -1537,7 +1700,14 @@ toggleSpyMethod()
 schedulerconnect = RunService.Heartbeat:Connect(taskscheduler)
 
 -- Показ интерфейса
-DebugGUI.Parent = (gethui and gethui()) or (syn and syn.protect_gui and syn.protect_gui(DebugGUI)) or CoreGui
+local success, err = pcall(function()
+    DebugGUI.Parent = (gethui and gethui()) or (syn and syn.protect_gui and syn.protect_gui(DebugGUI)) or CoreGui
+end)
+
+if not success then
+    DebugGUI.Parent = CoreGui
+end
+
 DebugGUI.Enabled = true
 
 -- Обновление счетчика
@@ -1570,7 +1740,87 @@ UserInputService.InputBegan:Connect(function(input, processed)
            UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) then
             toggleMinimize()
         end
+        
+        -- Alt+S для переключения мониторинга
+        if input.KeyCode == Enum.KeyCode.S and
+           UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) then
+            toggleSpyMethod()
+        end
     end
 end)
 
-print("[System] Advanced Debug Tool initialized successfully")
+-- Функция для показа подсказки при наведении
+local function setupTooltips()
+    -- Подсказки для кнопок управления
+    MinimizeBtn.MouseEnter:Connect(function()
+        showToolTip("Minimize window", UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
+    end)
+    
+    MaximizeBtn.MouseEnter:Connect(function()
+        showToolTip("Toggle side panel", UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
+    end)
+    
+    CloseBtn.MouseEnter:Connect(function()
+        showToolTip("Close debug tool", UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
+    end)
+    
+    ToggleButton.MouseEnter:Connect(function()
+        showToolTip("Toggle remote monitoring", UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
+    end)
+    
+    MiniButton.MouseEnter:Connect(function()
+        showToolTip("Show debug window", UDim2.new(0, UserInputService:GetMouseLocation().X, 0, UserInputService:GetMouseLocation().Y))
+    end)
+    
+    -- Скрываем подсказку при уходе мыши
+    MinimizeBtn.MouseLeave:Connect(hideToolTip)
+    MaximizeBtn.MouseLeave:Connect(hideToolTip)
+    CloseBtn.MouseLeave:Connect(hideToolTip)
+    ToggleButton.MouseLeave:Connect(hideToolTip)
+    MiniButton.MouseLeave:Connect(hideToolTip)
+end
+
+setupTooltips()
+
+print("[System] Advanced Debug Tool initialized successfully - " .. randomName)
+
+-- Экспортируем API для внешнего использования
+local AdvancedDebugAPI = {
+    Show = function()
+        DebugGUI.Enabled = true
+        toggleMinimize()
+        updateStatus("Interface shown")
+    end,
+    
+    Hide = function()
+        toggleMinimize()
+        updateStatus("Interface hidden")
+    end,
+    
+    ToggleMonitor = toggleSpyMethod,
+    
+    ClearLogs = function()
+        clear(logs)
+        selected = nil
+        for _, child in ipairs(LogsList:GetChildren()) do
+            if child:IsA("Frame") and child.Name == "LogEntry" then
+                child:Destroy()
+            end
+        end
+        if codebox and codebox.setRaw then
+            codebox:setRaw("")
+        end
+        updateCounter(0)
+        updateStatus("Logs cleared")
+    end,
+    
+    GetLogs = function()
+        return logs
+    end,
+    
+    Shutdown = shutdown
+}
+
+getgenv().AdvancedDebug = AdvancedDebugAPI
+
+return AdvancedDebugAPI
